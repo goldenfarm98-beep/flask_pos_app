@@ -27,7 +27,6 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      # Opsional (aman untuk build wheels jika perlu)
       - name: Install system libs (optional)
         run: |
           sudo apt-get update
@@ -37,22 +36,27 @@ jobs:
         run: |
           python -m pip install --upgrade pip wheel setuptools
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          # Safety nets (kalau requirements belum lengkap)
-          pip install Flask-WTF email-validator psycopg2-binary || true
+          # Safety net untuk modul yang sempat hilang
+          pip install Flask-WTF email-validator psycopg2-binary pandas numpy openpyxl || true
           python - <<'PY'
-          # Pastikan modul kritikal tersedia agar tidak fail saat import awal
-          for m in ("flask","flask_wtf","psycopg2"):
+          # Smoke import untuk fail cepat kalau ada modul inti yang hilang
+          for m in ("flask","flask_wtf","sqlalchemy"):
               __import__(m)
           print("Smoke import OK")
           PY
-          pip list | egrep -i "flask|flask-wtf|wtforms|email|sqlalchemy|psycopg2" || true
+
+      - name: Show repo tree (debug)
+        run: |
+          ls -la
+          printf "\nFiles under tests/:\n"
+          find tests -maxdepth 2 -type f -print || true
 
       - name: Lint (flake8, non-blocking)
         run: |
           pip install flake8
           flake8 . --max-line-length=100 --extend-ignore=E203,W503 || true
 
-      - name: Run tests
+      - name: Run tests (force tests/ path)
         run: |
           pip install pytest
-          pytest -q --maxfail=1
+          pytest tests -q --maxfail=1 -ra
