@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Tabel Produk{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="text-center text-primary"><i class="fas fa-boxes"></i> Tabel Produk</h2>
+    <p class="text-center text-muted">Daftar produk lengkap dengan aksi tambah, edit, dan hapus</p>
+
+    <!-- Tombol Tambah Produk -->
+    <div class="text-right mb-4">
+        <a href="/produk/tambah" class="btn btn-success">
+            <i class="fas fa-plus-circle"></i> Tambah Produk
+        </a>
+    </div>
+
+    <!-- Form Pencarian -->
+    <div class="mb-3">
+        <form method="GET" action="/produk">
+            <div class="input-group">
+                <input type="text" name="search" class="form-control" placeholder="Cari Produk" value="{{ request.args.get('search', '') }}">
+                <div class="input-group-append">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Cari</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Tabel Produk -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <table class="table table-bordered table-hover">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Kode Produk</th>
+                        <th>SKU</th>
+                        <th>Nama Produk</th>
+                        <th>Kategori</th>
+                        <th>Supplier</th>
+                        <th>Stok</th>
+                        <th>Harga</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for produk in produks %}
+                    <tr>
+                        <td>{{ produk.kode_produk }}</td>
+                        <td>{{ produk.sku }}</td>
+                        <td>{{ produk.nama_produk }}</td>
+                        <td>{{ produk.kategori.name }}</td>
+                        <td>{{ produk.supplier.name }}</td>
+                        <td>{{ produk.stok }}</td>
+                        <td>{{ produk.harga }}</td>
+                        <td>
+                            <a href="/produk/edit/{{ produk.id }}" class="btn btn-warning btn-sm">
+                                <i class="fas fa-edit"></i> Edit
+                            </a>
+                            <form action="/produk/delete/{{ produk.id }}" method="POST" style="display:inline;">
+                                {{ csrf_token() }}
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+    h2 {
+        font-weight: bold;
+        color: #007bff;
+    }
+
+    .btn {
+        margin-right: 5px;
+    }
+
+    .table {
+        font-size: 14px;
+    }
+
+    .table th {
+        text-align: center;
+        background-color: #f8f9fa;
+    }
+
+    .table td {
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}

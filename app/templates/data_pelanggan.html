@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Data Pelanggan{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center text-primary"><i class="fas fa-users"></i> Data Pelanggan</h2>
+    <p class="text-center text-muted">Manage customer information</p>
+
+    <div class="row">
+        <!-- Form Input Pelanggan -->
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-center"><i class="fas fa-pencil-alt"></i> Input Pelanggan</h5>
+                    <form method="POST" action="{% if edit_pelanggan %}/pelanggan/edit/{{ edit_pelanggan.id }}{% else %}/pelanggan{% endif %}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label for="pelanggan_id"><i class="fas fa-id-card"></i> ID Pelanggan</label>
+                            <input type="text" class="form-control" id="pelanggan_id" name="pelanggan_id" placeholder="ID Pelanggan Otomatis" value="{% if edit_pelanggan %}{{ edit_pelanggan.pelanggan_id }}{% endif %}" readonly>
+                        </div>                        
+                        <div class="form-group">
+                            <label for="nama"><i class="fas fa-user"></i> Nama Pelanggan</label>
+                            <input type="text" class="form-control" id="nama" name="nama" placeholder="Nama Pelanggan" value="{% if edit_pelanggan %}{{ edit_pelanggan.nama }}{% endif %}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="kontak"><i class="fas fa-phone"></i> Kontak</label>
+                            <input type="text" class="form-control" id="kontak" name="kontak" placeholder="Kontak" value="{% if edit_pelanggan %}{{ edit_pelanggan.kontak }}{% endif %}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="alamat"><i class="fas fa-map-marker-alt"></i> Alamat</label>
+                            <textarea class="form-control" id="alamat" name="alamat" placeholder="Alamat" required>{% if edit_pelanggan %}{{ edit_pelanggan.alamat }}{% endif %}</textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            {% if edit_pelanggan %}<i class="fas fa-save"></i> Update Pelanggan {% else %}<i class="fas fa-save"></i> Simpan {% endif %}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabel Data Pelanggan -->
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-center"><i class="fas fa-list"></i> Data Pelanggan</h5>
+                    <table class="table table-bordered table-hover">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Nama</th>
+                                <th>Kontak</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pelanggan in pelanggans %}
+                            <tr>
+                                <td>{{ pelanggan.pelanggan_id }}</td>
+                                <td>{{ pelanggan.nama }}</td>
+                                <td>{{ pelanggan.kontak }}</td>
+                                <td>
+                                    <a href="/pelanggan/edit/{{ pelanggan.id }}" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i> Edit</a>
+                                    <form action="/pelanggan/delete/{{ pelanggan.id }}" method="POST" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-secondary mt-3" onclick="window.location.href='/dashboard'">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </button>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

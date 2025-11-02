@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}My Flask App{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            margin: 0;
+        }
+        header {
+            background-color:rgb(8, 143, 233);
+            color: rgb(255, 255, 255);
+            /*padding: 5px 10px;*/
+            
+            position: sticky;
+            top: 0;
+            z-index: 1030;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            width: 100%;
+        }
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        nav a {
+            color: white;
+            margin: 0 10px;
+            text-decoration: none;
+        }
+        nav a:hover {
+            text-decoration: underline;
+        }
+        .sidebar {
+            height: 100vh;
+            position: fixed;
+            top: 60px; /* Adjust for header height */
+            left: 0;
+            overflow-x: hidden;
+            padding-top: 20px;
+            width: 200px;
+            background-color: #f8f9fa;
+            border-right: 1px solid #ddd;
+            z-index: 1020;
+        }
+        main {
+            flex: 1;
+            margin-left: 200px; /* Sidebar width */
+            margin-top: 20px; /* Header height */
+            padding: 20px;
+        }
+        footer {
+            background-color: rgb(26, 127, 194);
+            color: white;
+            text-align: center;
+            padding: 10px 0;
+        }
+        @media (max-width: 768px) {
+            nav {
+                flex-direction: column;
+                text-align: center;
+            }
+            nav a {
+                margin: 5px 0;
+            }
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+                border-right: none;
+            }
+            main {
+                margin-left: 0;
+                margin-top: 120px; /* Adjust for combined header and sidebar */
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            <div>
+                <h1><i class="fas fa-leaf"></i> # aplikasi penjualan </h1>
+            </div>
+            <div>
+                {% if session.get('user_id') %}
+                    <span class="mr-3"><i class="fas fa-user"></i> {{ session.get('username') }}</span>
+                    <a href="/logout" class="btn btn-sm btn-light"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                {% else %}
+                    <a href="/login" class="btn btn-sm btn-light"><i class="fas fa-sign-in-alt"></i> Login</a>
+                    <a href="/register" class="btn btn-sm btn-light"><i class="fas fa-user-plus"></i> Register</a>
+                {% endif %}
+            </div>
+        </nav>
+    </header>
+
+    <main class="container">
+        {% block content %}
+        <!-- Konten halaman akan diisi di sini -->
+        {% endblock %}
+    </main>
+
+    <footer>
+        <p>&copy; 2025 Aplikasi Kasir Terkini. Powered by <i class="fas fa-code"></i> Flask</p>
+    </footer>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>

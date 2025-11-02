@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h2 class="mt-4 text-primary"><i class="fas fa-shopping-cart"></i> Halaman Pembelian</h2>
+
+    <form method="POST" action="{{ url_for('main.purchase') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <!-- Informasi Faktur -->
+        <div class="form-row">
+            <div class="form-group col-md-6">
+                <label for="invoice_date"><i class="fas fa-calendar-alt"></i> Tanggal Faktur</label>
+                <input type="date" class="form-control" id="invoice_date" name="invoice_date" required>
+            </div>
+            <div class="form-group col-md-6">
+                <label for="invoice_number"><i class="fas fa-file-invoice"></i> Nomor Faktur</label>
+                <input type="text" class="form-control font-weight-bold bg-light" id="invoice_number" name="invoice_number" required>
+                <div id="invoice_feedback" class="mt-2"></div> <!-- Menampilkan keterangan -->
+            </div>
+            
+        </div>
+
+        <div class="form-row">
+            <div class="form-group col-md-6">
+                <label for="supplier_id"><i class="fas fa-truck"></i> Supplier</label>
+                <select class="form-control" id="supplier_id" name="supplier_id">
+                    {% for supplier in suppliers %}
+                    <option value="{{ supplier.id }}">{{ supplier.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group col-md-6">
+                <label for="payment_type"><i class="fas fa-credit-card"></i> Jenis Pembayaran</label>
+                <select class="form-control" id="payment_type" name="payment_type">
+                    <option value="Tunai">Tunai</option>
+                    <option value="Kredit">Kredit</option>
+                </select>
+            </div>
+        </div>
+
+        <hr>
+
+        <!-- Data Barang -->
+        <h4 class="text-primary"><i class="fas fa-box"></i> Data Barang</h4>
+        <div class="form-row">
+            <div class="form-group col-md-3">
+                <label for="product_code">Kode Produk</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="product_code" readonly>
+                    <div class="input-group-append">
+                        <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#productModal">
+                            <i class="fas fa-search"></i> Cari
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group col-md-3">
+                <label>Nama Produk</label>
+                <input type="text" class="form-control" id="product_name" readonly>
+            </div>
+            <div class="form-group col-md-2">
+                <label>Kategori</label>
+                <input type="text" class="form-control" id="category" readonly>
+            </div>
+            <div class="form-group col-md-2">
+                <label>Jumlah</label>
+                <input type="number" class="form-control" id="quantity" required>
+            </div>
+            <div class="form-group col-md-2">
+                <label>Harga Beli</label>
+                <input type="text" class="form-control" id="purchase_price" required>
+            </div>
+            <div class="form-group col-md-2">
+                <label>Harga Jual</label>
+                <input type="text" class="form-control" id="selling_price" required>
+            </div>
+            <div class="form-group col-md-3">
+                <label>Diskon (%)</label>
+                <input type="text" class="form-control" id="discount">
+            </div>
+            <div class="form-group col-md-3">
+                <label>Pajak (%)</label>
+                <input type="text" class="form-control" id="tax">
+            </div>
+            <div class="form-group col-md-3">
+                <label>Tanggal Expired</label>
+                <input type="date" class="form-control" id="expired_date">
+            </div>
+        </div>
+
+        <button type="button" class="btn btn-success mb-3" id="addItemButton">
+            <i class="fas fa-plus-circle"></i> Tambah Barang
+        </button>
+
+        <table class="table table-bordered">
+            <thead class="thead-dark">
+                <tr>
+                    <th>No</th>
+                    <th>Kode Barang</th>
+                    <th>Nama Barang</th>
+                    <th>Jumlah</th>
+                    <th>Harga Beli</th>
+                    <th>Harga Jual</th>
+                    <th>Diskon</th>
+                    <th>Pajak</th>
+                    <th>HPP</th>
+                    <th>Expired</th>
+                    <th>Total</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody id="product_details"></tbody>
+        </table>
+
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save"></i> Simpan Pembelian
+        </button>
+    </form>
+
+    <!-- Modal Cari Produk -->
+    <div class="modal fade" id="productModal" tabindex="-1" role="dialog" aria-labelledby="productModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="productModalLabel"><i class="fas fa-box"></i> Pilih Produk</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="search_product" class="form-control mb-3" placeholder="Cari produk...">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Kode Produk</th>
+                                <th>Nama Produk</th>
+                                <th>Kategori</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="product_table_body">
+                            <!-- Produk dimuat di sini -->
+                        </tbody>
+                    </table>
+                    <button class="btn btn-secondary" onclick="window.location.href='/dashboard'"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Simulasi pengecekan nomor faktur yang sudah ada
+    const existingInvoices = ['INV123', 'INV456']; // Contoh nomor faktur yang sudah ada
+
+    // Fungsi untuk memuat produk saat tombol cari di klik
+    const loadProducts = (query = '') => {
+        fetch(`/api/products?q=${encodeURIComponent(query)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                const productTableBody = document.getElementById('product_table_body');
+                productTableBody.innerHTML = '';
+
+                if (data.products && data.products.length > 0) {
+                    data.products.forEach(product => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${product.kode_produk}</td>
+                            <td>${product.nama_produk}</td>
+                            <td>${product.kategori}</td>
+                            <td>
+                                <button type="button" class="btn btn-success btn-sm" onclick="selectProduct('${product.kode_produk}', '${product.nama_produk}', '${product.kategori}')">
+                                    <i class="fas fa-check-circle"></i> Pilih
+                                </button>
+                            </td>
+                        `;
+                        productTableBody.appendChild(row);
+                    });
+                } else {
+                    productTableBody.innerHTML = '<tr><td colspan="4" class="text-center">Produk tidak ditemukan</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching products:', error);
+            });
+    };
+
+    // Fungsi untuk memilih produk dan mengisi form
+    const selectProduct = (kode, nama, kategori) => {
+        document.getElementById('product_code').value = kode;
+        document.getElementById('product_name').value = nama;
+        document.getElementById('category').value = kategori;
+        $('#productModal').modal('hide');
+    };
+
+    // Event listener untuk tombol cari produk
+    document.getElementById('search_product').addEventListener('input', (e) => {
+        loadProducts(e.target.value);
+    });
+
+    // Fungsi untuk menambahkan produk
+    const productDetails = [];
+    const productTable = document.getElementById('product_details');
+    let editIndex = null; // Variabel untuk melacak produk yang sedang diedit
+
+    // Render ulang tabel produk
+    const renderTable = () => {
+        productTable.innerHTML = '';
+        productDetails.forEach((item, index) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${index + 1}</td>
+                <td>${item.productCode}</td>
+                <td>${item.productName}</td>
+                <td>${item.quantity}</td>
+                <td>${item.purchasePrice}</td>
+                <td>${item.sellingPrice}</td>
+                <td>${item.discount || '0%'}</td>
+                <td>${item.tax || '0%'}</td>
+                <td>${item.hpp}</td> <!-- Menampilkan HPP -->
+                <td>${item.expiredDate}</td>
+                <td>${item.total}</td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="deleteProduct(${index})"><i class="fas fa-trash"></i> Hapus</button>
+                    <button class="btn btn-warning btn-sm" onclick="editProduct(${index})"><i class="fas fa-edit"></i> Edit</button>
+                </td>
+            `;
+            productTable.appendChild(row);
+        });
+    };
+
+    // Fungsi untuk menambahkan produk
+    const addProduct = () => {
+        const productCode = document.getElementById('product_code').value;
+        const productName = document.getElementById('product_name').value;
+        const category = document.getElementById('category').value;
+        const quantity = parseInt(document.getElementById('quantity').value);
+        const purchasePrice = parseFloat(document.getElementById('purchase_price').value);
+        const sellingPrice = parseFloat(document.getElementById('selling_price').value);
+        const discount = parseFloat(document.getElementById('discount').value || 0);
+        const tax = parseFloat(document.getElementById('tax').value || 0);
+        const expiredDate = document.getElementById('expired_date').value;
+
+        // Menghitung HPP (Harga Pokok Penjualan)
+        const priceAfterDiscount = purchasePrice - (purchasePrice * discount / 100);
+        const hpp = priceAfterDiscount + (priceAfterDiscount * tax / 100);
+
+        // Menghitung total
+        const total = (sellingPrice - discount) * quantity;
+
+        const product = {
+            productCode,
+            productName,
+            category,
+            quantity,
+            purchasePrice,
+            sellingPrice,
+            discount,
+            tax,
+            expiredDate,
+            hpp, // Menyimpan nilai HPP
+            total
+        };
+
+        if (editIndex === null) {
+            productDetails.push(product); // Jika tidak dalam mode edit, tambahkan produk baru
+        } else {
+            productDetails[editIndex] = product; // Jika sedang edit, update produk yang dipilih
+            editIndex = null;
+        }
+
+        renderTable();
+    };
+
+    // Fungsi untuk menghapus produk
+    const deleteProduct = (index) => {
+        productDetails.splice(index, 1);
+        renderTable(); // Render ulang tabel setelah produk dihapus
+    };
+
+    // Fungsi untuk mengedit produk
+    const editProduct = (index) => {
+        const product = productDetails[index];
+
+        // Isi form dengan data produk yang akan diedit
+        document.getElementById('product_code').value = product.productCode;
+        document.getElementById('product_name').value = product.productName;
+        document.getElementById('category').value = product.category;
+        document.getElementById('quantity').value = product.quantity;
+        document.getElementById('purchase_price').value = product.purchasePrice;
+        document.getElementById('selling_price').value = product.sellingPrice;
+        document.getElementById('discount').value = product.discount;
+        document.getElementById('tax').value = product.tax;
+        document.getElementById('expired_date').value = product.expiredDate;
+
+        // Set edit mode
+        editIndex = index;
+        renderTable(); // Render ulang tabel untuk menonaktifkan tombol edit dan delete yang sedang dipilih
+    };
+// Fungsi untuk memeriksa apakah nomor faktur sudah ada (menggunakan AJAX)
+const checkInvoiceNumber = () => {
+        const invoiceNumber = document.getElementById('invoice_number').value;
+        const invoiceFeedback = document.getElementById('invoice_feedback'); // Menampilkan notifikasi
+        const addItemButton = document.getElementById('addItemButton');
+
+        // Jika nomor faktur kosong, tidak perlu memeriksa
+        if (!invoiceNumber) {
+            invoiceFeedback.innerHTML = '';  // Kosongkan pesan feedback
+            addItemButton.disabled = false;  // Pastikan tombol tambah tetap aktif
+            return;
+        }
+
+        fetch('/check_invoice', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ invoice_number: invoiceNumber }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'error') {
+                // Jika nomor faktur sudah ada, tampilkan pesan dan nonaktifkan tombol tambah
+                invoiceFeedback.innerHTML = `<span class="text-danger">${data.message}</span>`;
+                addItemButton.disabled = true;  // Menonaktifkan tombol tambah
+            } else {
+                // Jika nomor faktur tersedia, tidak ada pesan dan tombol tambah aktif
+                invoiceFeedback.innerHTML = `<span class="text-success">${data.message}</span>`;
+                addItemButton.disabled = false;  // Mengaktifkan tombol tambah
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            invoiceFeedback.innerHTML = '<span class="text-danger">Terjadi kesalahan, coba lagi.</span>';
+            addItemButton.disabled = false;
+        });
+    };
+
+    // Event listener untuk nomor faktur
+    document.getElementById('invoice_number').addEventListener('input', checkInvoiceNumber);
+
+// Event listener untuk nomor faktur
+document.getElementById('invoice_number').addEventListener('input', checkInvoiceNumber);
+
+
+    // Event listener untuk tombol cari produk
+    document.getElementById('search_product').addEventListener('input', (e) => {
+        loadProducts(e.target.value);
+    });
+
+    document.getElementById('addItemButton').addEventListener('click', () => {
+        addProduct();
+    });
+</script>
+
+
+{% endblock %}

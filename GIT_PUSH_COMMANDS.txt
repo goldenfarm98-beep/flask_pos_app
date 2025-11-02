@@ -1,0 +1,11 @@
+# Jalankan di PowerShell (Windows):
+cd "E:\Aplikasi Python\flask_pos_app"
+
+git init
+git branch -M main
+git add .
+git commit -m "init: import Flask POS App + repo bootstrap files"
+
+# Ganti <username> sesuai akun GitHub-mu
+git remote add origin https://github.com/<username>/flask_pos_app.git
+git push -u origin main

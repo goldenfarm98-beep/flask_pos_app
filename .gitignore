@@ -1,0 +1,23 @@
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+
+# Flask runtime/data
+instance/
+*.sqlite
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets / local config
+.env
+
+# IDE/editor
+.vscode/
+.idea/

@@ -1,0 +1,31 @@
+<h2>Detail Pembelian</h2>
+<p>Nomor Faktur: {{ purchase.invoice_number }}</p>
+<p>Supplier: {{ purchase.supplier.name }}</p>
+<table class="table">
+    <thead>
+        <tr>
+            <th>No</th>
+            <th>Kode Barang</th>
+            <th>Nama Barang</th>
+            <th>Jumlah</th>
+            <th>Harga Beli</th>
+            <th>Diskon</th>
+            <th>Pajak</th>
+            <th>Total</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for detail in details %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ detail.product.kode_produk }}</td>
+            <td>{{ detail.product.nama_produk }}</td>
+            <td>{{ detail.quantity }}</td>
+            <td>{{ detail.purchase_price }}</td>
+            <td>{{ detail.discount }}</td>
+            <td>{{ detail.tax }}</td>
+            <td>{{ detail.purchase_price - detail.discount + detail.tax }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

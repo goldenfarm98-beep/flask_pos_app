@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Detail Produk{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="text-center text-primary"><i class="fas fa-info-circle"></i> Detail Produk</h2>
+    <p class="text-center text-muted">Informasi lengkap tentang produk</p>
+
+    <div class="card shadow-sm border-primary mt-4">
+        <div class="card-body">
+            <h5 class="card-title text-center text-primary"><i class="fas fa-box"></i> {{ produk.nama_produk }}</h5>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item"><i class="fas fa-barcode text-primary"></i> <strong>Kode Produk:</strong> {{ produk.kode_produk }}</li>
+                <li class="list-group-item"><i class="fas fa-cube text-primary"></i> <strong>SKU:</strong> {{ produk.sku }}</li>
+                <li class="list-group-item"><i class="fas fa-tags text-primary"></i> <strong>Kategori:</strong> {{ produk.kategori.name }}</li>
+                <li class="list-group-item"><i class="fas fa-truck text-primary"></i> <strong>Supplier:</strong> {{ produk.supplier.name }}</li>
+                <li class="list-group-item"><i class="fas fa-ruler text-primary"></i> <strong>Satuan:</strong> {{ produk.satuan.name }}</li>
+                <li class="list-group-item"><i class="fas fa-weight text-primary"></i> <strong>Berat:</strong> {{ produk.berat }} kg</li>
+                <li class="list-group-item"><i class="fas fa-thermometer-empty text-primary"></i> <strong>Stok Minimal:</strong> {{ produk.stok_minimal }}</li>
+                <li class="list-group-item"><i class="fas fa-calendar-alt text-primary"></i> <strong>Tanggal Expired:</strong> {{ produk.tanggal_expired }}</li>
+            </ul>
+            <div class="text-center mt-4">
+                <button class="btn btn-secondary" onclick="window.location.href='/produk'"><i class="fas fa-arrow-left"></i> Back to Produk</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    h2 {
+        font-weight: bold;
+        color: #007bff;
+    }
+    .card {
+        border-radius: 10px;
+    }
+    .list-group-item {
+        font-size: 16px;
+    }
+    .list-group-item strong {
+        margin-right: 5px;
+    }
+</style>
+{% endblock %}

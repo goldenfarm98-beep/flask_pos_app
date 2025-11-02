@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <nav class="col-md-2 d-md-block bg-light sidebar sidebar-sticky">
+            <div class="sidebar-content">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="dashboard">
+                            <i class="fas fa-home"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/produk">
+                            <i class="fas fa-box"></i> Produk
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">
+                            <i class="fas fa-chart-line"></i> Sales
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/profile">
+                            <i class="fas fa-user"></i> Profile
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </li>
+                </ul>
+                
+                <!-- Master Data Dropdown -->
+                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
+                    <span>Master Data</span>
+                </h6>
+                <ul class="nav flex-column mb-2">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/supplier">
+                            <i class="fas fa-truck"></i> Data Supplier
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/satuan">
+                            <i class="fas fa-ruler"></i> Data Satuan
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/kategori">
+                            <i class="fas fa-tags"></i> Data Kategori
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/produk">
+                            <i class="fas fa-boxes"></i> Data Produk
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/pelanggan">
+                            <i class="fas fa-users"></i> Pelanggan
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Maintenance Dropdown -->
+                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
+                    <span>Maintenance</span>
+                </h6>
+                <ul class="nav flex-column mb-2">
+                    <li class="nav-item">
+                        <a class="nav-link" href="update-harga">
+                            <i class="fas fa-dollar-sign"></i> Update Harga
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">
+                            <i class="fas fa-clipboard-list"></i> Stok Opname
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Transaksi Dropdown -->
+                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
+                    <span>Transaksi</span>
+                </h6>
+                <ul class="nav flex-column mb-2">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/pembelian">
+                            <i class="fas fa-shopping-cart"></i> Pembelian
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/penjualan">
+                            <i class="fas fa-cash-register"></i> Penjualan
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Laporan Transaksi -->
+                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
+                    <span>Laporan Transaksi</span>
+                </h6>
+                <ul class="nav flex-column mb-2">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/laporan/pembelian">
+                            <i class="fas fa-shopping-cart"></i> Laporan Pembelian
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/laporan/penjualan">
+                            <i class="fas fa-cash-register"></i> Laporan Penjualan
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/laporan/laba-rugi">
+                            <i class="fas fa-chart-line"></i> Laporan Laba Rugi
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Laporan Data Master -->
+                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
+                    <span>Laporan Data Master</span>
+                </h6>
+                <ul class="nav flex-column mb-2">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/laporan/stok-opname">
+                            <i class="fas fa-clipboard-check"></i> Laporan Stok Opname
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/laporan/stok-barang">
+                            <i class="fas fa-boxes"></i> Laporan Stok Barang
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/laporan/barang-hilang">
+                            <i class="fas fa-box-open"></i> Laporan Barang Hilang
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/laporan/exp-date">
+                            <i class="fas fa-calendar-times"></i> Laporan Barang Exp Date & Stok Habis
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/laporan/histori-harga">
+                            <i class="fas fa-history"></i> Laporan Histori Harga Barang
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Keuangan Dropdown -->
+                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
+                    <span>Keuangan</span>
+                </h6>
+                <ul class="nav flex-column mb-2">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">
+                            <i class="fas fa-university"></i> Data Akun
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">
+                            <i class="fas fa-money-check-alt"></i> Transaksi Keuangan
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+
+        
+
+        <!-- Main content -->
+        <main role="main" class="col-md-9 ml-sm-auto col-lg-10 px-4">
+            <h2>Welcome, {{ username }}</h2>
+            <p class="lead">This is your dashboard. Use the menu on the left to navigate.</p>
+
+            <div class="row mt-5">
+                <div class="col-md-4">
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Produk</h5>
+                            <p class="card-text">Manage your products.</p>
+                            <a href="/produk" class="btn btn-primary">View Products</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Sales</h5>
+                            <p class="card-text">View and analyze sales data.</p>
+                            <a href="#" class="btn btn-success">View Sales</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Profile</h5>
+                            <p class="card-text">Edit your profile settings.</p>
+                            <a href="/profile" class="btn btn-warning">Edit Profile</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<style>
+    .sidebar {
+        height: 100vh;
+        width: 250px; /* Atur lebar sidebar */
+        position: fixed;
+        top: 10vh;
+        left: 0;
+        overflow-x: hidden;
+        padding-top: 20px;
+        background-color: #f8f9fa;
+    }
+    .sidebar-sticky {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh; /* Sidebar menyesuaikan tinggi layar */
+    overflow-y: auto; /* Tambahkan scrollbar jika konten melebihi tinggi */
+    padding-top: 55px;
+}
+.container-fluid {
+    display: flex;
+    flex-direction: row; /* Sidebar di samping konten utama */
+}
+
+.main-content {
+    flex-grow: 1;
+    padding: 20px;
+    margin-left: 250px; /* Berikan jarak untuk sidebar */
+}
+
+
+    .nav-link {
+        color: #333;
+    }
+    .nav-link:hover {
+        color: #007bff;
+    }
+    @media (max-width: 768px) {
+    .sidebar {
+        width: 100%;
+        position: relative; /* Sidebar menjadi bagian dari alur dokumen */
+        height: auto;
+    }
+
+    .main-content {
+        margin-left: 0; /* Hilangkan margin untuk konten utama */
+    }
+}
+
+</style>
+{% endblock %}
