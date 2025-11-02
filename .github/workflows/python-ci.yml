@@ -27,15 +27,26 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      # Opsional (aman untuk build wheels jika perlu)
+      - name: Install system libs (optional)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libpq-dev
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip wheel setuptools
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          # Pastikan paket penting tersedia walau requirements.txt belum lengkap
-          pip install Flask-WTF email-validator || true
-          pip list | egrep -i "flask|flask-wtf|wtforms|email|sqlalchemy" || true
+          # Safety nets (kalau requirements belum lengkap)
+          pip install Flask-WTF email-validator psycopg2-binary || true
+          python - <<'PY'
+          # Pastikan modul kritikal tersedia agar tidak fail saat import awal
+          for m in ("flask","flask_wtf","psycopg2"):
+              __import__(m)
+          print("Smoke import OK")
+          PY
+          pip list | egrep -i "flask|flask-wtf|wtforms|email|sqlalchemy|psycopg2" || true
 
-      # Lint non-blocking (tidak menggagalkan build saat awal)
       - name: Lint (flake8, non-blocking)
         run: |
           pip install flake8
