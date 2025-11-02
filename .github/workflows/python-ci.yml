@@ -9,7 +9,6 @@ on:
 env:
   FLASK_ENV: test
   SECRET_KEY: test
-  # Paksa pakai SQLite in-memory agar test tidak butuh MySQL:
   DATABASE_URL: sqlite:///:memory:
   PYTHONUNBUFFERED: "1"
 
@@ -30,15 +29,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install Flask python-dotenv; fi
-          # pastikan driver/alat umum tersedia
-          pip install pytest flake8 pymysql
+          pip install pytest flake8
 
-      # Lint non-blocking (biar tidak fail cepat)
+      # Biar tidak fail cepat karena styling saat awal-awal
       - name: Lint (flake8, non-blocking)
         run: |
           flake8 . --max-line-length=100 --extend-ignore=E203,W503 || true
 
       - name: Run tests
         run: |
-          # kalau tests pakai package "app", jalankan dari root sudah cukup
-          pytest -q --maxfail=1 -q
+          pytest -q --maxfail=1
