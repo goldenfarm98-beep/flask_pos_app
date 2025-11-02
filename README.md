@@ -1,3 +1,4 @@
+![CI](https://github.com/goldenfarm98-beep/flask_pos_app/actions/workflows/python-ci.yml/badge.svg)
 
 ---
 
