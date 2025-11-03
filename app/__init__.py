@@ -1,50 +1,55 @@
+# app/__init__.py
 import os
-from flask import Flask, jsonify
+from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_wtf import CSRFProtect
-from .config_db import resolve_sqlalchemy_uri, engine_options
 
 db = SQLAlchemy()
 migrate = Migrate()
 csrf = CSRFProtect()
 
 def create_app():
-    # pakai instance_relative_config agar instance/config.py (opsional) bisa dipakai
-    app = Flask(__name__, instance_relative_config=True)
+    app = Flask(__name__)
 
-    # 1) DEFAULTS (boleh di-override)
-    app.config.update(
-        SECRET_KEY="default-secret-key",
-        SQLALCHEMY_TRACK_MODIFICATIONS=False,
-        SQLALCHEMY_DATABASE_URI="postgresql://postgres:postgres@localhost/my_database",
+    # --- gunakan ENV, fallback ke SQLite lokal bila ENV kosong ---
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+        'SQLALCHEMY_DATABASE_URI',
+        'sqlite:///app.db'
     )
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-secret-key')
 
-    # 2) INSTANCE CONFIG (opsional) – override default
-    app.config.from_pyfile("config.py", silent=True)
-
-    # 3) ENV OVERRIDES – paling akhir agar ENV selalu menang
-    uri = resolve_sqlalchemy_uri(app.config)
-    app.config["SQLALCHEMY_DATABASE_URI"] = uri
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options(uri)
-
-    # Inisialisasi ekstensi
     db.init_app(app)
     migrate.init_app(app, db)
     csrf.init_app(app)
 
-    # Registrasi blueprint
-    from app.routes import bp
-    app.register_blueprint(bp)
-
-    # Endpoint debug cepat
+    # optional: endpoint debug untuk cek koneksi DB
     @app.get("/_debug_db")
     def _debug_db():
-        return jsonify(
-            uri=app.config["SQLALCHEMY_DATABASE_URI"],
-            engine_options=app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {}),
-            env_sqlalchemy=os.getenv("SQLALCHEMY_DATABASE_URI"),
-            env_database_url=os.getenv("DATABASE_URL"),
-        )
+        from sqlalchemy import text
+        eng = db.engine
+        info = {
+            "dialect": eng.dialect.name,
+            "driver": eng.driver,
+            "url": str(eng.url).replace(eng.url.password or "", "****") if eng.url.password else str(eng.url),
+        }
+        try:
+            with eng.connect() as c:
+                if eng.dialect.name == "mysql":
+                    row = c.exec_driver_sql("SELECT @@version AS version, DATABASE() AS db").fetchone()
+                elif eng.dialect.name in ("postgresql", "postgres"):
+                    row = c.exec_driver_sql("SELECT version() AS version, current_database() AS db").fetchone()
+                else:
+                    row = None
+            if row:
+                info["server_version"] = row[0]
+                info["current_db"] = row[1]
+        except Exception as e:
+            info["probe_error"] = repr(e)
+        return info, 200
+
+    from app.routes import bp
+    app.register_blueprint(bp)
 
     return app
