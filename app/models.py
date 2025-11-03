@@ -1,159 +1,216 @@
+# models.py — sinkron dengan skema MySQL yang sudah ada
 from app import db
-from datetime import datetime
+from datetime import datetime, date
 
-
+# ------------------------------------------------------------
+# USER (standalone; tabel ini belum ada di DB kamu saat ini)
+# ------------------------------------------------------------
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    __tablename__ = "user"
+    id       = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    email    = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
 
     def __repr__(self):
-        return f'<User {self.username}>'
-    
+        return f"<User {self.username}>"
+
+# ------------------------------------------------------------
+# MASTER: SUPPLIER  (MATCH dengan tabel MySQL: supplier)
+# kolom: id, nama, alamat, telepon
+# ------------------------------------------------------------
 class Supplier(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    address = db.Column(db.String(200), nullable=False)
-    phone = db.Column(db.String(50), nullable=False)
-    bank_account = db.Column(db.String(100), nullable=False)
-    account_name = db.Column(db.String(100), nullable=False)
-    contact_person = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    website = db.Column(db.String(200), nullable=True)
+    __tablename__ = "supplier"
+    id      = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    nama    = db.Column(db.String(100), nullable=False)
+    alamat  = db.Column(db.String(255), nullable=True)
+    telepon = db.Column(db.String(50), nullable=True)
+
+    # --- Compatibility alias untuk kode lama yang pakai English field ---
+    @property
+    def name(self): return self.nama
+    @name.setter
+    def name(self, v): self.nama = v
+
+    @property
+    def address(self): return self.alamat
+    @address.setter
+    def address(self, v): self.alamat = v
+
+    @property
+    def phone(self): return self.telepon
+    @phone.setter
+    def phone(self, v): self.telepon = v
+
+    # Catatan:
+    # Field berikut BELUM ADA di DB: bank_account, account_name, contact_person, email, website
+    # Jika ingin dipakai, buatkan migrasi terpisah untuk menambah kolom2 itu.
 
     def __repr__(self):
-        return f"<Supplier {self.name}>"
+        return f"<Supplier {self.id} {self.nama}>"
 
+# ------------------------------------------------------------
+# MASTER: SATUAN & KATEGORI (belum ada di DB; untuk migrasi berikutnya)
+# ------------------------------------------------------------
 class Satuan(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    __tablename__ = "satuan"
+    id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False)
 
     def __repr__(self):
         return f"<Satuan {self.name}>"
 
 class Kategori(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    __tablename__ = "kategori"
+    id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False)
 
     def __repr__(self):
         return f"<Kategori {self.name}>"
-    
+
+# ------------------------------------------------------------
+# MASTER: PRODUK (MATCH dengan tabel MySQL: produk)
+# kolom: kode_produk (PK), jumlah_beli, harga
+# ------------------------------------------------------------
 class Produk(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    kode_produk = db.Column(db.String(50), unique=True, nullable=False, index=True)
-    sku = db.Column(db.String(50), unique=True, nullable=True)  # SKU
-    barcode = db.Column(db.String(100), unique=True, nullable=True)
-    nama_produk = db.Column(db.String(100), nullable=False)
-    harga = db.Column(db.Float, default=0.0, nullable=False)
-    satuan_id = db.Column(db.Integer, db.ForeignKey('satuan.id', ondelete='SET NULL'), nullable=False)
-    kategori_id = db.Column(db.Integer, db.ForeignKey('kategori.id', ondelete='SET NULL'), nullable=False)
-    supplier_id = db.Column(db.Integer, db.ForeignKey('supplier.id', ondelete='SET NULL'), nullable=False)
-    berat = db.Column(db.Float, nullable=True)
-    stok_minimal = db.Column(db.Integer, default=0, nullable=False)
-    stok_lama = db.Column(db.Integer, default=0, nullable=False)
-    harga_lama = db.Column(db.Float, default=0.0, nullable=False)
-    harga_beli = db.Column(db.Float, default=0.0, nullable=False)
-    jumlah_beli = db.Column(db.Integer, default=0, nullable=False)
-    tanggal_expired = db.Column(db.Date, nullable=True)
+    __tablename__ = "produk"
+    # Primary Key memang STRING (kode_produk), bukan integer
+    kode_produk = db.Column(db.String(50), primary_key=True)
+    jumlah_beli = db.Column(db.Integer, nullable=False, default=0)
+    harga       = db.Column(db.Float,   nullable=False, default=0.0)
 
-    satuan = db.relationship('Satuan', backref=db.backref('produk', lazy=True))
-    kategori = db.relationship('Kategori', backref=db.backref('produk', lazy=True))
-    supplier = db.relationship('Supplier', backref=db.backref('produk', lazy=True))
+    # Compatibility alias: beberapa kode lama mungkin akses .id
+    @property
+    def id(self): return self.kode_produk
+    @id.setter
+    def id(self, v): self.kode_produk = v
 
-    def update_stok_dan_hpp(self, harga_beli_baru: float, jumlah_beli_baru: int):
-        """
-        Menghitung HPP berdasarkan stok lama dan pembelian baru.
-        """
-        if jumlah_beli_baru <= 0:
-            raise ValueError("Jumlah pembelian baru harus lebih besar dari 0")
-
-        total_stok = self.stok_lama + jumlah_beli_baru
-        total_harga = (self.harga_lama * self.stok_lama) + (harga_beli_baru * jumlah_beli_baru)
-
-        # HPP baru dihitung dari total stok dan total harga
-        self.harga_lama = total_harga / total_stok if total_stok > 0 else harga_beli_baru
-        self.stok_lama = total_stok
-        self.harga_beli = harga_beli_baru
+    # Helper aman untuk update stok beli (tanpa kolom stok/hpp lain)
+    def tambah_pembelian(self, qty: int):
+        if qty is None or qty <= 0:
+            raise ValueError("qty harus > 0")
+        self.jumlah_beli = (self.jumlah_beli or 0) + int(qty)
 
     def __repr__(self):
-        return f"<Produk {self.nama_produk}>"
-    
+        return f"<Produk {self.kode_produk} harga={self.harga}>"
+
+# ------------------------------------------------------------
+# PELANGGAN (belum ada di DB; untuk migrasi berikutnya)
+# ------------------------------------------------------------
 class Pelanggan(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    __tablename__ = "pelanggan"
+    id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
     pelanggan_id = db.Column(db.String(50), unique=True, nullable=False)
-    nama = db.Column(db.String(100), nullable=False)
-    kontak = db.Column(db.String(50), nullable=False)
-    alamat = db.Column(db.String(200), nullable=False)
+    nama         = db.Column(db.String(100), nullable=False)
+    kontak       = db.Column(db.String(50), nullable=False)
+    alamat       = db.Column(db.String(200), nullable=False)
 
     @staticmethod
     def generate_pelanggan_id():
-        # Ambil pelanggan terakhir berdasarkan ID
-        last_pelanggan = Pelanggan.query.order_by(Pelanggan.id.desc()).first()
-        if not last_pelanggan:
+        last = Pelanggan.query.order_by(Pelanggan.id.desc()).first()
+        if not last:
             return "CUST001"
-        # Ambil angka dari pelanggan_id terakhir dan tambahkan 1
-        last_id_number = int(last_pelanggan.pelanggan_id[4:])
-        new_id_number = last_id_number + 1
-        return f"CUST{new_id_number:03d}"
+        last_num = int(last.pelanggan_id[4:])
+        return f"CUST{last_num + 1:03d}"
 
     def __repr__(self):
         return f"<Pelanggan {self.nama}>"
 
+# ------------------------------------------------------------
+# PEMBELIAN (MATCH dengan tabel MySQL: pembelian)
+# kolom: id, tanggal_faktur, no_faktur (UNIQUE), supplier_id(FK)
+# ------------------------------------------------------------
 class Pembelian(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    __tablename__ = "pembelian"
+    id             = db.Column(db.Integer, primary_key=True, autoincrement=True)
     tanggal_faktur = db.Column(db.Date, nullable=False)
-    no_faktur = db.Column(db.String(50), unique=True, nullable=False)
-    supplier_id = db.Column(db.Integer, db.ForeignKey('supplier.id'), nullable=False)
-    supplier = db.relationship('Supplier', backref=db.backref('pembelian', lazy=True))
-    barang = db.relationship('BarangPembelian', backref='pembelian', cascade='all, delete-orphan')
+    no_faktur      = db.Column(db.String(50), unique=True, nullable=False)
+    supplier_id    = db.Column(db.Integer, db.ForeignKey("supplier.id"), nullable=False)
+
+    supplier = db.relationship("Supplier", backref=db.backref("pembelian", lazy=True))
+    barang   = db.relationship(
+        "BarangPembelian",
+        backref="pembelian",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy=True,
+    )
 
     def __repr__(self):
         return f"<Pembelian {self.no_faktur}>"
 
+# ------------------------------------------------------------
+# BARANG_PEMBELIAN (MATCH dengan tabel MySQL: barang_pembelian)
+# kolom: id, pembelian_id(FK), kode_barang(FK->produk.kode_produk), dst.
+# ------------------------------------------------------------
 class BarangPembelian(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    pembelian_id = db.Column(db.Integer, db.ForeignKey('pembelian.id', ondelete='CASCADE'), nullable=False)
-    kode_barang = db.Column(db.String(50), db.ForeignKey('produk.kode_produk'), nullable=False)  # Hubungkan ke Produk
-    nama_barang = db.Column(db.String(100), nullable=False)
-    kategori = db.Column(db.String(100), nullable=False)
-    jumlah = db.Column(db.Integer, nullable=False)
-    harga_beli = db.Column(db.Float, nullable=False)
-    diskon = db.Column(db.Float, nullable=False)
-    pajak = db.Column(db.Float, nullable=False)
-    harga_jual = db.Column(db.Float, nullable=False)
-    exp_date = db.Column(db.Date, nullable=True)
-    hpp = db.Column(db.Float, nullable=False)
+    __tablename__ = "barang_pembelian"
+    id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    pembelian_id = db.Column(
+        db.Integer,
+        db.ForeignKey("pembelian.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
-    produk = db.relationship('Produk', backref=db.backref('barang_pembelian', lazy=True))
+    # Relasi ke Produk via KODE, bukan integer id
+    kode_barang  = db.Column(
+        db.String(50),
+        db.ForeignKey("produk.kode_produk"),
+        nullable=False,
+        index=True,
+    )
+
+    nama_barang  = db.Column(db.String(100), nullable=False)
+    kategori     = db.Column(db.String(100), nullable=False)
+    jumlah       = db.Column(db.Integer,     nullable=False)
+    harga_beli   = db.Column(db.Float,       nullable=False)
+    diskon       = db.Column(db.Float,       nullable=False, default=0.0)
+    pajak        = db.Column(db.Float,       nullable=False, default=0.0)
+    harga_jual   = db.Column(db.Float,       nullable=False)
+    exp_date     = db.Column(db.Date,        nullable=True)
+    hpp          = db.Column(db.Float,       nullable=False)
+
+    produk = db.relationship("Produk", backref=db.backref("barang_pembelian", lazy=True))
 
     def __repr__(self):
-        return f"<BarangPembelian {self.kode_barang}>"
-    
-class Penjualan(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    no_faktur = db.Column(db.String(50), unique=True, nullable=False, default=lambda: f"F{int(datetime.utcnow().timestamp())}")
-    tanggal_penjualan = db.Column(db.Date, nullable=False, default=datetime.utcnow)
-    sales_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    pelanggan_id = db.Column(db.Integer, db.ForeignKey('pelanggan.id'), nullable=False)
-    total_harga = db.Column(db.Float, nullable=False)
+        return f"<BarangPembelian {self.kode_barang} x{self.jumlah}>"
 
-    sales = db.relationship('User', backref='penjualan')
-    pelanggan = db.relationship('Pelanggan', backref='penjualan')
+# ------------------------------------------------------------
+# PENJUALAN & DETAIL_PENJUALAN (belum ada di DB; untuk migrasi berikutnya)
+# Catatan: DetailPenjualan refer ke produk.kode_produk (kolom: produk_kode)
+# ------------------------------------------------------------
+class Penjualan(db.Model):
+    __tablename__ = "penjualan"
+    id                = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    no_faktur         = db.Column(db.String(50), unique=True, nullable=False,
+                                  default=lambda: f"F{int(datetime.utcnow().timestamp())}")
+    tanggal_penjualan = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    sales_id          = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    pelanggan_id      = db.Column(db.Integer, db.ForeignKey("pelanggan.id"), nullable=False)
+    total_harga       = db.Column(db.Float, nullable=False)
+
+    sales     = db.relationship("User", backref="penjualan")
+    pelanggan = db.relationship("Pelanggan", backref="penjualan")
+
+    def __repr__(self):
+        return f"<Penjualan {self.no_faktur}>"
 
 class DetailPenjualan(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    penjualan_id = db.Column(db.Integer, db.ForeignKey('penjualan.id'), nullable=False)
-    produk_id = db.Column(db.Integer, db.ForeignKey('produk.id'), nullable=False)
-    jumlah = db.Column(db.Integer, nullable=False)
-    harga_satuan = db.Column(db.Float, nullable=False)
-    diskon = db.Column(db.Float, nullable=False, default=0.0)
-    pajak = db.Column(db.Float, nullable=False, default=0.0)
-    harga_total = db.Column(db.Float, nullable=False)
+    __tablename__ = "detail_penjualan"
+    id            = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    penjualan_id  = db.Column(db.Integer, db.ForeignKey("penjualan.id"), nullable=False)
+    # Konsisten dengan Produk: relasi via kode
+    produk_kode   = db.Column(db.String(50), db.ForeignKey("produk.kode_produk"), nullable=False)
 
-    penjualan = db.relationship('Penjualan', backref='detail_penjualan')
-    produk = db.relationship('Produk', backref='detail_penjualan')
+    jumlah        = db.Column(db.Integer, nullable=False)
+    harga_satuan  = db.Column(db.Float,   nullable=False)
+    diskon        = db.Column(db.Float,   nullable=False, default=0.0)
+    pajak         = db.Column(db.Float,   nullable=False, default=0.0)
+    harga_total   = db.Column(db.Float,   nullable=False)
 
+    penjualan = db.relationship("Penjualan", backref="detail_penjualan")
+    produk    = db.relationship("Produk", backref="detail_penjualan")
 
-
-
+    def __repr__(self):
+        return f"<DetailPenjualan {self.produk_kode} x{self.jumlah}>"
