@@ -3,192 +3,149 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row">
-        <!-- Sidebar -->
-        <nav class="col-md-2 d-md-block bg-light sidebar sidebar-sticky">
-            <div class="sidebar-content">
-                <ul class="nav flex-column">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="dashboard">
-                            <i class="fas fa-home"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/produk">
-                            <i class="fas fa-box"></i> Produk
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">
-                            <i class="fas fa-chart-line"></i> Sales
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/profile">
-                            <i class="fas fa-user"></i> Profile
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/logout">
-                            <i class="fas fa-sign-out-alt"></i> Logout
-                        </a>
-                    </li>
-                </ul>
-                
-                <!-- Master Data Dropdown -->
-                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
-                    <span>Master Data</span>
-                </h6>
-                <ul class="nav flex-column mb-2">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/supplier">
-                            <i class="fas fa-truck"></i> Data Supplier
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/satuan">
-                            <i class="fas fa-ruler"></i> Data Satuan
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/kategori">
-                            <i class="fas fa-tags"></i> Data Kategori
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/produk">
-                            <i class="fas fa-boxes"></i> Data Produk
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/pelanggan">
-                            <i class="fas fa-users"></i> Pelanggan
-                        </a>
-                    </li>
-                </ul>
+<div class="dashboard-layout row no-gutters" id="dashboardLayout">
+    <nav class="dashboard-sidebar col-12 col-md-3 col-lg-2 bg-light sidebar-sticky" id="dashboardSidebar">
+        <div class="sidebar-header d-flex align-items-center justify-content-between px-3 mb-3">
+            <span class="font-weight-bold text-primary">Navigasi</span>
+            <button class="btn btn-sm btn-outline-secondary d-md-none" type="button" id="sidebarToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
 
-                <!-- Maintenance Dropdown -->
-                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
-                    <span>Maintenance</span>
-                </h6>
-                <ul class="nav flex-column mb-2">
-                    <li class="nav-item">
-                        <a class="nav-link" href="update-harga">
-                            <i class="fas fa-dollar-sign"></i> Update Harga
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">
-                            <i class="fas fa-clipboard-list"></i> Stok Opname
-                        </a>
-                    </li>
-                </ul>
+        <div class="sidebar-content" id="sidebarAccordion">
+            <ul class="nav flex-column mb-3">
+                <li class="nav-item">
+                    <a class="nav-link active" href="/dashboard">
+                        <i class="fas fa-home mr-2"></i> Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/produk">
+                        <i class="fas fa-box mr-2"></i> Produk
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/penjualan">
+                        <i class="fas fa-chart-line mr-2"></i> Sales
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/profile">
+                        <i class="fas fa-user mr-2"></i> Profile
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/logout">
+                        <i class="fas fa-sign-out-alt mr-2"></i> Logout
+                    </a>
+                </li>
+            </ul>
 
-                <!-- Transaksi Dropdown -->
-                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
-                    <span>Transaksi</span>
-                </h6>
-                <ul class="nav flex-column mb-2">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/pembelian">
-                            <i class="fas fa-shopping-cart"></i> Pembelian
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/penjualan">
-                            <i class="fas fa-cash-register"></i> Penjualan
-                        </a>
-                    </li>
-                </ul>
-
-                <!-- Laporan Transaksi -->
-                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
-                    <span>Laporan Transaksi</span>
-                </h6>
-                <ul class="nav flex-column mb-2">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/laporan/pembelian">
-                            <i class="fas fa-shopping-cart"></i> Laporan Pembelian
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/laporan/penjualan">
-                            <i class="fas fa-cash-register"></i> Laporan Penjualan
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/laporan/laba-rugi">
-                            <i class="fas fa-chart-line"></i> Laporan Laba Rugi
-                        </a>
-                    </li>
-                </ul>
-
-                <!-- Laporan Data Master -->
-                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
-                    <span>Laporan Data Master</span>
-                </h6>
-                <ul class="nav flex-column mb-2">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/laporan/stok-opname">
-                            <i class="fas fa-clipboard-check"></i> Laporan Stok Opname
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/laporan/stok-barang">
-                            <i class="fas fa-boxes"></i> Laporan Stok Barang
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/laporan/barang-hilang">
-                            <i class="fas fa-box-open"></i> Laporan Barang Hilang
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/laporan/exp-date">
-                            <i class="fas fa-calendar-times"></i> Laporan Barang Exp Date & Stok Habis
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/laporan/histori-harga">
-                            <i class="fas fa-history"></i> Laporan Histori Harga Barang
-                        </a>
-                    </li>
-                </ul>
-
-                <!-- Keuangan Dropdown -->
-                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
-                    <span>Keuangan</span>
-                </h6>
-                <ul class="nav flex-column mb-2">
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">
-                            <i class="fas fa-university"></i> Data Akun
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">
-                            <i class="fas fa-money-check-alt"></i> Transaksi Keuangan
-                        </a>
-                    </li>
-                </ul>
+            {% macro sidebar_section(title, target_id, links, show_default=True) %}
+            <div class="sidebar-section">
+                <button class="sidebar-toggle btn btn-link d-flex justify-content-between align-items-center w-100 px-3 text-left {% if not show_default %}collapsed{% endif %}" type="button" data-toggle="collapse" data-target="#{{ target_id }}" aria-expanded="{{ 'true' if show_default else 'false' }}" aria-controls="{{ target_id }}">
+                    <span class="text-muted text-uppercase small">{{ title }}</span>
+                    <i class="fas fa-chevron-up toggle-icon"></i>
+                </button>
+                <div class="collapse {% if show_default %}show{% endif %}" id="{{ target_id }}">
+                    <ul class="nav flex-column mb-2">
+                        {% for link in links %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ link.href }}">
+                                    <i class="fas {{ link.icon }} mr-2"></i> {{ link.label }}
+                                </a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
             </div>
-        </nav>
+            {% endmacro %}
 
-        
+            {{ sidebar_section(
+                'Master Data',
+                'sidebar-master-data',
+                [
+                    {'href': '/supplier', 'icon': 'fa-truck', 'label': 'Data Supplier'},
+                    {'href': '/satuan', 'icon': 'fa-ruler', 'label': 'Data Satuan'},
+                    {'href': '/kategori', 'icon': 'fa-tags', 'label': 'Data Kategori'},
+                    {'href': '/produk', 'icon': 'fa-boxes', 'label': 'Data Produk'},
+                    {'href': '/pelanggan', 'icon': 'fa-users', 'label': 'Pelanggan'},
+                ],
+                show_default=True
+            ) }}
 
-        <!-- Main content -->
-        <main role="main" class="col-md-9 ml-sm-auto col-lg-10 px-4">
-            <h2>Welcome, {{ username }}</h2>
-            <p class="lead">This is your dashboard. Use the menu on the left to navigate.</p>
+            {{ sidebar_section(
+                'Maintenance',
+                'sidebar-maintenance',
+                [
+                    {'href': 'update-harga', 'icon': 'fa-dollar-sign', 'label': 'Update Harga'},
+                    {'href': '#', 'icon': 'fa-clipboard-list', 'label': 'Stok Opname'},
+                ],
+                show_default=False
+            ) }}
 
-            <div class="row mt-5">
+            {{ sidebar_section(
+                'Transaksi',
+                'sidebar-transaksi',
+                [
+                    {'href': '/pembelian', 'icon': 'fa-shopping-cart', 'label': 'Pembelian'},
+                    {'href': '/penjualan', 'icon': 'fa-cash-register', 'label': 'Penjualan'},
+                ],
+                show_default=True
+            ) }}
+
+            {{ sidebar_section(
+                'Laporan Transaksi',
+                'sidebar-laporan-transaksi',
+                [
+                    {'href': '/laporan/pembelian', 'icon': 'fa-shopping-cart', 'label': 'Laporan Pembelian'},
+                    {'href': '/laporan/penjualan', 'icon': 'fa-cash-register', 'label': 'Laporan Penjualan'},
+                    {'href': '/laporan/laba-rugi', 'icon': 'fa-chart-line', 'label': 'Laporan Laba Rugi'},
+                ],
+                show_default=False
+            ) }}
+
+            {{ sidebar_section(
+                'Laporan Data Master',
+                'sidebar-laporan-master',
+                [
+                    {'href': '/laporan/stok-opname', 'icon': 'fa-clipboard-check', 'label': 'Laporan Stok Opname'},
+                    {'href': '/laporan/stok-barang', 'icon': 'fa-boxes', 'label': 'Laporan Stok Barang'},
+                    {'href': '/laporan/barang-hilang', 'icon': 'fa-box-open', 'label': 'Laporan Barang Hilang'},
+                    {'href': '/laporan/exp-date', 'icon': 'fa-calendar-times', 'label': 'Laporan Barang Exp Date & Stok Habis'},
+                    {'href': '/laporan/histori-harga', 'icon': 'fa-history', 'label': 'Laporan Histori Harga Barang'},
+                ],
+                show_default=False
+            ) }}
+
+            {{ sidebar_section(
+                'Keuangan',
+                'sidebar-keuangan',
+                [
+                    {'href': '#', 'icon': 'fa-university', 'label': 'Data Akun'},
+                    {'href': '#', 'icon': 'fa-money-check-alt', 'label': 'Transaksi Keuangan'},
+                ],
+                show_default=False
+            ) }}
+        </div>
+    </nav>
+
+    <main class="dashboard-main col-12 col-md-9 col-lg-10">
+        <div class="dashboard-main-inner">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+                <div>
+                    <h2 class="mb-2">Welcome, {{ username }}</h2>
+                    <p class="text-muted mb-0">Gunakan menu di sisi kiri untuk mengelola penjualan, pembelian, dan data master.</p>
+                </div>
+            </div>
+
+            <div class="row">
                 <div class="col-md-4">
                     <div class="card mb-4 shadow-sm">
                         <div class="card-body">
                             <h5 class="card-title">Produk</h5>
-                            <p class="card-text">Manage your products.</p>
-                            <a href="/produk" class="btn btn-primary">View Products</a>
+                            <p class="card-text text-muted">Kelola katalog barang dan stok dengan mudah.</p>
+                            <a href="/produk" class="btn btn-primary btn-sm">Lihat Produk</a>
                         </div>
                     </div>
                 </div>
@@ -196,8 +153,8 @@
                     <div class="card mb-4 shadow-sm">
                         <div class="card-body">
                             <h5 class="card-title">Sales</h5>
-                            <p class="card-text">View and analyze sales data.</p>
-                            <a href="#" class="btn btn-success">View Sales</a>
+                            <p class="card-text text-muted">Pantau performa penjualan dan transaksi terbaru.</p>
+                            <a href="/penjualan" class="btn btn-success btn-sm">Mulai Penjualan</a>
                         </div>
                     </div>
                 </div>
@@ -205,64 +162,118 @@
                     <div class="card mb-4 shadow-sm">
                         <div class="card-body">
                             <h5 class="card-title">Profile</h5>
-                            <p class="card-text">Edit your profile settings.</p>
-                            <a href="/profile" class="btn btn-warning">Edit Profile</a>
+                            <p class="card-text text-muted">Perbarui informasi akun dan kredensial Anda.</p>
+                            <a href="/profile" class="btn btn-warning btn-sm">Edit Profile</a>
                         </div>
                     </div>
                 </div>
             </div>
-        </main>
-    </div>
+        </div>
+    </main>
 </div>
 
 <style>
-    .sidebar {
-        height: 100vh;
-        width: 250px; /* Atur lebar sidebar */
-        position: fixed;
-        top: 10vh;
-        left: 0;
-        overflow-x: hidden;
-        padding-top: 20px;
-        background-color: #f8f9fa;
+    .dashboard-layout {
+        min-height: 60vh;
     }
-    .sidebar-sticky {
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: 100vh; /* Sidebar menyesuaikan tinggi layar */
-    overflow-y: auto; /* Tambahkan scrollbar jika konten melebihi tinggi */
-    padding-top: 55px;
-}
-.container-fluid {
-    display: flex;
-    flex-direction: row; /* Sidebar di samping konten utama */
-}
-
-.main-content {
-    flex-grow: 1;
-    padding: 20px;
-    margin-left: 250px; /* Berikan jarak untuk sidebar */
-}
-
-
-    .nav-link {
-        color: #333;
+    .dashboard-sidebar {
+        min-height: 100%;
+        border-right: 1px solid rgba(0, 0, 0, 0.05);
+        padding-bottom: 2rem;
     }
-    .nav-link:hover {
-        color: #007bff;
+    .sidebar-content {
+        padding-bottom: 3rem;
     }
-    @media (max-width: 768px) {
-    .sidebar {
-        width: 100%;
-        position: relative; /* Sidebar menjadi bagian dari alur dokumen */
-        height: auto;
+    .sidebar-section + .sidebar-section {
+        border-top: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    .sidebar-toggle {
+        color: inherit;
+        text-decoration: none;
+    }
+    .sidebar-toggle:hover,
+    .sidebar-toggle:focus {
+        text-decoration: none;
+    }
+    .sidebar-toggle .toggle-icon {
+        transition: transform 0.2s ease;
+    }
+    .sidebar-toggle.collapsed .toggle-icon {
+        transform: rotate(180deg);
+    }
+    .dashboard-main {
+        padding: 1rem 1.5rem;
+    }
+    .dashboard-main-inner {
+        max-width: 100%;
+    }
+    .dashboard-sidebar .nav-link {
+        color: #4b5563;
+        padding: 0.35rem 1rem;
+        border-radius: 6px;
+    }
+    .dashboard-sidebar .nav-link:hover,
+    .dashboard-sidebar .nav-link:focus {
+        background: rgba(37, 99, 235, 0.1);
+        color: #1d4ed8;
+        text-decoration: none;
+    }
+    .dashboard-sidebar .nav-link.active {
+        background: rgba(37, 99, 235, 0.15);
+        color: #1d4ed8;
+        font-weight: 600;
     }
 
-    .main-content {
-        margin-left: 0; /* Hilangkan margin untuk konten utama */
+    @media (max-width: 767.98px) {
+        #dashboardSidebar {
+            position: fixed;
+            top: 0;
+            left: -260px;
+            height: 100vh;
+            width: 240px;
+            z-index: 1050;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
+            transition: left 0.3s ease;
+        }
+        #dashboardSidebar.sidebar-open {
+            left: 0;
+        }
+        #dashboardLayout {
+            position: relative;
+        }
+        .dashboard-main {
+            padding-top: 1.5rem;
+        }
     }
-}
-
 </style>
+
+<script>
+    (function () {
+        var toggles = document.querySelectorAll('#sidebarAccordion .sidebar-toggle');
+        toggles.forEach(function (toggle) {
+            var targetSelector = toggle.getAttribute('data-target');
+            var target = document.querySelector(targetSelector);
+            if (!target) {
+                return;
+            }
+            if (!target.classList.contains('show')) {
+                toggle.classList.add('collapsed');
+            }
+            $(target).on('shown.bs.collapse', function () {
+                toggle.classList.remove('collapsed');
+            });
+            $(target).on('hidden.bs.collapse', function () {
+                toggle.classList.add('collapsed');
+            });
+        });
+
+        var sidebarToggle = document.getElementById('sidebarToggle');
+        var sidebar = document.getElementById('dashboardSidebar');
+        if (sidebarToggle && sidebar) {
+            sidebarToggle.addEventListener('click', function () {
+                sidebar.classList.toggle('sidebar-open');
+            });
+        }
+    })();
+</script>
 {% endblock %}

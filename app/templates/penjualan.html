@@ -1,90 +1,605 @@
 {% extends "base.html" %}
+
 {% block title %}Penjualan{% endblock %}
+
 {% block content %}
-<div class="container">
-    <h1>Penjualan</h1>
-    <form method="POST">
-        {{ form.csrf_token }}
-        <div class="form-group">
-            <label for="pelanggan">Pelanggan</label>
-            {{ form.pelanggan_id(class="form-control") }}
+{% set product_count = produk_payload|length %}
+
+<section class="page-hero hero-card hero-gradient text-white mb-4">
+    <div class="row align-items-center">
+        <div class="col-lg-8">
+            <h1 class="display-5 font-weight-bold mb-3">Catat transaksi penjualan dengan cepat dan terstruktur.</h1>
+            <p class="lead mb-4">
+                Pilih pelanggan, tambahkan produk, tetapkan diskon atau pajak, lalu simpan penjualan dalam hitungan detik.
+                Katalog Anda memuat <strong>{{ '{:,}'.format(product_count).replace(',', '.') }}</strong> produk siap dipilih.
+            </p>
+            <div class="d-flex flex-wrap">
+                <a href="#sales-form" class="btn btn-light btn-lg text-primary font-weight-bold mr-3 mb-2">
+                    <i class="fas fa-plus-circle mr-2"></i>Transaksi Baru
+                </a>
+                <a href="{{ url_for('main.produk') }}" class="btn btn-outline-light btn-lg mr-3 mb-2">
+                    <i class="fas fa-box-open mr-2"></i>Kelola Produk
+                </a>
+                <a href="{{ url_for('main.pelanggan') }}" class="btn btn-outline-light btn-lg mb-2">
+                    <i class="fas fa-users mr-2"></i>Kelola Pelanggan
+                </a>
+            </div>
+        </div>
+        <div class="col-lg-4 mt-4 mt-lg-0">
+            <div class="hero-meta text-lg-right">
+                <span class="badge badge-pill badge-light text-uppercase px-3 py-2">Alur rekomendasi</span>
+                <p class="small text-white-75 mt-3 mb-0">
+                    1) Pilih pelanggan, 2) Tambahkan baris produk, 3) Periksa ringkasan total, 4) Simpan dan lanjutkan melayani pelanggan berikutnya.
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if sales_stat_cards %}
+<div class="row stat-grid mb-4">
+    {% for card in sales_stat_cards %}
+        <div class="col-sm-6 col-xl-3 mb-3">
+            <div class="card stat-card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="stat-icon {{ card.accent }}">
+                            <i class="fas {{ card.icon }}"></i>
+                        </span>
+                        <span class="badge badge-light text-uppercase font-weight-semibold">{{ card.label }}</span>
+                    </div>
+                    <div class="stat-value mb-1">
+                        {% if card.type == 'currency' %}
+                            {{ ('Rp {:,.0f}'.format(card.value)).replace(',', '.') }}
+                        {% else %}
+                            {{ '{:,}'.format(card.value).replace(',', '.') }}
+                        {% endif %}
+                    </div>
+                    <p class="small text-muted mb-0">{{ card.description }}</p>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="row align-items-start" id="sales-form">
+    <div class="col-lg-8">
+        <form method="POST" id="salesForm">
+            {{ form.hidden_tag() }}
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Informasi pelanggan</h2>
+                    <div class="form-group mb-2">
+                        <label for="pelanggan_id" class="font-weight-semibold">Pilih pelanggan</label>
+                        {{ form.pelanggan_id(class="custom-select custom-select-lg", id="pelanggan_id", required=True) }}
+                        {% if form.pelanggan_id.errors %}
+                            <small class="text-danger d-block mt-2">{{ form.pelanggan_id.errors[0] }}</small>
+                        {% endif %}
+                    </div>
+                    <div id="customer-meta" class="small text-muted">
+                        Pilih pelanggan untuk menampilkan kontak dan alamat.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-panel shadow-sm mb-4">
+                <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
+                    <div>
+                        <h2 class="h5 font-weight-bold mb-1">Detail barang</h2>
+                        <p class="small text-muted mb-0">Tambahkan produk, atur jumlah, diskon, dan pajak untuk menghitung total otomatis.</p>
+                    </div>
+                    <div class="mt-3 mt-md-0">
+                        <button type="button" class="btn btn-sm btn-outline-secondary mr-2" id="clear-items">
+                            <i class="fas fa-undo mr-1"></i>Kosongkan
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="add-item">
+                            <i class="fas fa-plus mr-1"></i>Tambah Barang
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-modern mb-0 table-items">
+                            <thead>
+                                <tr>
+                                    <th style="min-width: 220px;">Produk</th>
+                                    <th style="width: 90px;">Jumlah</th>
+                                    <th style="width: 140px;">Harga</th>
+                                    <th style="width: 110px;">Diskon (%)</th>
+                                    <th style="width: 110px;">Pajak (%)</th>
+                                    <th style="width: 140px;">Total</th>
+                                    <th style="width: 60px;" class="text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="items-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3">Ringkasan pembayaran</h3>
+                    <div class="summary-row d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">Total item</span>
+                        <span class="font-weight-semibold" id="summary-items">0</span>
+                    </div>
+                    <div class="summary-row d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">Subtotal</span>
+                        <span class="font-weight-semibold" id="summary-subtotal">Rp 0</span>
+                    </div>
+                    <div class="summary-row d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">Diskon</span>
+                        <span class="font-weight-semibold text-danger" id="summary-discount">Rp 0</span>
+                    </div>
+                    <div class="summary-row d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">Pajak</span>
+                        <span class="font-weight-semibold text-info" id="summary-tax">Rp 0</span>
+                    </div>
+                    <div class="summary-row grand-total d-flex justify-content-between align-items-center pt-2 mt-2 border-top">
+                        <span class="font-weight-bold text-uppercase">Grand total</span>
+                        <span class="h4 font-weight-bold mb-0 text-primary" id="summary-grand">Rp 0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-right mb-5">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="fas fa-save mr-2"></i>Simpan Penjualan
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h3 class="h6 font-weight-bold mb-3">Fokus penjualan</h3>
+                {% set badge_map = {'warning': 'badge-warning', 'info': 'badge-info', 'success': 'badge-success', 'secondary': 'badge-secondary'} %}
+                <ul class="list-unstyled mb-0">
+                    {% for insight in sales_insights %}
+                        <li class="mb-3">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="font-weight-semibold">{{ insight.title }}</span>
+                                <span class="badge badge-pill {{ badge_map.get(insight.status, 'badge-secondary') }}">
+                                    {% if insight.type == 'currency' %}
+                                        {{ ('Rp {:,.0f}'.format(insight.value)).replace(',', '.') }}
+                                    {% else %}
+                                        {{ '{:,}'.format(insight.value).replace(',', '.') }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <p class="small text-muted mb-0">{{ insight.description }}</p>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
         </div>
 
-        <h3>Detail Penjualan</h3>
-        <div id="items-container">
-            <!-- Barang akan ditambahkan di sini -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h3 class="h6 font-weight-bold mb-3">Transaksi terbaru</h3>
+                {% if recent_sales %}
+                    <ul class="list-group list-group-flush">
+                        {% for sale in recent_sales %}
+                            <li class="list-group-item px-0">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <div class="font-weight-semibold">{{ sale.no_faktur }}</div>
+                                        <small class="text-muted d-block">{{ sale.tanggal }} • {{ sale.pelanggan }}</small>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="font-weight-semibold text-dark">
+                                            {{ ('Rp {:,.0f}'.format(sale.total)).replace(',', '.') }}
+                                        </div>
+                                        <small class="text-muted">{{ sale.items }} item</small>
+                                    </div>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="small text-muted mb-0">Belum ada riwayat penjualan yang tercatat.</p>
+                {% endif %}
+            </div>
         </div>
-        <button type="button" id="add-item" class="btn btn-primary mb-3">Tambah Barang</button>
-        <button type="submit" class="btn btn-success">Simpan</button>
-    </form>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h3 class="h6 font-weight-bold mb-3">Tips penginputan</h3>
+                <ul class="small text-muted pl-3 mb-0">
+                    <li>Tekan tombol <strong>Tambah Barang</strong> untuk menambahkan baris produk baru.</li>
+                    <li>Harga otomatis mengikuti katalog, namun tetap bisa disesuaikan manual.</li>
+                    <li>Isi diskon dan pajak per baris untuk menghitung total secara akurat.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
 </div>
 
-<script>
-document.getElementById('add-item').addEventListener('click', function() {
-    const container = document.getElementById('items-container');
-    const item = `
-    <div class="form-group row">
-        <div class="col-md-5">
-            <label for="nama_barang">Nama Barang</label>
-            <select name="produk_id[]" class="form-control product-select">
-                <option value="" disabled selected>Pilih Produk</option>
+<template id="item-row-template">
+    <tr>
+        <td>
+            <select name="produk_id[]" class="custom-select product-select" required>
+                <option value="">Pilih produk</option>
                 {% for produk in produk_list %}
-                <option value="{{ produk.id }}">{{ produk.nama_produk }} ({{ produk.kode_produk }})</option>
+                    <option value="{{ produk.id }}">{{ produk.nama_produk }} ({{ produk.kode_produk }})</option>
                 {% endfor %}
             </select>
-        </div>
-        <div class="col-md-2">
-            <label>Jumlah</label>
-            <input type="number" name="jumlah[]" class="form-control" placeholder="Qty">
-        </div>
-        <div class="col-md-3">
-            <label>Harga</label>
-            <input type="number" name="harga[]" class="form-control" placeholder="Harga" readonly>
-        </div>
-        <div class="col-md-2">
-            <label>Aksi</label>
-            <button type="button" class="btn btn-danger remove-item">Hapus</button>
-        </div>
-    </div>`;
-    container.insertAdjacentHTML('beforeend', item);
+        </td>
+        <td>
+            <input type="number" name="jumlah[]" class="form-control item-qty" min="1" value="1" required>
+        </td>
+        <td>
+            <input type="number" name="harga[]" class="form-control item-price" min="0" step="0.01" placeholder="0">
+        </td>
+        <td>
+            <input type="number" name="diskon[]" class="form-control item-discount" min="0" max="100" step="0.5" placeholder="0">
+        </td>
+        <td>
+            <input type="number" name="pajak[]" class="form-control item-tax" min="0" step="0.5" placeholder="0">
+        </td>
+        <td>
+            <span class="item-total text-nowrap">Rp 0</span>
+        </td>
+        <td class="text-right">
+            <button type="button" class="btn btn-link text-danger remove-item" title="Hapus baris">
+                <i class="fas fa-times"></i>
+            </button>
+        </td>
+    </tr>
+</template>
 
-    // Tambahkan event listener untuk tombol "Hapus"
-    addRemoveListeners();
-});
+<script type="application/json" id="product-data">{{ produk_payload|tojson }}</script>
+<script type="application/json" id="customer-data">{{ customer_lookup|tojson }}</script>
 
-// Fungsi untuk menghapus barang
-function addRemoveListeners() {
-    document.querySelectorAll('.remove-item').forEach(button => {
-        button.addEventListener('click', function() {
-            this.closest('.form-group').remove();
-        });
-    });
-}
-
-addRemoveListeners(); // Tambahkan listener awal
-</script>
-<script>
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('product-select')) {
-            const produkId = e.target.value;
-            const hargaInput = e.target.closest('.form-group').querySelector('input[name="harga[]"]');
-    
-            // Fetch data produk berdasarkan ID
-            fetch(`/api/get_product1?product_id=${produkId}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        hargaInput.value = data.harga; // Isi harga otomatis
-                    } else {
-                        alert(data.message || 'Produk tidak ditemukan.');
-                    }
-                })
-                .catch(err => {
-                    console.error('Error:', err);
-                    alert('Gagal mengambil data produk.');
-                });
+<style>
+    .hero-card {
+        border-radius: 20px;
+        padding: 2.5rem 2rem;
+    }
+    .hero-card .btn {
+        border-radius: 999px;
+    }
+    .hero-meta .badge {
+        letter-spacing: 0.08em;
+    }
+    .text-white-75 {
+        color: rgba(255, 255, 255, 0.75) !important;
+    }
+    .font-weight-semibold {
+        font-weight: 600;
+    }
+    .stat-card {
+        border-radius: 18px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 18px 35px rgba(15, 23, 42, 0.12);
+    }
+    .stat-card .stat-icon {
+        font-size: 1.75rem;
+    }
+    .stat-card .stat-value {
+        font-size: 1.85rem;
+        font-weight: 700;
+    }
+    .card-panel {
+        border-radius: 18px;
+    }
+    .table-items thead th {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        border-bottom: 2px solid rgba(15, 23, 42, 0.08);
+        white-space: nowrap;
+    }
+    .table-items tbody td {
+        vertical-align: middle;
+    }
+    .table-items tbody tr:hover {
+        background-color: rgba(37, 99, 235, 0.04);
+    }
+    .summary-row {
+        font-size: 0.95rem;
+    }
+    .grand-total .h4 {
+        font-size: 1.5rem;
+    }
+    .form-card {
+        border-radius: 20px;
+    }
+    .sticky-card {
+        position: sticky;
+        top: 1.25rem;
+    }
+    @media (max-width: 992px) {
+        .sticky-card {
+            position: static;
+            top: auto;
         }
+    }
+    @media (max-width: 576px) {
+        .hero-card {
+            border-radius: 16px;
+            padding: 2rem 1.5rem;
+        }
+        .stat-card .stat-value {
+            font-size: 1.6rem;
+        }
+        .table-items thead {
+            display: none;
+        }
+        .table-items tbody tr {
+            display: block;
+        }
+        .table-items tbody td {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 1rem;
+            border-top: 1px solid rgba(15, 23, 42, 0.08);
+        }
+        .table-items tbody td:first-child {
+            border-top: none;
+        }
+        .table-items tbody td > span {
+            margin-left: 1rem;
+        }
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const productDataScript = document.getElementById('product-data');
+        const customerDataScript = document.getElementById('customer-data');
+        const products = productDataScript ? JSON.parse(productDataScript.textContent || '[]') : [];
+        const customers = customerDataScript ? JSON.parse(customerDataScript.textContent || '{}') : {};
+
+        const productMap = new Map(products.map(product => [String(product.id), product]));
+        const itemsTableBody = document.getElementById('items-table-body');
+        const addItemButton = document.getElementById('add-item');
+        const clearItemsButton = document.getElementById('clear-items');
+        const salesForm = document.getElementById('salesForm');
+        const rowTemplate = document.getElementById('item-row-template');
+
+        const subtotalEl = document.getElementById('summary-subtotal');
+        const discountEl = document.getElementById('summary-discount');
+        const taxEl = document.getElementById('summary-tax');
+        const grandEl = document.getElementById('summary-grand');
+        const itemsCountEl = document.getElementById('summary-items');
+
+        const customerSelect = document.getElementById('pelanggan_id');
+        const customerMeta = document.getElementById('customer-meta');
+
+        function formatCurrency(value) {
+            const formatter = new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR',
+                minimumFractionDigits: 0
+            });
+            return formatter.format(value || 0);
+        }
+
+        function getCustomerData(id) {
+            if (id === undefined || id === null) {
+                return null;
+            }
+            const key = String(id);
+            return customers[key] || null;
+        }
+
+        function updateCustomerMeta() {
+            const selected = customerSelect ? customerSelect.value : null;
+            const data = getCustomerData(selected);
+            if (!customerMeta) {
+                return;
+            }
+            if (data) {
+                customerMeta.innerHTML = `
+                    <span class="badge badge-light mr-2">ID ${data.code || '-'}</span>
+                    <span class="d-block mt-1">Kontak: ${data.kontak || 'belum diisi'}</span>
+                    <span class="d-block">Alamat: ${data.alamat || 'belum diisi'}</span>
+                `;
+            } else {
+                customerMeta.textContent = 'Pilih pelanggan untuk menampilkan kontak dan alamat.';
+            }
+        }
+
+        function parseNumber(value) {
+            const parsed = parseFloat(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function updateTotals() {
+            let subtotal = 0;
+            let totalDiscount = 0;
+            let totalTax = 0;
+            let totalItems = 0;
+
+            itemsTableBody.querySelectorAll('tr').forEach(row => {
+                const subtotalVal = parseNumber(row.dataset.subtotal);
+                const discountVal = parseNumber(row.dataset.discount);
+                const taxVal = parseNumber(row.dataset.tax);
+                const qtyVal = parseNumber(row.querySelector('.item-qty').value);
+
+                subtotal += subtotalVal;
+                totalDiscount += discountVal;
+                totalTax += taxVal;
+                totalItems += qtyVal;
+            });
+
+            const grandTotal = subtotal - totalDiscount + totalTax;
+
+            subtotalEl.textContent = formatCurrency(subtotal);
+            discountEl.textContent = formatCurrency(totalDiscount);
+            taxEl.textContent = formatCurrency(totalTax);
+            grandEl.textContent = formatCurrency(grandTotal);
+            itemsCountEl.textContent = totalItems.toString();
+        }
+
+        function clampValue(input, minValue, maxValue) {
+            if (!input) {
+                return;
+            }
+            let value = parseNumber(input.value);
+            if (value < minValue) {
+                value = minValue;
+            }
+            if (Number.isFinite(maxValue) && value > maxValue) {
+                value = maxValue;
+            }
+            input.value = value;
+        }
+
+        function updateRowTotals(row) {
+            if (!row) {
+                return;
+            }
+            const qtyInput = row.querySelector('.item-qty');
+            const priceInput = row.querySelector('.item-price');
+            const discountInput = row.querySelector('.item-discount');
+            const taxInput = row.querySelector('.item-tax');
+            const totalLabel = row.querySelector('.item-total');
+
+            clampValue(qtyInput, 1);
+            clampValue(priceInput, 0);
+            clampValue(discountInput, 0, 100);
+            clampValue(taxInput, 0);
+
+            const qty = parseNumber(qtyInput.value);
+            const price = parseNumber(priceInput.value);
+            const discount = parseNumber(discountInput.value);
+            const tax = parseNumber(taxInput.value);
+
+            const baseAmount = qty * price;
+            const discountAmount = baseAmount * (discount / 100);
+            const taxableBase = baseAmount - discountAmount;
+            const taxAmount = taxableBase * (tax / 100);
+            const totalAmount = taxableBase + taxAmount;
+
+            row.dataset.subtotal = baseAmount;
+            row.dataset.discount = discountAmount;
+            row.dataset.tax = taxAmount;
+            row.dataset.total = totalAmount;
+
+            if (totalLabel) {
+                totalLabel.textContent = formatCurrency(totalAmount);
+            }
+
+            updateTotals();
+        }
+
+        function attachRowEvents(row) {
+            if (!row) {
+                return;
+            }
+            const productSelect = row.querySelector('.product-select');
+            const qtyInput = row.querySelector('.item-qty');
+            const priceInput = row.querySelector('.item-price');
+            const discountInput = row.querySelector('.item-discount');
+            const taxInput = row.querySelector('.item-tax');
+            const removeButton = row.querySelector('.remove-item');
+
+            if (productSelect) {
+                productSelect.addEventListener('change', function () {
+                    const product = productMap.get(productSelect.value);
+                    if (product) {
+                        priceInput.value = Number(product.price || 0).toFixed(2);
+                    } else {
+                        priceInput.value = '';
+                    }
+                    updateRowTotals(row);
+                });
+            }
+
+            [qtyInput, priceInput, discountInput, taxInput].forEach(input => {
+                if (!input) {
+                    return;
+                }
+                input.addEventListener('input', function () {
+                    updateRowTotals(row);
+                });
+                input.addEventListener('blur', function () {
+                    updateRowTotals(row);
+                });
+            });
+
+            if (removeButton) {
+                removeButton.addEventListener('click', function () {
+                    row.remove();
+                    ensureAtLeastOneRow();
+                    updateTotals();
+                });
+            }
+        }
+
+        function ensureAtLeastOneRow() {
+            if (!itemsTableBody.querySelector('tr')) {
+                addItemRow();
+            } else {
+                const rows = itemsTableBody.querySelectorAll('tr');
+                rows.forEach(row => {
+                    const removeButton = row.querySelector('.remove-item');
+                    if (removeButton) {
+                        removeButton.disabled = rows.length === 1;
+                    }
+                });
+            }
+        }
+
+        function addItemRow() {
+            const fragment = rowTemplate.content.cloneNode(true);
+            const row = fragment.querySelector('tr');
+            itemsTableBody.appendChild(row);
+            attachRowEvents(row);
+            updateRowTotals(row);
+            ensureAtLeastOneRow();
+        }
+
+        if (addItemButton) {
+            addItemButton.addEventListener('click', function () {
+                addItemRow();
+            });
+        }
+
+        if (clearItemsButton) {
+            clearItemsButton.addEventListener('click', function () {
+                itemsTableBody.innerHTML = '';
+                addItemRow();
+                updateTotals();
+            });
+        }
+
+        if (salesForm) {
+            salesForm.addEventListener('submit', function (event) {
+                const rows = itemsTableBody.querySelectorAll('tr');
+                let hasValidRow = false;
+
+                rows.forEach(row => {
+                    const productSelect = row.querySelector('.product-select');
+                    const qtyInput = row.querySelector('.item-qty');
+                    const qty = parseNumber(qtyInput.value);
+                    if (productSelect && productSelect.value && qty > 0) {
+                        hasValidRow = true;
+                    }
+                });
+
+                if (!hasValidRow) {
+                    event.preventDefault();
+                    alert('Tambahkan minimal satu produk dengan jumlah valid sebelum menyimpan.');
+                }
+            });
+        }
+
+        if (customerSelect) {
+            customerSelect.addEventListener('change', updateCustomerMeta);
+        }
+
+        updateCustomerMeta();
+        addItemRow();
     });
-    </script>
-    
+</script>
 {% endblock %}
