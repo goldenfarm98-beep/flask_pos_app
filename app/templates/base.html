@@ -1,116 +1,156 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}My Flask App{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <style>
+        :root {
+            --primary-500: #2563eb;
+            --primary-600: #1d4ed8;
+            --slate-50: #f8fafc;
+            --slate-800: #1e293b;
+        }
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f8f9fa;
+            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+            background: var(--slate-50);
+            color: var(--slate-800);
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
-            margin: 0;
         }
-        header {
-            background-color:rgb(8, 143, 233);
-            color: rgb(255, 255, 255);
-            /*padding: 5px 10px;*/
-            
-            position: sticky;
-            top: 0;
-            z-index: 1030;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            width: 100%;
+        .navbar {
+            padding: 0.85rem 0;
         }
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .navbar-brand {
+            font-weight: 600;
+            letter-spacing: 0.01em;
         }
-        nav a {
-            color: white;
-            margin: 0 10px;
-            text-decoration: none;
+        .nav-link .icon {
+            margin-right: 0.45rem;
         }
-        nav a:hover {
-            text-decoration: underline;
+        .hero-gradient {
+            background: linear-gradient(140deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
+            color: #f8fafc;
         }
-        .sidebar {
-            height: 100vh;
-            position: fixed;
-            top: 60px; /* Adjust for header height */
-            left: 0;
-            overflow-x: hidden;
-            padding-top: 20px;
-            width: 200px;
-            background-color: #f8f9fa;
-            border-right: 1px solid #ddd;
-            z-index: 1020;
-        }
-        main {
-            flex: 1;
-            margin-left: 200px; /* Sidebar width */
-            margin-top: 20px; /* Header height */
-            padding: 20px;
+        .flash-stack > .alert {
+            box-shadow: 0 15px 30px rgba(15, 23, 42, 0.08);
+            border-radius: 12px;
         }
         footer {
-            background-color: rgb(26, 127, 194);
-            color: white;
-            text-align: center;
-            padding: 10px 0;
+            background: #0f172a;
+            color: #e2e8f0;
         }
-        @media (max-width: 768px) {
-            nav {
-                flex-direction: column;
-                text-align: center;
-            }
-            nav a {
-                margin: 5px 0;
-            }
-            .sidebar {
-                width: 100%;
-                height: auto;
-                position: relative;
-                top: 0;
-                border-right: none;
-            }
-            main {
-                margin-left: 0;
-                margin-top: 120px; /* Adjust for combined header and sidebar */
-            }
+        footer a {
+            color: #cbd5f5;
         }
     </style>
 </head>
 <body>
-    <header>
-        <nav>
-            <div>
-                <h1><i class="fas fa-leaf"></i> # aplikasi penjualan </h1>
-            </div>
-            <div>
-                {% if session.get('user_id') %}
-                    <span class="mr-3"><i class="fas fa-user"></i> {{ session.get('username') }}</span>
-                    <a href="/logout" class="btn btn-sm btn-light"><i class="fas fa-sign-out-alt"></i> Logout</a>
-                {% else %}
-                    <a href="/login" class="btn btn-sm btn-light"><i class="fas fa-sign-in-alt"></i> Login</a>
-                    <a href="/register" class="btn btn-sm btn-light"><i class="fas fa-user-plus"></i> Register</a>
-                {% endif %}
+    <header class="shadow-sm">
+        {% set current = request.endpoint or '' %}
+        {% if session.get('user_id') %}
+            {% set nav_links = [
+                {'label': 'Beranda', 'endpoint': 'main.index', 'icon': 'fa-home', 'active_prefix': 'main.index'},
+                {'label': 'Dashboard', 'endpoint': 'main.dashboard', 'icon': 'fa-chart-line', 'active_prefix': 'main.dashboard'},
+                {'label': 'Produk', 'endpoint': 'main.produk', 'icon': 'fa-box', 'active_prefix': 'main.produk'},
+                {'label': 'Pelanggan', 'endpoint': 'main.pelanggan', 'icon': 'fa-user-friends', 'active_prefix': 'main.pelanggan'},
+                {'label': 'Penjualan', 'endpoint': 'main.penjualan', 'icon': 'fa-cash-register', 'active_prefix': 'main.penjualan'},
+                {'label': 'Pembelian', 'endpoint': 'main.pembelian', 'icon': 'fa-shopping-basket', 'active_prefix': 'main.pembelian'},
+                {'label': 'Supplier', 'endpoint': 'main.supplier', 'icon': 'fa-truck', 'active_prefix': 'main.supplier'},
+                {'label': 'Tentang', 'endpoint': 'main.about', 'icon': 'fa-info-circle', 'active_prefix': 'main.about'}
+            ] %}
+        {% else %}
+            {% set nav_links = [
+                {'label': 'Beranda', 'endpoint': 'main.index', 'icon': 'fa-home', 'active_prefix': 'main.index'},
+                {'label': 'Tentang', 'endpoint': 'main.about', 'icon': 'fa-info-circle', 'active_prefix': 'main.about'}
+            ] %}
+        {% endif %}
+
+        <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="{{ url_for('main.index') }}">
+                    <i class="fas fa-store-alt mr-2"></i>Kasir Pintar
+                </a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarMain" aria-controls="navbarMain" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <div class="collapse navbar-collapse" id="navbarMain">
+                    <ul class="navbar-nav mr-auto">
+                        {% for item in nav_links %}
+                            {% set is_active = current.startswith(item.active_prefix) %}
+                            <li class="nav-item {% if is_active %}active{% endif %}">
+                                <a class="nav-link {% if is_active %}font-weight-bold{% endif %}" href="{{ url_for(item.endpoint) }}">
+                                    <i class="icon fas {{ item.icon }}"></i>{{ item.label }}
+                                </a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                    <div class="navbar-nav">
+                        {% if session.get('user_id') %}
+                            <span class="nav-item nav-link text-white-50">
+                                <i class="fas fa-user-circle mr-2"></i>{{ session.get('username') }}
+                            </span>
+                            <a class="btn btn-sm btn-light font-weight-bold" href="{{ url_for('main.logout') }}">
+                                <i class="fas fa-sign-out-alt mr-2"></i>Keluar
+                            </a>
+                        {% else %}
+                            <a class="btn btn-sm btn-outline-light mr-2" href="{{ url_for('main.login') }}">
+                                <i class="fas fa-sign-in-alt mr-2"></i>Masuk
+                            </a>
+                            <a class="btn btn-sm btn-light" href="{{ url_for('main.register') }}">
+                                <i class="fas fa-user-plus mr-2"></i>Daftar
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </nav>
     </header>
 
-    <main class="container">
-        {% block content %}
-        <!-- Konten halaman akan diisi di sini -->
-        {% endblock %}
+    <main class="flex-grow-1 py-4">
+        <div class="container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-stack mb-4">
+                        {% for category, message in messages %}
+                            {% set category_map = {
+                                'message': 'info',
+                                'error': 'danger',
+                                'danger': 'danger',
+                                'warning': 'warning',
+                                'success': 'success',
+                                'info': 'info'
+                            } %}
+                            {% set alert_class = category_map.get(category, 'info') %}
+                            <div class="alert alert-{{ alert_class }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </div>
     </main>
 
-    <footer>
-        <p>&copy; 2025 Aplikasi Kasir Terkini. Powered by <i class="fas fa-code"></i> Flask</p>
+    <footer class="py-4 mt-auto">
+        <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between">
+            <span>&copy; {{ current_year }} Aplikasi Kasir Pintar.</span>
+            <span class="small text-muted">
+                Dibangun dengan <i class="fas fa-heart mx-1 text-danger"></i> dan <a href="https://flask.palletsprojects.com/" target="_blank" rel="noreferrer">Flask</a>
+            </span>
+        </div>
     </footer>
 
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>

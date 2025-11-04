@@ -1,68 +1,269 @@
 {% extends "base.html" %}
 
-{% block title %}Home{% endblock %}
+{% block title %}Beranda{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <!-- Header Buttons -->
-    <!--<div class="text-center mb-5">
-        <a href="/login" class="btn btn-primary btn-lg mx-2">
-            <i class="fas fa-sign-in-alt"></i> Login
-        </a>
-        <a href="/register" class="btn btn-success btn-lg mx-2">
-            <i class="fas fa-user-plus"></i> Register
-        </a>
-    </div>-->
-
-    <!-- Informasi Terkini -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white text-center">
-            <h4><i class="fas fa-info-circle"></i> Informasi Terkini</h4>
+<section class="hero-card hero-gradient text-white p-4 p-md-5 mb-4">
+    <div class="row align-items-center">
+        <div class="col-lg-7">
+            <h1 class="display-4 font-weight-bold mb-3">Ringkas, cerdas, dan siap bantu operasional toko Anda.</h1>
+            <p class="lead mb-4">Pantau stok, pelanggan, hingga transaksi hanya dalam beberapa klik. Aplikasi POS ini hadir untuk mempercepat keputusan dan menjaga bisnis tetap rapi.</p>
+            <div class="d-flex flex-wrap">
+                <a href="{{ url_for('main.penjualan') }}" class="btn btn-light btn-lg text-primary font-weight-bold mr-3 mb-2">
+                    <i class="fas fa-play-circle mr-2"></i>Mulai Penjualan
+                </a>
+                <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline-light btn-lg mb-2">
+                    <i class="fas fa-chart-line mr-2"></i>Lihat Dashboard
+                </a>
+            </div>
         </div>
-        <div class="card-body">
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <strong>Informasi 1</strong>
-                    <span class="text-muted">12 Januari 2025, 14:00</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <strong>Informasi 2</strong>
-                    <span class="text-muted">11 Januari 2025, 10:30</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <strong>Informasi 3</strong>
-                    <span class="text-muted">10 Januari 2025, 16:45</span>
-                </li>
-            </ul>
+        <div class="col-lg-5 mt-4 mt-lg-0">
+            <div class="hero-stats rounded shadow-lg bg-white text-dark p-4">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <span class="badge badge-primary badge-pill px-3 py-2 text-uppercase">Snapshot</span>
+                    <small class="text-muted">Diperbarui otomatis</small>
+                </div>
+                <ul class="list-unstyled mb-0">
+                    <li class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <span class="text-muted d-block small">Produk aktif</span>
+                            <strong class="h4 mb-0">{{ '{:,}'.format(stats['produk']).replace(',', '.') }}</strong>
+                        </div>
+                        <div class="icon-bubble bg-primary text-white">
+                            <i class="fas fa-boxes"></i>
+                        </div>
+                    </li>
+                    <li class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <span class="text-muted d-block small">Penjualan tercatat</span>
+                            <strong class="h4 mb-0">{{ '{:,}'.format(stats['penjualan']).replace(',', '.') }}</strong>
+                        </div>
+                        <div class="icon-bubble bg-success text-white">
+                            <i class="fas fa-receipt"></i>
+                        </div>
+                    </li>
+                    <li class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted d-block small">Relasi pelanggan</span>
+                            <strong class="h4 mb-0">{{ '{:,}'.format(stats['pelanggan']).replace(',', '.') }}</strong>
+                        </div>
+                        <div class="icon-bubble bg-warning text-white">
+                            <i class="fas fa-users"></i>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% set cards = [
+    {'label': 'Total Produk', 'value': stats['produk'], 'icon': 'fa-box-open', 'accent': 'text-primary', 'description': 'Item siap dijual'},
+    {'label': 'Penjualan Selesai', 'value': stats['penjualan'], 'icon': 'fa-cash-register', 'accent': 'text-success', 'description': 'Transaksi berhasil'},
+    {'label': 'Pembelian Masuk', 'value': stats['pembelian'], 'icon': 'fa-clipboard-check', 'accent': 'text-info', 'description': 'Restock terbaru'},
+    {'label': 'Supplier Aktif', 'value': stats['supplier'], 'icon': 'fa-truck', 'accent': 'text-warning', 'description': 'Mitra pemasok'}
+] %}
+
+<div class="row">
+    {% for card in cards %}
+        <div class="col-sm-6 col-lg-3 mb-4">
+            <div class="card stat-card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <span class="stat-icon {{ card.accent }}">
+                            <i class="fas {{ card.icon }}"></i>
+                        </span>
+                        <span class="badge badge-light text-uppercase">{{ card.label }}</span>
+                    </div>
+                    <h3 class="card-title mb-2">{{ '{:,}'.format(card.value).replace(',', '.') }}</h3>
+                    <p class="card-text text-muted mb-0">{{ card.description }}</p>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+
+<section class="quick-actions mb-4">
+    <h2 class="h5 font-weight-bold mb-3">Aksi cepat</h2>
+    <div class="row">
+        {% for action in quick_links %}
+            <div class="col-sm-6 col-lg-3 mb-3">
+                <a class="card action-card h-100 border-0 shadow-sm text-decoration-none text-reset" href="{{ action.url }}">
+                    <div class="card-body">
+                        <div class="d-flex align-items-start justify-content-between mb-3">
+                            <div class="action-icon text-primary">
+                                <i class="fas {{ action.icon }}"></i>
+                            </div>
+                            <span class="badge badge-primary badge-pill">{{ action.tag }}</span>
+                        </div>
+                        <h3 class="h6 font-weight-bold mb-1">{{ action.title }}</h3>
+                        <p class="small text-muted mb-0">{{ action.subtitle }}</p>
+                    </div>
+                </a>
+            </div>
+        {% endfor %}
+    </div>
+</section>
+
+<div class="row">
+    <div class="col-lg-7 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h2 class="h5 font-weight-bold mb-0">Penjualan terbaru</h2>
+                    <a href="{{ url_for('main.penjualan') }}" class="small text-primary">Buka modul penjualan <i class="fas fa-arrow-right ml-1"></i></a>
+                </div>
+                {% if recent_sales %}
+                    <ul class="list-group list-group-flush">
+                        {% for sale in recent_sales %}
+                            <li class="list-group-item px-0">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h3 class="h6 font-weight-bold mb-1">Faktur {{ sale.no_faktur }}</h3>
+                                        <small class="text-muted">
+                                            {{ sale.tanggal_penjualan.strftime('%d %b %Y') if sale.tanggal_penjualan else 'Tanggal tidak tersedia' }}
+                                        </small>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="badge badge-success mb-1">Lunas</span>
+                                        <div class="font-weight-bold text-dark">
+                                            Rp {{ ('{:,.0f}'.format(sale.total_harga or 0)).replace(',', '.') }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="empty-state text-center py-5">
+                        <div class="empty-icon text-primary mb-3">
+                            <i class="fas fa-chart-bar fa-2x"></i>
+                        </div>
+                        <p class="mb-0 text-muted">Belum ada penjualan yang tercatat. Mulai transaksi pertama Anda!</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h2 class="h5 font-weight-bold mb-0">Pembelian terakhir</h2>
+                    <a href="{{ url_for('main.pembelian') }}" class="small text-primary">Kelola restock</a>
+                </div>
+                {% if recent_purchases %}
+                    <ul class="list-group list-group-flush">
+                        {% for purchase in recent_purchases %}
+                            <li class="list-group-item px-0">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h3 class="h6 font-weight-bold mb-1">Faktur {{ purchase.no_faktur }}</h3>
+                                        <small class="text-muted">
+                                            {{ purchase.tanggal_faktur.strftime('%d %b %Y') if purchase.tanggal_faktur else 'Tanggal tidak tersedia' }}
+                                        </small>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="badge badge-light">
+                                            {{ purchase.supplier.name if purchase.supplier else 'Tanpa supplier' }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="empty-state text-center py-5">
+                        <div class="empty-icon text-info mb-3">
+                            <i class="fas fa-clipboard-list fa-2x"></i>
+                        </div>
+                        <p class="mb-0 text-muted">Belum ada pembelian dicatat. Input faktur untuk mengisi stok.</p>
+                    </div>
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>
 
+<section class="insight-strip p-4 p-md-5 mt-3 text-center text-md-left">
+    <div class="row align-items-center">
+        <div class="col-md-8 mb-3 mb-md-0">
+            <h2 class="h4 font-weight-bold mb-2">Tips cepat: rencanakan stok sebelum ramai!</h2>
+            <p class="mb-0 text-muted">Gunakan laporan penjualan untuk memprediksi barang favorit pelanggan dan jadwalkan pembelian tepat waktu agar etalase selalu penuh.</p>
+        </div>
+        <div class="col-md-4 text-md-right">
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-lightbulb mr-2"></i>Lihat insight
+            </a>
+        </div>
+    </div>
+</section>
+
 <style>
-    .btn {
-        padding: 15px 30px;
-        border-radius: 50px;
-        font-size: 18px;
+    .hero-card {
+        border-radius: 20px;
     }
-    .btn-primary {
-        background-color: #007bff;
-        border: none;
+    .hero-card .btn {
+        border-radius: 999px;
     }
-    .btn-success {
-        background-color: #28a745;
-        border: none;
+    .hero-stats {
+        border-radius: 18px;
     }
-    .btn:hover {
-        opacity: 0.9;
+    .icon-bubble {
+        width: 48px;
+        height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 14px;
+        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.15);
     }
-    .card {
-        border-radius: 15px;
+    .stat-card {
+        border-radius: 18px;
     }
-    .card-header {
-        font-weight: bold;
+    .stat-card .badge {
+        font-size: 0.65rem;
+        letter-spacing: 0.08em;
+    }
+    .stat-card .stat-icon {
+        font-size: 1.75rem;
+    }
+    .action-card {
+        border-radius: 18px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .action-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 18px 35px rgba(15, 23, 42, 0.12);
+    }
+    .action-card .action-icon {
+        font-size: 1.8rem;
     }
     .list-group-item {
-        font-size: 16px;
+        border: none;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    }
+    .list-group-item:last-child {
+        border-bottom: none;
+    }
+    .empty-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(37, 99, 235, 0.1);
+    }
+    .insight-strip {
+        border-radius: 18px;
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(16, 185, 129, 0.1));
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+    }
+    @media (max-width: 576px) {
+        .hero-card {
+            border-radius: 16px;
+        }
     }
 </style>
 {% endblock %}
