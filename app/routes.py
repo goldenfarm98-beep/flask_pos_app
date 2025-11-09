@@ -4228,8 +4228,14 @@ def laporan_stok_barang():
     if supplier_filter:
         query = query.filter(Produk.supplier_id == supplier_filter)
 
-    products = query.order_by(Produk.nama_produk.asc()).all()
-    total_products = len(products)
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 15, type=int)
+    per_page = max(5, min(per_page, 100))
+
+    base_query = query.order_by(Produk.nama_produk.asc())
+    pagination = base_query.paginate(page=page, per_page=per_page, error_out=False)
+    products = pagination.items
+    total_products = pagination.total
     total_stock = 0
     total_value = 0.0
     total_sell_value = 0.0
@@ -4280,6 +4286,7 @@ def laporan_stok_barang():
                 "cost": cost,
                 "price": price,
                 "value": stock * cost,
+                "unit_value": stock * cost / stock if stock else cost,
             }
         )
 
@@ -4294,7 +4301,7 @@ def laporan_stok_barang():
             "value": total_products,
             "icon": "fa-box-open",
             "accent": "text-primary",
-            "subtitle": "Sesuai filter",
+            "subtitle": f"Halaman {pagination.page} dari {pagination.pages}" if pagination.pages else "Sesuai filter",
         },
         {
             "label": "Total Stok (pcs)",
@@ -4337,6 +4344,10 @@ def laporan_stok_barang():
         filter_values=filter_values,
         kategori_options=kategori_options,
         supplier_options=supplier_options,
+        pagination=pagination,
+        page=page,
+        per_page=per_page,
+        pagination_args={k: v for k, v in request.args.to_dict().items() if k != "page"},
     )
 
 
