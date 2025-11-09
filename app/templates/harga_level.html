@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Level Harga{% endblock %}
+
+{% block content %}
+<section class="price-levels">
+    <div class="page-hero hero-card hero-gradient text-white mb-4">
+        <div>
+            <p class="eyebrow text-uppercase mb-2">Level Harga Pelanggan</p>
+            <h1 class="display-5 font-weight-bold mb-2">Kelola struktur harga khusus untuk pelanggan prioritas.</h1>
+            <p class="mb-0 text-white-75">Buat level harga (Retail, Grosir, VIP) lalu tentukan harga produk per level agar kasir otomatis menggunakan nilai yang tepat.</p>
+        </div>
+        <div class="hero-meta text-lg-right mt-4 mt-lg-0">
+            <span class="badge badge-pill badge-light text-uppercase px-3 py-2">{{ price_levels|length }} level aktif</span>
+            <p class="small text-white-75 mt-3 mb-0">Gunakan formulir di bawah untuk menambah level baru atau mengatur harga.</p>
+        </div>
+    </div>
+
+    <div class="row align-items-start">
+        <div class="col-xl-5">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Tambah level harga</h2>
+                    <form method="POST" autocomplete="off">
+                        <input type="hidden" name="action" value="create_level">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Nama level</label>
+                            <input type="text" name="level_name" class="form-control form-control-lg" placeholder="Contoh: Grosir A" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Deskripsi</label>
+                            <textarea name="description" class="form-control" rows="3" placeholder="Catatan (opsional)"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-lg btn-block">
+                            <i class="fas fa-layer-group mr-2"></i>Simpan level
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3">Ringkasan level</h3>
+                    {% if level_summary %}
+                        <ul class="list-group list-group-flush">
+                            {% for level in level_summary %}
+                                <li class="list-group-item px-0">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="font-weight-semibold">{{ level.name }}</div>
+                                            <small class="text-muted">{{ level.description or 'Tanpa deskripsi' }}</small>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="small text-muted">Pelanggan: {{ level.customer_count }}</div>
+                                            <div class="small text-muted">Produk khusus: {{ level.price_count }}</div>
+                                        </div>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="small text-muted mb-0">Belum ada level harga yang dibuat.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Atur harga per level</h2>
+                    <form method="POST" class="form-inline flex-wrap">
+                        <input type="hidden" name="action" value="set_price">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group mr-3 mb-2 flex-fill">
+                            <label class="sr-only">Level</label>
+                            <select name="level_id" class="custom-select" required>
+                                <option value="">Pilih level</option>
+                                {% for level in price_levels %}
+                                    <option value="{{ level.id }}">{{ level.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group mr-3 mb-2 flex-fill">
+                            <label class="sr-only">Produk</label>
+                            <select name="product_id" class="custom-select" required>
+                                <option value="">Pilih produk</option>
+                                {% for produk in products %}
+                                    <option value="{{ produk.id }}">{{ produk.nama_produk }} ({{ produk.kode_produk }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group mr-3 mb-2">
+                            <label class="sr-only">Harga</label>
+                            <input type="number" name="price" class="form-control" step="0.01" min="0" placeholder="Harga" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary mb-2">
+                            <i class="fas fa-save mr-1"></i>Simpan harga
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3">Daftar harga khusus</h3>
+                    {% if price_table %}
+                        {% for level in price_levels %}
+                            <div class="mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h4 class="h6 mb-0">{{ level.name }}</h4>
+                                    <small class="text-muted">{{ level.description or 'Tanpa deskripsi' }}</small>
+                                </div>
+                                {% set entries = price_table.get(level.id) %}
+                                {% if entries %}
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Produk</th>
+                                                    <th>Kode</th>
+                                                    <th class="text-right">Harga Khusus</th>
+                                                    <th class="text-center">Aksi</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for entry in entries %}
+                                                    <tr>
+                                                        <td>{{ entry.product_name }}</td>
+                                                        <td>{{ entry.product_code }}</td>
+                                                        <td class="text-right">{{ ('Rp {:,.0f}'.format(entry.price)).replace(',', '.') }}</td>
+                                                        <td class="text-center">
+                                                            <form method="POST" class="d-inline">
+                                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                                <input type="hidden" name="action" value="delete_price">
+                                                                <input type="hidden" name="entry_id" value="{{ entry.id }}">
+                                                                <button type="submit" class="btn btn-link text-danger btn-sm">Hapus</button>
+                                                            </form>
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {% else %}
+                                    <p class="small text-muted">Belum ada harga khusus untuk level ini.</p>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="small text-muted mb-0">Belum ada harga khusus yang tercatat.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .price-levels .page-hero.hero-card {
+        padding: 2.5rem 2.5rem;
+        border-radius: 24px;
+    }
+    @media (max-width: 576px) {
+        .price-levels .page-hero.hero-card {
+            padding: 1.75rem;
+        }
+    }
+    .price-levels .eyebrow {
+        letter-spacing: 0.3em;
+        font-size: 0.75rem;
+    }
+    .price-levels .card {
+        border-radius: 16px;
+    }
+    .price-levels table th {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #475569;
+        border-top: none;
+        background: #f8fafc;
+    }
+</style>
+{% endblock %}

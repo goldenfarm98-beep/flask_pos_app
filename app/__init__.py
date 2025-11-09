@@ -1,6 +1,10 @@
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # fallback kalau dependency belum terpasang
+    def load_dotenv(*_args, **_kwargs):
+        return False
 
-load_dotenv()  # akan membaca file .env di root project
+load_dotenv()  # akan membaca file .env di root project, no-op jika modul tidak tersedia
 from datetime import datetime
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy

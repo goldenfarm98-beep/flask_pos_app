@@ -3,350 +3,644 @@
 {% block title %}Penjualan{% endblock %}
 
 {% block content %}
-{% set product_count = produk_payload|length %}
-
-<section class="page-hero hero-card hero-gradient text-white mb-4">
-    <div class="row align-items-center">
-        <div class="col-lg-8">
-            <h1 class="display-5 font-weight-bold mb-3">Catat transaksi penjualan dengan cepat dan terstruktur.</h1>
-            <p class="lead mb-4">
-                Pilih pelanggan, tambahkan produk, tetapkan diskon atau pajak, lalu simpan penjualan dalam hitungan detik.
-                Katalog Anda memuat <strong>{{ '{:,}'.format(product_count).replace(',', '.') }}</strong> produk siap dipilih.
-            </p>
-            <div class="d-flex flex-wrap">
-                <a href="#sales-form" class="btn btn-light btn-lg text-primary font-weight-bold mr-3 mb-2">
-                    <i class="fas fa-plus-circle mr-2"></i>Transaksi Baru
-                </a>
-                <a href="{{ url_for('main.produk') }}" class="btn btn-outline-light btn-lg mr-3 mb-2">
-                    <i class="fas fa-box-open mr-2"></i>Kelola Produk
-                </a>
-                <a href="{{ url_for('main.pelanggan') }}" class="btn btn-outline-light btn-lg mb-2">
-                    <i class="fas fa-users mr-2"></i>Kelola Pelanggan
-                </a>
-            </div>
+<section class="sales-console">
+    <div class="sales-banner shadow-sm mb-4">
+        <div>
+            <p class="eyebrow text-uppercase mb-2">Penjualan Barang</p>
+            <h1 class="display-5 mb-1">Menu ini digunakan untuk melakukan transaksi penjualan barang.</h1>
+            <p class="mb-0 text-white-75">Gunakan kolom input di atas untuk memilih produk lalu pantau daftar barang di
+                tabel bawahnya.</p>
         </div>
-        <div class="col-lg-4 mt-4 mt-lg-0">
-            <div class="hero-meta text-lg-right">
-                <span class="badge badge-pill badge-light text-uppercase px-3 py-2">Alur rekomendasi</span>
-                <p class="small text-white-75 mt-3 mb-0">
-                    1) Pilih pelanggan, 2) Tambahkan baris produk, 3) Periksa ringkasan total, 4) Simpan dan lanjutkan melayani pelanggan berikutnya.
-                </p>
-            </div>
+        <div class="shortcut-hints text-right">
+            <span>F1 Baru</span>
+            <span>F2 Tambah</span>
+            <span>F3 Batal</span>
+            <span>F4 Bayar</span>
+            <span>Esc Kembali</span>
         </div>
     </div>
-</section>
 
-{% if sales_stat_cards %}
-<div class="row stat-grid mb-4">
-    {% for card in sales_stat_cards %}
-        <div class="col-sm-6 col-xl-3 mb-3">
-            <div class="card stat-card border-0 shadow-sm h-100">
+    <div class="row">
+        <div class="col-xl-9 order-2 order-xl-1">
+            <form method="POST" id="salesForm" autocomplete="off">
+                {{ form.hidden_tag() }}
+
+                <div class="card sales-meta shadow-sm mb-4">
+                    <div class="card-body">
+                        <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center">
+                            <div class="flex-fill pr-lg-4 w-100">
+                                <h2 class="h5 font-weight-bold mb-3">Data Penjualan</h2>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4 mb-3">
+                                        <label class="font-weight-semibold text-muted">Nama Sales</label>
+                                        <input type="text" class="form-control form-control-lg"
+                                            value="{{ sales_operator }}" readonly>
+                                    </div>
+                                    <div class="form-group col-md-4 mb-3">
+                                        <label class="font-weight-semibold text-muted">No Faktur</label>
+                                        <input type="text" class="form-control form-control-lg text-uppercase"
+                                            value="{{ draft_invoice }}" readonly>
+                                    </div>
+                                    <div class="form-group col-md-4 mb-3">
+                                        <label class="font-weight-semibold text-muted">Tgl Penjualan</label>
+                                        <input type="text" class="form-control form-control-lg"
+                                            value="{{ sale_date_display }}" readonly>
+                                    </div>
+                                </div>
+                                {% set selected_customer = customer_lookup.get(form.pelanggan_id.data) %}
+                                {% if selected_customer %}
+                                {% set cust_code = selected_customer.code if selected_customer.code else '-' %}
+                                {% set selected_customer_label = selected_customer.name ~ ' (' ~ cust_code ~ ')' %}
+                                {% else %}
+                                {% set selected_customer_label = '' %}
+                                {% endif %}
+                                <div class="form-group mb-0 position-relative">
+                                    <label for="pelanggan_autocomplete" class="font-weight-semibold">Pilih
+                                        pelanggan</label>
+                                    <input type="text" id="pelanggan_autocomplete"
+                                        class="form-control form-control-lg quick-focus"
+                                        placeholder="Ketik nama atau ID pelanggan" value="{{ selected_customer_label }}"
+                                        autocomplete="off" data-next="#quick-product-input">
+                                    {{ form.pelanggan_id(class="d-none", id="pelanggan_id") }}
+                                    <div class="product-suggestions shadow-sm" id="customer-suggestion-box" hidden>
+                                    </div>
+                                    {% if form.pelanggan_id.errors %}
+                                    <small class="text-danger d-block mt-2">{{ form.pelanggan_id.errors[0] }}</small>
+                                    {% endif %}
+                                    <small id="customer-meta" class="d-block text-muted mt-2">Ketik lalu pilih dari
+                                        saran untuk menampilkan kontak dan alamat.</small>
+                                </div>
+                                <div class="form-group mt-3">
+                                    <label for="price_level_selector" class="font-weight-semibold">Level harga transaksi</label>
+                                    <select id="price_level_selector" class="custom-select custom-select-lg">
+                                        <option value="">Ikuti level pelanggan / harga standar</option>
+                                        {% for level in price_levels %}
+                                            <option value="{{ level.id }}">{{ level.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <small class="text-muted">Pilih opsi ini untuk override harga berdasarkan level tertentu.</small>
+                                </div>
+                            </div>
+                            <div class="grand-display text-lg-right mt-4 mt-lg-0">
+                                <span class="grand-label text-uppercase">GRANDTOTAL</span>
+                                <div class="grand-amount" data-summary="grand">Rp 0</div>
+                                <div class="small text-white-75">Total item <strong data-summary="items">0</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card detail-card shadow-sm mb-4">
+                    <div
+                        class="card-header bg-white border-0 d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between">
+                        <div>
+                            <h3 class="h5 font-weight-bold mb-1">Detail Penjualan</h3>
+                            <p class="small text-muted mb-0">Kolom input berada di bagian atas, tabel daftar barang
+                                tepat di bawahnya untuk memantau transaksi.</p>
+                        </div>
+                        <div class="mt-3 mt-md-0 text-muted small">
+                            Tekan Enter untuk berpindah kolom, F2 untuk langsung menambah baris.
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="quick-entry-grid">
+                            <div class="entry-field position-relative">
+                                <label for="quick-product-input" class="font-weight-semibold">Produk</label>
+                                <input type="text" id="quick-product-input" class="form-control form-control-lg"
+                                    placeholder="Ketik nama atau kode produk" data-next="#quick-qty"
+                                    data-prev="#pelanggan_autocomplete" autocomplete="off">
+                                <input type="hidden" id="quick-product-id">
+                                <div class="product-suggestions shadow-sm" id="product-suggestion-box" hidden></div>
+                                <small class="text-muted">Ketik untuk autocomplete, tekan Enter ke kolom
+                                    berikutnya</small>
+                                <div class="small text-muted mt-1">Stok tersedia: <span id="quick-stock-indicator">-</span></div>
+                            </div>
+                            <div class="entry-field">
+                                <label for="quick-qty" class="font-weight-semibold">Jumlah</label>
+                                <input type="number" id="quick-qty" class="form-control form-control-lg" min="1"
+                                    value="1" data-next="#quick-price" data-prev="#quick-product">
+                            </div>
+                            <div class="entry-field">
+                                <label for="quick-price" class="font-weight-semibold">Harga jual</label>
+                                <input type="number" id="quick-price" class="form-control form-control-lg" min="0"
+                                    step="0.01" placeholder="0" data-next="#quick-discount" data-prev="#quick-qty">
+                            </div>
+                            <div class="entry-field">
+                                <label for="quick-discount" class="font-weight-semibold">Diskon (%)</label>
+                                <input type="number" id="quick-discount" class="form-control form-control-lg" min="0"
+                                    max="100" step="0.5" value="0" data-next="#quick-tax" data-prev="#quick-price">
+                            </div>
+                            <div class="entry-field">
+                                <label for="quick-tax" class="font-weight-semibold">Pajak (%)</label>
+                                <input type="number" id="quick-tax" class="form-control form-control-lg" min="0"
+                                    step="0.5" value="0" data-next="ADD_ITEM" data-prev="#quick-discount">
+                            </div>
+                            <div class="entry-field align-self-end">
+                                <button type="button" class="btn btn-entry btn-block" id="quick-add">
+                                    <i class="fas fa-plus mr-2"></i>Tambah [F2]
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive mt-4">
+                            <table class="table table-bordered table-hover sales-table" id="items-table">
+                                <thead>
+                                    <tr>
+                                        <th class="text-center" style="width: 40px;">No</th>
+                                        <th class="text-nowrap">Kode Barang</th>
+                                        <th>Nama Barang</th>
+                                        <th class="text-center">Stok</th>
+                                        <th class="text-center">Qty</th>
+                                        <th class="text-right">Harga Jual</th>
+                                        <th class="text-center">Diskon</th>
+                                        <th class="text-center">Pajak</th>
+                                        <th class="text-right">Harga Total</th>
+                                        <th class="text-center" style="width: 110px;">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="items-table-body">
+                                    <tr id="empty-row">
+                                        <td colspan="10" class="text-center text-muted py-4">Belum ada produk. Gunakan
+                                            kolom input di atas atau tekan F2 setelah mengisi.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card action-card shadow-sm mb-5">
+                    <div class="card-body d-flex flex-column flex-md-row align-items-md-center">
+                        <div class="action-buttons mb-3 mb-md-0">
+                            <button type="button" class="btn btn-outline-secondary mr-2 mb-2" id="new-sale"
+                                data-shortcut="F1">
+                                <i class="fas fa-file mr-1"></i>Baru (F1)
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary mr-2 mb-2" id="cancel-entry"
+                                data-shortcut="F3">
+                                <i class="fas fa-undo mr-1"></i>Batal (F3)
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary mr-2 mb-2" id="go-back"
+                                data-shortcut="Esc">
+                                <i class="fas fa-arrow-left mr-1"></i>Kembali (Esc)
+                            </button>
+                        </div>
+                        <div class="ml-md-auto">
+                            <button type="button" class="btn btn-bayar btn-lg px-5" id="pay-button" data-shortcut="F4">
+                                <span class="h5 mb-0 d-block">Bayar (F4)</span>
+                                <small class="text-uppercase">Simpan dan selesaikan</small>
+                            </button>
+                            <button type="submit" id="actual-submit" class="d-none">Simpan</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="col-xl-3 order-1 order-xl-2 mb-4 mb-xl-0">
+            <div class="card summary-card shadow-sm mb-4 sticky-card">
                 <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <span class="stat-icon {{ card.accent }}">
-                            <i class="fas {{ card.icon }}"></i>
-                        </span>
-                        <span class="badge badge-light text-uppercase font-weight-semibold">{{ card.label }}</span>
-                    </div>
-                    <div class="stat-value mb-1">
-                        {% if card.type == 'currency' %}
-                            {{ ('Rp {:,.0f}'.format(card.value)).replace(',', '.') }}
-                        {% else %}
-                            {{ '{:,}'.format(card.value).replace(',', '.') }}
-                        {% endif %}
-                    </div>
-                    <p class="small text-muted mb-0">{{ card.description }}</p>
+                    <h3 class="h6 font-weight-bold mb-3">Ringkasan Hitung</h3>
+                    <ul class="list-unstyled mb-0">
+                        <li class="d-flex justify-content-between mb-2">
+                            <span>Subtotal</span>
+                            <span class="font-weight-semibold" data-summary="subtotal">Rp 0</span>
+                        </li>
+                        <li class="d-flex justify-content-between mb-2">
+                            <span>Diskon</span>
+                            <span class="font-weight-semibold text-danger" data-summary="discount">Rp 0</span>
+                        </li>
+                        <li class="d-flex justify-content-between mb-2">
+                            <span>Pajak</span>
+                            <span class="font-weight-semibold text-info" data-summary="tax">Rp 0</span>
+                        </li>
+                        <li class="d-flex justify-content-between pt-2 mt-2 border-top">
+                            <span class="font-weight-bold text-uppercase">Grand Total</span>
+                            <span class="font-weight-bold text-primary" data-summary="grand">Rp 0</span>
+                        </li>
+                    </ul>
                 </div>
             </div>
-        </div>
-    {% endfor %}
-</div>
-{% endif %}
 
-<div class="row align-items-start" id="sales-form">
-    <div class="col-lg-8">
-        <form method="POST" id="salesForm">
-            {{ form.hidden_tag() }}
+            <div class="card pnl-card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div>
+                            <p class="eyebrow text-uppercase mb-1 text-primary-50">Realtime Insight</p>
+                            <h3 class="h6 font-weight-bold mb-0">Laporan Laba Rugi</h3>
+                        </div>
+                        <div class="text-right">
+                            <span class="pnl-profit-chip" data-pnl="margin">0%</span>
+                            <small class="d-block text-muted mt-1">Margin bersih</small>
+                        </div>
+                    </div>
+                    <div class="pnl-progress mb-4">
+                        <div class="pnl-progress-bar" data-pnl-progress style="width: 0%;"></div>
+                    </div>
+                    <ul class="list-unstyled pnl-metrics mb-0">
+                        <li>
+                            <div>
+                                <span class="metric-label">Penjualan bersih</span>
+                                <div class="metric-title">Revenue</div>
+                            </div>
+                            <div class="metric-value" data-pnl="revenue">Rp 0</div>
+                        </li>
+                        <li>
+                            <div>
+                                <span class="metric-label">Harga pokok penjualan</span>
+                                <div class="metric-title">COGS</div>
+                            </div>
+                            <div class="metric-value text-danger" data-pnl="cogs">Rp 0</div>
+                        </li>
+                        <li>
+                            <div>
+                                <span class="metric-label">Laba kotor</span>
+                                <div class="metric-title">Gross Profit</div>
+                            </div>
+                            <div class="metric-value text-success" data-pnl="gross">Rp 0</div>
+                        </li>
+                        <li>
+                            <div>
+                                <span class="metric-label">Diskon diberikan</span>
+                                <div class="metric-title">Discount</div>
+                            </div>
+                            <div class="metric-value text-warning" data-pnl="discount">Rp 0</div>
+                        </li>
+                        <li>
+                            <div>
+                                <span class="metric-label">Pajak dipungut</span>
+                                <div class="metric-title">Tax</div>
+                            </div>
+                            <div class="metric-value text-info" data-pnl="tax">Rp 0</div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
 
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
-                    <h2 class="h5 font-weight-bold mb-3">Informasi pelanggan</h2>
-                    <div class="form-group mb-2">
-                        <label for="pelanggan_id" class="font-weight-semibold">Pilih pelanggan</label>
-                        {{ form.pelanggan_id(class="custom-select custom-select-lg", id="pelanggan_id", required=True) }}
-                        {% if form.pelanggan_id.errors %}
-                            <small class="text-danger d-block mt-2">{{ form.pelanggan_id.errors[0] }}</small>
-                        {% endif %}
-                    </div>
-                    <div id="customer-meta" class="small text-muted">
-                        Pilih pelanggan untuk menampilkan kontak dan alamat.
-                    </div>
-                </div>
-            </div>
-
-            <div class="card card-panel shadow-sm mb-4">
-                <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
-                    <div>
-                        <h2 class="h5 font-weight-bold mb-1">Detail barang</h2>
-                        <p class="small text-muted mb-0">Tambahkan produk, atur jumlah, diskon, dan pajak untuk menghitung total otomatis.</p>
-                    </div>
-                    <div class="mt-3 mt-md-0">
-                        <button type="button" class="btn btn-sm btn-outline-secondary mr-2" id="clear-items">
-                            <i class="fas fa-undo mr-1"></i>Kosongkan
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="add-item">
-                            <i class="fas fa-plus mr-1"></i>Tambah Barang
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-modern mb-0 table-items">
-                            <thead>
-                                <tr>
-                                    <th style="min-width: 220px;">Produk</th>
-                                    <th style="width: 90px;">Jumlah</th>
-                                    <th style="width: 140px;">Harga</th>
-                                    <th style="width: 110px;">Diskon (%)</th>
-                                    <th style="width: 110px;">Pajak (%)</th>
-                                    <th style="width: 140px;">Total</th>
-                                    <th style="width: 60px;" class="text-right">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody id="items-table-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card shadow-sm mb-4">
-                <div class="card-body">
-                    <h3 class="h6 font-weight-bold mb-3">Ringkasan pembayaran</h3>
-                    <div class="summary-row d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted">Total item</span>
-                        <span class="font-weight-semibold" id="summary-items">0</span>
-                    </div>
-                    <div class="summary-row d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted">Subtotal</span>
-                        <span class="font-weight-semibold" id="summary-subtotal">Rp 0</span>
-                    </div>
-                    <div class="summary-row d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted">Diskon</span>
-                        <span class="font-weight-semibold text-danger" id="summary-discount">Rp 0</span>
-                    </div>
-                    <div class="summary-row d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted">Pajak</span>
-                        <span class="font-weight-semibold text-info" id="summary-tax">Rp 0</span>
-                    </div>
-                    <div class="summary-row grand-total d-flex justify-content-between align-items-center pt-2 mt-2 border-top">
-                        <span class="font-weight-bold text-uppercase">Grand total</span>
-                        <span class="h4 font-weight-bold mb-0 text-primary" id="summary-grand">Rp 0</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="text-right mb-5">
-                <button type="submit" class="btn btn-primary btn-lg">
-                    <i class="fas fa-save mr-2"></i>Simpan Penjualan
-                </button>
-            </div>
-        </form>
-    </div>
-
-    <div class="col-lg-4">
-        <div class="card shadow-sm mb-4">
-            <div class="card-body">
-                <h3 class="h6 font-weight-bold mb-3">Fokus penjualan</h3>
-                {% set badge_map = {'warning': 'badge-warning', 'info': 'badge-info', 'success': 'badge-success', 'secondary': 'badge-secondary'} %}
-                <ul class="list-unstyled mb-0">
-                    {% for insight in sales_insights %}
+                    <h3 class="h6 font-weight-bold mb-3">Fokus penjualan</h3>
+                    {% set badge_map = {'warning': 'badge-warning', 'info': 'badge-info', 'success': 'badge-success',
+                    'secondary': 'badge-secondary'} %}
+                    {% if sales_insights %}
+                    <ul class="list-unstyled mb-0">
+                        {% for insight in sales_insights %}
                         <li class="mb-3">
-                            <div class="d-flex align-items-center justify-content-between">
+                            <div class="d-flex justify-content-between align-items-center">
                                 <span class="font-weight-semibold">{{ insight.title }}</span>
                                 <span class="badge badge-pill {{ badge_map.get(insight.status, 'badge-secondary') }}">
                                     {% if insight.type == 'currency' %}
-                                        {{ ('Rp {:,.0f}'.format(insight.value)).replace(',', '.') }}
+                                    {{ ('Rp {:,.0f}'.format(insight.value)).replace(',', '.') }}
                                     {% else %}
-                                        {{ '{:,}'.format(insight.value).replace(',', '.') }}
+                                    {{ '{:,}'.format(insight.value).replace(',', '.') }}
                                     {% endif %}
                                 </span>
                             </div>
                             <p class="small text-muted mb-0">{{ insight.description }}</p>
                         </li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
-
-        <div class="card shadow-sm mb-4">
-            <div class="card-body">
-                <h3 class="h6 font-weight-bold mb-3">Transaksi terbaru</h3>
-                {% if recent_sales %}
-                    <ul class="list-group list-group-flush">
-                        {% for sale in recent_sales %}
-                            <li class="list-group-item px-0">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div>
-                                        <div class="font-weight-semibold">{{ sale.no_faktur }}</div>
-                                        <small class="text-muted d-block">{{ sale.tanggal }} • {{ sale.pelanggan }}</small>
-                                    </div>
-                                    <div class="text-right">
-                                        <div class="font-weight-semibold text-dark">
-                                            {{ ('Rp {:,.0f}'.format(sale.total)).replace(',', '.') }}
-                                        </div>
-                                        <small class="text-muted">{{ sale.items }} item</small>
-                                    </div>
-                                </div>
-                            </li>
                         {% endfor %}
                     </ul>
-                {% else %}
-                    <p class="small text-muted mb-0">Belum ada riwayat penjualan yang tercatat.</p>
-                {% endif %}
+                    {% else %}
+                    <p class="small text-muted mb-0">Belum ada insight yang dapat ditampilkan.</p>
+                    {% endif %}
+                </div>
             </div>
-        </div>
 
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h3 class="h6 font-weight-bold mb-3">Tips penginputan</h3>
-                <ul class="small text-muted pl-3 mb-0">
-                    <li>Tekan tombol <strong>Tambah Barang</strong> untuk menambahkan baris produk baru.</li>
-                    <li>Harga otomatis mengikuti katalog, namun tetap bisa disesuaikan manual.</li>
-                    <li>Isi diskon dan pajak per baris untuk menghitung total secara akurat.</li>
-                </ul>
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3">Transaksi terbaru</h3>
+                    {% if recent_sales %}
+                    <ul class="list-group list-group-flush">
+                        {% for sale in recent_sales %}
+                        <li class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="font-weight-semibold">{{ sale.no_faktur }}</div>
+                                    <small class="text-muted d-block">{{ sale.tanggal }} • {{ sale.pelanggan }}</small>
+                                </div>
+                                <div class="text-right">
+                                    <div class="font-weight-semibold text-dark">
+                                        {{ ('Rp {:,.0f}'.format(sale.total)).replace(',', '.') }}
+                                    </div>
+                                    <small class="text-muted">{{ sale.items }} item</small>
+                                </div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="small text-muted mb-0">Belum ada riwayat penjualan yang tercatat.</p>
+                    {% endif %}
+                </div>
             </div>
+
         </div>
     </div>
-</div>
-
-<template id="item-row-template">
-    <tr>
-        <td>
-            <select name="produk_id[]" class="custom-select product-select" required>
-                <option value="">Pilih produk</option>
-                {% for produk in produk_list %}
-                    <option value="{{ produk.id }}">{{ produk.nama_produk }} ({{ produk.kode_produk }})</option>
-                {% endfor %}
-            </select>
-        </td>
-        <td>
-            <input type="number" name="jumlah[]" class="form-control item-qty" min="1" value="1" required>
-        </td>
-        <td>
-            <input type="number" name="harga[]" class="form-control item-price" min="0" step="0.01" placeholder="0">
-        </td>
-        <td>
-            <input type="number" name="diskon[]" class="form-control item-discount" min="0" max="100" step="0.5" placeholder="0">
-        </td>
-        <td>
-            <input type="number" name="pajak[]" class="form-control item-tax" min="0" step="0.5" placeholder="0">
-        </td>
-        <td>
-            <span class="item-total text-nowrap">Rp 0</span>
-        </td>
-        <td class="text-right">
-            <button type="button" class="btn btn-link text-danger remove-item" title="Hapus baris">
-                <i class="fas fa-times"></i>
-            </button>
-        </td>
-    </tr>
-</template>
+</section>
 
 <script type="application/json" id="product-data">{{ produk_payload|tojson }}</script>
 <script type="application/json" id="customer-data">{{ customer_lookup|tojson }}</script>
 
 <style>
-    .hero-card {
-        border-radius: 20px;
-        padding: 2.5rem 2rem;
+    .sales-console {
+        color: #0f172a;
     }
-    .hero-card .btn {
-        border-radius: 999px;
+
+    .sales-banner {
+        background: linear-gradient(120deg, #2563eb, #9333ea);
+        border-radius: 24px;
+        padding: 2rem;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
     }
-    .hero-meta .badge {
-        letter-spacing: 0.08em;
+
+    @media (min-width: 768px) {
+        .sales-banner {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+        }
     }
+
+    .sales-banner .eyebrow {
+        letter-spacing: 0.25em;
+        font-size: 0.75rem;
+        opacity: 0.75;
+    }
+
     .text-white-75 {
         color: rgba(255, 255, 255, 0.75) !important;
     }
-    .font-weight-semibold {
+
+    .shortcut-hints span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 999px;
+        padding: 0.35rem 0.9rem;
         font-weight: 600;
+        margin-left: 0.4rem;
+        font-size: 0.85rem;
+        color: #fff;
     }
-    .stat-card {
+
+    .sales-meta,
+    .detail-card,
+    .action-card,
+    .summary-card {
+        border-radius: 20px;
+        border: none;
+    }
+
+    .sales-meta .form-control-lg,
+    .sales-meta .custom-select-lg {
+        border-radius: 14px;
+    }
+
+    .grand-display {
+        background: #0f172a;
         border-radius: 18px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        padding: 1.75rem 2rem;
+        color: #fff;
+        min-width: 240px;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
     }
-    .stat-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 18px 35px rgba(15, 23, 42, 0.12);
-    }
-    .stat-card .stat-icon {
-        font-size: 1.75rem;
-    }
-    .stat-card .stat-value {
-        font-size: 1.85rem;
-        font-weight: 700;
-    }
-    .card-panel {
-        border-radius: 18px;
-    }
-    .table-items thead th {
-        text-transform: uppercase;
+
+    .grand-label {
+        letter-spacing: 0.3em;
         font-size: 0.75rem;
-        letter-spacing: 0.06em;
-        border-bottom: 2px solid rgba(15, 23, 42, 0.08);
-        white-space: nowrap;
+        opacity: 0.7;
     }
-    .table-items tbody td {
+
+    .grand-amount {
+        font-size: 2.8rem;
+        font-weight: 700;
+        line-height: 1.1;
+    }
+
+    .quick-entry-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 1rem;
+    }
+
+    .product-suggestions {
+        position: absolute;
+        top: calc(100% + 0.4rem);
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: 0 18px 35px rgba(15, 23, 42, 0.14);
+        max-height: 260px;
+        overflow-y: auto;
+        z-index: 50;
+    }
+
+    .product-suggestions[hidden] {
+        display: none;
+    }
+
+    .product-suggestions button {
+        width: 100%;
+        background: none;
+        border: 0;
+        padding: 0.6rem 0.9rem;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+        color: #111827;
+    }
+
+    .product-suggestions button:hover,
+    .product-suggestions button:focus {
+        background: rgba(37, 99, 235, 0.08);
+        outline: none;
+    }
+
+    .product-suggestions button.suggestion-active {
+        background: rgba(37, 99, 235, 0.14);
+    }
+
+    .product-suggestions small {
+        color: #6b7280;
+        margin-left: 0.5rem;
+    }
+
+    .entry-field label {
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #475569;
+    }
+
+    .entry-field small {
+        font-size: 0.75rem;
+    }
+
+    .btn-entry {
+        height: 100%;
+        border-radius: 16px;
+        background: #1d4ed8;
+        color: #fff;
+        font-weight: 600;
+        box-shadow: 0 15px 30px rgba(29, 78, 216, 0.35);
+        border: none;
+    }
+
+    .btn-entry:hover {
+        background: #1e40af;
+        color: #fff;
+    }
+
+    .sales-table thead th {
+        background: #f8fafc;
+        border-top: none;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.75rem;
+        color: #475569;
+    }
+
+    .sales-table tbody td {
         vertical-align: middle;
     }
-    .table-items tbody tr:hover {
-        background-color: rgba(37, 99, 235, 0.04);
+
+    .badge-soft {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.85rem;
+        border-radius: 999px;
+        background: rgba(79, 70, 229, 0.15);
+        color: #312e81;
+        font-weight: 600;
     }
-    .summary-row {
-        font-size: 0.95rem;
+
+    .btn-bayar {
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(90deg, #f97316, #ec4899);
+        color: #fff;
+        box-shadow: 0 18px 40px rgba(236, 72, 153, 0.4);
+        transition: transform 0.15s ease;
     }
-    .grand-total .h4 {
-        font-size: 1.5rem;
+
+    .btn-bayar:hover {
+        transform: translateY(-2px);
+        color: #fff;
     }
-    .form-card {
-        border-radius: 20px;
+
+    .action-card .btn {
+        border-radius: 12px;
     }
+
+    .summary-card ul li span:last-child {
+        min-width: 100px;
+        text-align: right;
+    }
+
     .sticky-card {
         position: sticky;
-        top: 1.25rem;
+        top: 1rem;
     }
-    @media (max-width: 992px) {
-        .sticky-card {
-            position: static;
-            top: auto;
+
+    .pnl-card {
+        border-radius: 20px;
+        border: none;
+    }
+
+
+    .pnl-progress {
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.08);
+    }
+
+    .pnl-progress-bar {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #22c55e, #16a34a);
+        transition: width 0.3s ease;
+    }
+
+    .pnl-metrics li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    }
+
+    .pnl-metrics li:last-child {
+        border-bottom: none;
+    }
+
+    .metric-label {
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        letter-spacing: 0.15em;
+        color: #94a3b8;
+    }
+
+    .metric-title {
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .metric-value {
+        font-weight: 700;
+        min-width: 120px;
+        text-align: right;
+    }
+
+    .pnl-profit-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.4rem 0.9rem;
+        border-radius: 999px;
+        font-weight: 600;
+        background: rgba(16, 185, 129, 0.15);
+        color: #0f766e;
+    }
+
+    .pnl-profit-chip.negative {
+        background: rgba(248, 113, 113, 0.18);
+        color: #b91c1c;
+    }
+
+    .text-primary-50 {
+        color: rgba(37, 99, 235, 0.65) !important;
+    }
+
+    @media (max-width: 991px) {
+        .grand-display {
+            width: 100%;
+        }
+
+        .shortcut-hints {
+            text-align: left;
         }
     }
+
     @media (max-width: 576px) {
-        .hero-card {
-            border-radius: 16px;
-            padding: 2rem 1.5rem;
+        .sales-banner {
+            padding: 1.5rem;
         }
-        .stat-card .stat-value {
-            font-size: 1.6rem;
+
+        .quick-entry-grid {
+            grid-template-columns: repeat(1, minmax(0, 1fr));
         }
-        .table-items thead {
-            display: none;
-        }
-        .table-items tbody tr {
-            display: block;
-        }
-        .table-items tbody td {
-            display: flex;
-            justify-content: space-between;
-            padding: 0.5rem 1rem;
-            border-top: 1px solid rgba(15, 23, 42, 0.08);
-        }
-        .table-items tbody td:first-child {
-            border-top: none;
-        }
-        .table-items tbody td > span {
-            margin-left: 1rem;
+
+        .action-card .btn-bayar {
+            width: 100%;
         }
     }
 </style>
@@ -357,22 +651,174 @@
         const customerDataScript = document.getElementById('customer-data');
         const products = productDataScript ? JSON.parse(productDataScript.textContent || '[]') : [];
         const customers = customerDataScript ? JSON.parse(customerDataScript.textContent || '{}') : {};
-
         const productMap = new Map(products.map(product => [String(product.id), product]));
-        const itemsTableBody = document.getElementById('items-table-body');
-        const addItemButton = document.getElementById('add-item');
-        const clearItemsButton = document.getElementById('clear-items');
+
+        function buildProductLabel(product) {
+            if (!product) {
+                return '';
+            }
+            const code = product.code || 'Tanpa kode';
+            const name = product.name || 'Produk';
+            return `${code} — ${name}`;
+        }
+
+        const productLabelMap = new Map();
+        const productIdToLabel = new Map();
+        products.forEach(product => {
+            const label = buildProductLabel(product);
+            productLabelMap.set(label, String(product.id));
+            productIdToLabel.set(String(product.id), label);
+        });
+
+        const productBaseStockMap = new Map();
+        const productStockMap = new Map();
+        products.forEach(product => {
+            const stockValue = Number(
+                product.stok ??
+                product.stock ??
+                product.stok_lama ??
+                product.stock_available ??
+                0
+            );
+            const key = String(product.id);
+            productBaseStockMap.set(key, stockValue);
+            productStockMap.set(key, stockValue);
+        });
+
         const salesForm = document.getElementById('salesForm');
-        const rowTemplate = document.getElementById('item-row-template');
-
-        const subtotalEl = document.getElementById('summary-subtotal');
-        const discountEl = document.getElementById('summary-discount');
-        const taxEl = document.getElementById('summary-tax');
-        const grandEl = document.getElementById('summary-grand');
-        const itemsCountEl = document.getElementById('summary-items');
-
         const customerSelect = document.getElementById('pelanggan_id');
+        const customerInput = document.getElementById('pelanggan_autocomplete');
         const customerMeta = document.getElementById('customer-meta');
+        const priceLevelSelect = document.getElementById('price_level_selector');
+        const quickStockIndicator = document.getElementById('quick-stock-indicator');
+
+        const quickProductInput = document.getElementById('quick-product-input');
+        const quickProductHidden = document.getElementById('quick-product-id');
+        const quickQty = document.getElementById('quick-qty');
+        const quickPrice = document.getElementById('quick-price');
+        const quickDiscount = document.getElementById('quick-discount');
+        const quickTax = document.getElementById('quick-tax');
+        const quickAddButton = document.getElementById('quick-add');
+        const cancelEntryButton = document.getElementById('cancel-entry');
+        const newSaleButton = document.getElementById('new-sale');
+        const goBackButton = document.getElementById('go-back');
+        const payButton = document.getElementById('pay-button');
+
+        let customerPriceLevelId = null;
+        let manualPriceLevelId = null;
+        let currentPriceLevelId = null;
+
+        const itemsTableBody = document.getElementById('items-table-body');
+        const emptyRow = document.getElementById('empty-row');
+
+        const summaryNodes = {
+            subtotal: document.querySelectorAll('[data-summary="subtotal"]'),
+            discount: document.querySelectorAll('[data-summary="discount"]'),
+            tax: document.querySelectorAll('[data-summary="tax"]'),
+            grand: document.querySelectorAll('[data-summary="grand"]'),
+            items: document.querySelectorAll('[data-summary="items"]')
+        };
+        const pnlNodes = {
+            revenue: document.querySelectorAll('[data-pnl="revenue"]'),
+            cogs: document.querySelectorAll('[data-pnl="cogs"]'),
+            gross: document.querySelectorAll('[data-pnl="gross"]'),
+            discount: document.querySelectorAll('[data-pnl="discount"]'),
+            tax: document.querySelectorAll('[data-pnl="tax"]'),
+            margin: document.querySelectorAll('[data-pnl="margin"]')
+        };
+        const pnlProgressBar = document.querySelector('[data-pnl-progress]');
+
+        function buildCustomerLabel(data) {
+            if (!data) {
+                return '';
+            }
+            const name = data.name || 'Tanpa nama';
+            const code = data.code || '-';
+            return `${name} (${code})`;
+        }
+
+        function resetProductStockMap() {
+            productStockMap.clear();
+            productBaseStockMap.forEach((value, key) => {
+                productStockMap.set(key, value);
+            });
+        }
+
+        function getAvailableStock(productId) {
+            if (!productId) {
+                return 0;
+            }
+            const key = String(productId);
+            if (!productStockMap.has(key)) {
+                const fallback = productMap.get(key);
+                const fallbackValue = Number(
+                    fallback?.stok ??
+                    fallback?.stock ??
+                    fallback?.stok_lama ??
+                    fallback?.stock_available ??
+                    0
+                );
+                productStockMap.set(key, fallbackValue);
+            }
+            return productStockMap.get(key) ?? 0;
+        }
+
+        function setAvailableStock(productId, value) {
+            if (!productId) {
+                return;
+            }
+            productStockMap.set(String(productId), Math.max(0, value));
+        }
+
+        function updateQuickStockIndicator(productId) {
+            if (!quickStockIndicator) {
+                return;
+            }
+            if (!productId) {
+                quickStockIndicator.textContent = '-';
+                return;
+            }
+            quickStockIndicator.textContent = getAvailableStock(productId);
+        }
+
+        function restoreRowStock(row) {
+            if (!row) {
+                return;
+            }
+            const productId = row.dataset.productId;
+            if (!productId) {
+                return;
+            }
+            const qtyVal = parseNumber(row.dataset.qty);
+            const current = getAvailableStock(productId);
+            setAvailableStock(productId, current + qtyVal);
+            if (quickProductHidden && quickProductHidden.value === productId) {
+                updateQuickStockIndicator(productId);
+            }
+        }
+
+        function updateCurrentPriceLevel(triggerSync = true) {
+            let effective = null;
+            if (manualPriceLevelId) {
+                effective = manualPriceLevelId;
+            } else if (customerPriceLevelId) {
+                effective = customerPriceLevelId;
+            }
+            currentPriceLevelId = effective ? String(effective) : null;
+            if (triggerSync) {
+                syncProductInputToId(false);
+            }
+        }
+
+        const customerLabelMap = new Map();
+        const customerIdToLabel = new Map();
+        Object.entries(customers).forEach(([id, data]) => {
+            const label = buildCustomerLabel(data);
+            if (label) {
+                customerLabelMap.set(label, id);
+                customerIdToLabel.set(id, label);
+            }
+        });
 
         function formatCurrency(value) {
             const formatter = new Intl.NumberFormat('id-ID', {
@@ -383,223 +829,763 @@
             return formatter.format(value || 0);
         }
 
-        function getCustomerData(id) {
-            if (id === undefined || id === null) {
-                return null;
-            }
-            const key = String(id);
-            return customers[key] || null;
-        }
-
-        function updateCustomerMeta() {
-            const selected = customerSelect ? customerSelect.value : null;
-            const data = getCustomerData(selected);
-            if (!customerMeta) {
-                return;
-            }
-            if (data) {
-                customerMeta.innerHTML = `
-                    <span class="badge badge-light mr-2">ID ${data.code || '-'}</span>
-                    <span class="d-block mt-1">Kontak: ${data.kontak || 'belum diisi'}</span>
-                    <span class="d-block">Alamat: ${data.alamat || 'belum diisi'}</span>
-                `;
-            } else {
-                customerMeta.textContent = 'Pilih pelanggan untuk menampilkan kontak dan alamat.';
-            }
-        }
-
         function parseNumber(value) {
             const parsed = parseFloat(value);
             return Number.isFinite(parsed) ? parsed : 0;
         }
 
-        function updateTotals() {
-            let subtotal = 0;
-            let totalDiscount = 0;
-            let totalTax = 0;
-            let totalItems = 0;
+        function clamp(value, min, max) {
+            let result = parseNumber(value);
+            if (Number.isFinite(min) && result < min) {
+                result = min;
+            }
+            if (Number.isFinite(max) && result > max) {
+                result = max;
+            }
+            return result;
+        }
 
-            itemsTableBody.querySelectorAll('tr').forEach(row => {
-                const subtotalVal = parseNumber(row.dataset.subtotal);
-                const discountVal = parseNumber(row.dataset.discount);
-                const taxVal = parseNumber(row.dataset.tax);
-                const qtyVal = parseNumber(row.querySelector('.item-qty').value);
+        function escapeHtml(value) {
+            const div = document.createElement('div');
+            div.textContent = value == null ? '' : value;
+            return div.innerHTML;
+        }
 
-                subtotal += subtotalVal;
-                totalDiscount += discountVal;
-                totalTax += taxVal;
-                totalItems += qtyVal;
+        function computeLine(qty, price, discountPercent, taxPercent) {
+            const subtotal = qty * price;
+            const discountValue = subtotal * (discountPercent / 100);
+            const taxableBase = subtotal - discountValue;
+            const taxValue = taxableBase * (taxPercent / 100);
+            const total = taxableBase + taxValue;
+            return { subtotal, discountValue, taxValue, total };
+        }
+
+        function getRows() {
+            return Array.from(itemsTableBody.querySelectorAll('tr[data-row="true"]'));
+        }
+
+        function toggleEmptyState() {
+            if (!emptyRow) {
+                return;
+            }
+            const hasRows = getRows().length > 0;
+            emptyRow.classList.toggle('d-none', hasRows);
+        }
+
+        function renderSummary(key, value, isCurrency = true) {
+            const nodes = summaryNodes[key];
+            if (!nodes) {
+                return;
+            }
+            const text = isCurrency ? formatCurrency(value) : value.toString();
+            nodes.forEach(node => {
+                node.textContent = text;
             });
-
-            const grandTotal = subtotal - totalDiscount + totalTax;
-
-            subtotalEl.textContent = formatCurrency(subtotal);
-            discountEl.textContent = formatCurrency(totalDiscount);
-            taxEl.textContent = formatCurrency(totalTax);
-            grandEl.textContent = formatCurrency(grandTotal);
-            itemsCountEl.textContent = totalItems.toString();
         }
 
-        function clampValue(input, minValue, maxValue) {
-            if (!input) {
-                return;
-            }
-            let value = parseNumber(input.value);
-            if (value < minValue) {
-                value = minValue;
-            }
-            if (Number.isFinite(maxValue) && value > maxValue) {
-                value = maxValue;
-            }
-            input.value = value;
-        }
-
-        function updateRowTotals(row) {
-            if (!row) {
-                return;
-            }
-            const qtyInput = row.querySelector('.item-qty');
-            const priceInput = row.querySelector('.item-price');
-            const discountInput = row.querySelector('.item-discount');
-            const taxInput = row.querySelector('.item-tax');
-            const totalLabel = row.querySelector('.item-total');
-
-            clampValue(qtyInput, 1);
-            clampValue(priceInput, 0);
-            clampValue(discountInput, 0, 100);
-            clampValue(taxInput, 0);
-
-            const qty = parseNumber(qtyInput.value);
-            const price = parseNumber(priceInput.value);
-            const discount = parseNumber(discountInput.value);
-            const tax = parseNumber(taxInput.value);
-
-            const baseAmount = qty * price;
-            const discountAmount = baseAmount * (discount / 100);
-            const taxableBase = baseAmount - discountAmount;
-            const taxAmount = taxableBase * (tax / 100);
-            const totalAmount = taxableBase + taxAmount;
-
-            row.dataset.subtotal = baseAmount;
-            row.dataset.discount = discountAmount;
-            row.dataset.tax = taxAmount;
-            row.dataset.total = totalAmount;
-
-            if (totalLabel) {
-                totalLabel.textContent = formatCurrency(totalAmount);
-            }
-
-            updateTotals();
-        }
-
-        function attachRowEvents(row) {
-            if (!row) {
-                return;
-            }
-            const productSelect = row.querySelector('.product-select');
-            const qtyInput = row.querySelector('.item-qty');
-            const priceInput = row.querySelector('.item-price');
-            const discountInput = row.querySelector('.item-discount');
-            const taxInput = row.querySelector('.item-tax');
-            const removeButton = row.querySelector('.remove-item');
-
-            if (productSelect) {
-                productSelect.addEventListener('change', function () {
-                    const product = productMap.get(productSelect.value);
-                    if (product) {
-                        priceInput.value = Number(product.price || 0).toFixed(2);
-                    } else {
-                        priceInput.value = '';
-                    }
-                    updateRowTotals(row);
-                });
-            }
-
-            [qtyInput, priceInput, discountInput, taxInput].forEach(input => {
-                if (!input) {
+        function renderProfitLoss({ revenue = 0, cogs = 0, grossProfit = 0, discount = 0, tax = 0, margin = 0 }) {
+            const values = {
+                revenue,
+                cogs: -cogs,
+                gross: grossProfit,
+                discount: -discount,
+                tax
+            };
+            Object.entries(values).forEach(([key, val]) => {
+                const nodes = pnlNodes[key];
+                if (!nodes || !nodes.length) {
                     return;
                 }
-                input.addEventListener('input', function () {
-                    updateRowTotals(row);
-                });
-                input.addEventListener('blur', function () {
-                    updateRowTotals(row);
+                const formatted = formatCurrency(val);
+                nodes.forEach(node => {
+                    node.textContent = formatted;
                 });
             });
-
-            if (removeButton) {
-                removeButton.addEventListener('click', function () {
-                    row.remove();
-                    ensureAtLeastOneRow();
-                    updateTotals();
-                });
+            const marginNodes = pnlNodes.margin || [];
+            const safeMargin = Number.isFinite(margin) ? margin : 0;
+            const marginText = `${safeMargin.toFixed(1)}%`;
+            marginNodes.forEach(node => {
+                node.textContent = marginText;
+                if (grossProfit < 0) {
+                    node.classList.add('negative');
+                } else {
+                    node.classList.remove('negative');
+                }
+            });
+            if (pnlProgressBar) {
+                const width = Math.max(0, Math.min(100, safeMargin));
+                pnlProgressBar.style.width = `${width}%`;
             }
         }
 
-        function ensureAtLeastOneRow() {
-            if (!itemsTableBody.querySelector('tr')) {
-                addItemRow();
+        function updateTotals() {
+            let subtotal = 0;
+            let discount = 0;
+            let tax = 0;
+            let items = 0;
+            let cogs = 0;
+
+            getRows().forEach(row => {
+                subtotal += parseNumber(row.dataset.subtotal);
+                discount += parseNumber(row.dataset.discountValue);
+                tax += parseNumber(row.dataset.taxValue);
+                items += parseNumber(row.dataset.qty);
+                cogs += parseNumber(row.dataset.costValue);
+            });
+
+            const grand = subtotal - discount + tax;
+            const revenue = subtotal - discount;
+            const grossProfit = revenue - cogs;
+            const margin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+
+            renderSummary('subtotal', subtotal);
+            renderSummary('discount', discount);
+            renderSummary('tax', tax);
+            renderSummary('grand', grand);
+            renderSummary('items', items, false);
+            renderProfitLoss({
+                revenue,
+                cogs,
+                grossProfit,
+                discount,
+                tax,
+                margin
+            });
+        }
+
+        function refreshRowNumbers() {
+            getRows().forEach((row, index) => {
+                const cell = row.querySelector('.row-index');
+                if (cell) {
+                    cell.textContent = index + 1;
+                }
+            });
+        }
+
+        function resetQuickEntry(clearProduct = false) {
+            if (clearProduct && quickProductInput) {
+                quickProductInput.value = '';
+            }
+            if (clearProduct && quickProductHidden) {
+                quickProductHidden.value = '';
+            }
+            if (clearProduct) {
+                updateQuickStockIndicator(null);
+            }
+            if (quickQty) {
+                quickQty.value = 1;
+            }
+            if (quickPrice) {
+                quickPrice.value = '';
+            }
+            if (quickDiscount) {
+                quickDiscount.value = 0;
+            }
+            if (quickTax) {
+                quickTax.value = 0;
+            }
+        }
+
+        function syncCustomerInputToSelect(triggerMeta = true) {
+            if (!customerInput || !customerSelect) {
+                return;
+            }
+            const label = (customerInput.value || '').trim();
+            const matchedId = customerLabelMap.get(label);
+            if (matchedId) {
+                customerSelect.value = matchedId;
+                customerInput.classList.remove('is-invalid');
             } else {
-                const rows = itemsTableBody.querySelectorAll('tr');
-                rows.forEach(row => {
-                    const removeButton = row.querySelector('.remove-item');
-                    if (removeButton) {
-                        removeButton.disabled = rows.length === 1;
-                    }
-                });
+                customerSelect.value = '0';
+                customerPriceLevelId = null;
+                updateCurrentPriceLevel();
+                if (label) {
+                    customerInput.classList.add('is-invalid');
+                } else {
+                    customerInput.classList.remove('is-invalid');
+                }
+            }
+            if (triggerMeta) {
+                updateCustomerMeta();
             }
         }
 
-        function addItemRow() {
-            const fragment = rowTemplate.content.cloneNode(true);
-            const row = fragment.querySelector('tr');
-            itemsTableBody.appendChild(row);
-            attachRowEvents(row);
-            updateRowTotals(row);
-            ensureAtLeastOneRow();
+        function applyCustomerSelectionFromSelect() {
+            if (!customerSelect || !customerInput) {
+                return;
+            }
+            const label = customerIdToLabel.get(String(customerSelect.value)) || '';
+            customerInput.value = label;
+            customerInput.classList.remove('is-invalid');
+            const data = customers[String(customerSelect.value)];
+            customerPriceLevelId = data && data.price_level_id !== undefined && data.price_level_id !== null
+                ? String(data.price_level_id)
+                : null;
+            updateCurrentPriceLevel();
         }
 
-        if (addItemButton) {
-            addItemButton.addEventListener('click', function () {
-                addItemRow();
+        function syncProductInputToId(focusNext = false) {
+            if (!quickProductInput || !quickProductHidden) {
+                return;
+            }
+            const label = (quickProductInput.value || '').trim();
+            const productId = productLabelMap.get(label);
+            if (productId) {
+                quickProductHidden.value = productId;
+                quickProductInput.classList.remove('is-invalid');
+                const product = productMap.get(productId);
+                updateQuickStockIndicator(productId);
+                if (product && quickPrice) {
+                    let priceToUse = product.price || 0;
+                    const levelPrices = product.level_prices || {};
+                    const levelKey = currentPriceLevelId !== null ? String(currentPriceLevelId) : null;
+                    if (levelKey) {
+                        // Try string key first (most common after JSON serialization),
+                        // then fall back to numeric key for robustness.
+                        if (Object.prototype.hasOwnProperty.call(levelPrices, levelKey)) {
+                            priceToUse = levelPrices[levelKey];
+                        } else if (Object.prototype.hasOwnProperty.call(levelPrices, Number(levelKey))) {
+                            priceToUse = levelPrices[Number(levelKey)];
+                        }
+                    }
+                    quickPrice.value = Number(priceToUse || 0).toFixed(2);
+                    if (quickQty) {
+                        quickQty.value = 1;
+                    }
+                }
+                if (focusNext && quickQty) {
+                    quickQty.focus();
+                }
+            } else {
+                quickProductHidden.value = '';
+                updateQuickStockIndicator(null);
+                if (label) {
+                    quickProductInput.classList.add('is-invalid');
+                } else {
+                    quickProductInput.classList.remove('is-invalid');
+                }
+            }
+        }
+
+        /* --- Autocomplete suggestion boxes (products & customers) --- */
+        const productSuggestionBox = document.getElementById('product-suggestion-box');
+        const customerSuggestionBox = document.getElementById('customer-suggestion-box');
+
+        function renderProductSuggestions(matches) {
+            if (!productSuggestionBox) return;
+            productSuggestionBox.innerHTML = '';
+            setProductActiveIndex(-1);
+            if (!matches.length) {
+                productSuggestionBox.hidden = true;
+                return;
+            }
+            matches.slice(0, 8).forEach(product => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.dataset.index = productSuggestionBox.children.length;
+                const label = buildProductLabel(product);
+                const right = `${product.code || '-'}${product.sku ? ' • ' + product.sku : ''}`;
+                button.innerHTML = `<span>${label}</span><small>${right}</small>`;
+                button.addEventListener('click', () => {
+                    quickProductInput.value = label;
+                    quickProductHidden.value = String(product.id);
+                    quickProductInput.classList.remove('is-invalid');
+                    productSuggestionBox.hidden = true;
+                    syncProductInputToId(true);
+                });
+                button.addEventListener('mouseover', () => setProductActiveIndex(Number(button.dataset.index)));
+                productSuggestionBox.appendChild(button);
+            });
+            productSuggestionBox.hidden = false;
+        }
+
+        let productActiveIndex = -1;
+        function setProductActiveIndex(idx) {
+            productActiveIndex = idx;
+            const children = productSuggestionBox ? Array.from(productSuggestionBox.children) : [];
+            children.forEach((child, i) => {
+                if (i === idx) child.classList.add('suggestion-active'); else child.classList.remove('suggestion-active');
             });
         }
+        function moveProductActive(delta) {
+            const children = productSuggestionBox ? Array.from(productSuggestionBox.children) : [];
+            if (!children.length) return;
+            let next = productActiveIndex + delta;
+            if (next < 0) next = children.length - 1;
+            if (next >= children.length) next = 0;
+            setProductActiveIndex(next);
+            children[next].scrollIntoView({ block: 'nearest' });
+        }
 
-        if (clearItemsButton) {
-            clearItemsButton.addEventListener('click', function () {
-                itemsTableBody.innerHTML = '';
-                addItemRow();
+        let productSuggestionTimer = null;
+        function handleProductSearchSuggestions() {
+            if (!quickProductInput) return;
+            const q = (quickProductInput.value || '').trim().toLowerCase();
+            if (productSuggestionTimer) clearTimeout(productSuggestionTimer);
+            if (!q) { if (productSuggestionBox) productSuggestionBox.hidden = true; return; }
+            productSuggestionTimer = setTimeout(() => {
+                const matches = products.filter(p => {
+                    const name = (p.name || '').toLowerCase();
+                    const code = (p.code || '').toLowerCase();
+                    const sku = (p.sku || '').toLowerCase();
+                    return name.includes(q) || code.includes(q) || sku.includes(q);
+                });
+                renderProductSuggestions(matches);
+            }, 150);
+        }
+
+        function renderCustomerSuggestions(matches) {
+            if (!customerSuggestionBox) return;
+            customerSuggestionBox.innerHTML = '';
+            setCustomerActiveIndex(-1);
+            if (!matches.length) { customerSuggestionBox.hidden = true; return; }
+            matches.slice(0, 8).forEach(item => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.dataset.index = customerSuggestionBox.children.length;
+                button.innerHTML = `<span>${item.label}</span><small>${item.code || '-'}</small>`;
+                button.addEventListener('click', () => {
+                    customerInput.value = item.label;
+                    customerSelect.value = String(item.id);
+                    customerInput.classList.remove('is-invalid');
+                    customerPriceLevelId = item.price_level_id !== undefined && item.price_level_id !== null ? String(item.price_level_id) : null;
+                    customerSuggestionBox.hidden = true;
+                    updateCurrentPriceLevel(false);
+                    updateCustomerMeta();
+                    customerInput.focus();
+                });
+                button.addEventListener('mouseover', () => setCustomerActiveIndex(Number(button.dataset.index)));
+                customerSuggestionBox.appendChild(button);
+            });
+            customerSuggestionBox.hidden = false;
+        }
+
+        let customerActiveIndex = -1;
+        function setCustomerActiveIndex(idx) {
+            customerActiveIndex = idx;
+            const children = customerSuggestionBox ? Array.from(customerSuggestionBox.children) : [];
+            children.forEach((child, i) => {
+                if (i === idx) child.classList.add('suggestion-active'); else child.classList.remove('suggestion-active');
+            });
+        }
+        function moveCustomerActive(delta) {
+            const children = customerSuggestionBox ? Array.from(customerSuggestionBox.children) : [];
+            if (!children.length) return;
+            let next = customerActiveIndex + delta;
+            if (next < 0) next = children.length - 1;
+            if (next >= children.length) next = 0;
+            setCustomerActiveIndex(next);
+            children[next].scrollIntoView({ block: 'nearest' });
+        }
+
+        let customerSuggestionTimer = null;
+        function handleCustomerSearchSuggestions() {
+            if (!customerInput) return;
+            const q = (customerInput.value || '').trim().toLowerCase();
+            if (customerSuggestionTimer) clearTimeout(customerSuggestionTimer);
+            if (!q) { if (customerSuggestionBox) customerSuggestionBox.hidden = true; return; }
+            customerSuggestionTimer = setTimeout(() => {
+                const list = Object.entries(customers).map(([id, data]) => ({ id, label: buildCustomerLabel(data), code: data.code, price_level_id: data.price_level_id }));
+                const matches = list.filter(c => (c.label || '').toLowerCase().includes(q) || (c.code || '').toLowerCase().includes(q));
+                renderCustomerSuggestions(matches);
+            }, 150);
+        }
+
+        document.addEventListener('click', function (event) {
+            if (productSuggestionBox && !productSuggestionBox.contains(event.target) && event.target !== quickProductInput) {
+                productSuggestionBox.hidden = true;
+            }
+            if (customerSuggestionBox && !customerSuggestionBox.contains(event.target) && event.target !== customerInput) {
+                customerSuggestionBox.hidden = true;
+            }
+        });
+
+        function buildRow(payload) {
+            const { product, qty, price, discount, tax, stockBefore = null, stockAfter = null } = payload;
+            const metrics = computeLine(qty, price, discount, tax);
+            const unitCost = parseNumber(product.hpp ?? product.last_cost ?? product.harga_beli ?? 0);
+            const costValue = unitCost * qty;
+            const row = document.createElement('tr');
+            row.dataset.row = 'true';
+            row.dataset.productId = product.id;
+            row.dataset.qty = qty;
+            row.dataset.price = price;
+            row.dataset.discountPercent = discount;
+            row.dataset.taxPercent = tax;
+            row.dataset.subtotal = metrics.subtotal;
+            row.dataset.discountValue = metrics.discountValue;
+            row.dataset.taxValue = metrics.taxValue;
+            row.dataset.total = metrics.total;
+            row.dataset.stockBefore = stockBefore ?? '';
+            row.dataset.stockAfter = stockAfter ?? '';
+            row.dataset.unitCost = unitCost;
+            row.dataset.costValue = costValue;
+
+            const productCode = escapeHtml(product.code || '-');
+            const productName = escapeHtml(product.name || '-');
+            const productCategory = escapeHtml(product.kategori || 'Tanpa kategori');
+            const productSku = escapeHtml(product.sku || '');
+
+            row.innerHTML = `
+                <td class="text-center align-middle row-index"></td>
+                <td class="align-middle">
+                    <div class="font-weight-semibold">${productCode}</div>
+                    <small class="text-muted">${productSku}</small>
+                    <input type="hidden" name="produk_id[]" value="${product.id}">
+                </td>
+                <td class="align-middle">
+                    <div class="font-weight-semibold">${productName}</div>
+                    <small class="text-muted">${productCategory}</small>
+                </td>
+                <td class="align-middle text-center">
+                    <span class="badge badge-soft">${typeof stockAfter === 'number' ? stockAfter : (typeof stockBefore === 'number' ? stockBefore : '-')}</span>
+                </td>
+                <td class="align-middle text-center">
+                    <span class="badge badge-soft">${qty}</span>
+                    <input type="hidden" name="jumlah[]" value="${qty}">
+                </td>
+                <td class="align-middle text-right">
+                    <span>${formatCurrency(price)}</span>
+                    <input type="hidden" name="harga[]" value="${price}">
+                </td>
+                <td class="align-middle text-center">
+                    <span>${discount}%</span>
+                    <input type="hidden" name="diskon[]" value="${discount}">
+                </td>
+                <td class="align-middle text-center">
+                    <span>${tax}%</span>
+                    <input type="hidden" name="pajak[]" value="${tax}">
+                </td>
+                <td class="align-middle text-right font-weight-semibold">
+                    <span class="line-total">${formatCurrency(metrics.total)}</span>
+                </td>
+                <td class="align-middle text-center">
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-light edit-row" title="Edit baris">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button type="button" class="btn btn-light text-danger remove-row" title="Hapus baris">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+
+            row.querySelector('.remove-row').addEventListener('click', () => {
+                restoreRowStock(row);
+                row.remove();
+                toggleEmptyState();
+                refreshRowNumbers();
                 updateTotals();
             });
+
+            row.querySelector('.edit-row').addEventListener('click', () => {
+                restoreRowStock(row);
+                loadRowIntoQuickEntry(row);
+            });
+
+            return row;
+        }
+
+        function loadRowIntoQuickEntry(row) {
+            if (!row) {
+                return;
+            }
+            if (quickProductInput) {
+                const label = productIdToLabel.get(row.dataset.productId) || '';
+                quickProductInput.value = label;
+            }
+            if (quickProductHidden) {
+                quickProductHidden.value = row.dataset.productId;
+            }
+            updateQuickStockIndicator(row.dataset.productId);
+            if (quickQty) {
+                quickQty.value = row.dataset.qty;
+            }
+            if (quickPrice) {
+                quickPrice.value = row.dataset.price;
+            }
+            if (quickDiscount) {
+                quickDiscount.value = row.dataset.discountPercent;
+            }
+            if (quickTax) {
+                quickTax.value = row.dataset.taxPercent;
+            }
+            row.remove();
+            toggleEmptyState();
+            refreshRowNumbers();
+            updateTotals();
+            if (quickQty) {
+                quickQty.focus();
+            }
+        }
+
+        function addItemFromQuickEntry() {
+            if (!quickProductInput || !itemsTableBody) {
+                return;
+            }
+            const typedLabel = (quickProductInput.value || '').trim();
+            const productId = (quickProductHidden && quickProductHidden.value) || productLabelMap.get(typedLabel);
+            if (!productId) {
+                quickProductInput.classList.add('is-invalid');
+                quickProductInput.focus();
+                return;
+            }
+            quickProductInput.classList.remove('is-invalid');
+            const product = productMap.get(String(productId));
+            if (!product) {
+                alert('Produk tidak ditemukan.');
+                return;
+            }
+            const qty = clamp(quickQty.value, 1);
+            const price = clamp(quickPrice.value || product.price || 0, 0);
+            const discount = clamp(quickDiscount.value, 0, 100);
+            const tax = clamp(quickTax.value, 0);
+            const availableStock = getAvailableStock(String(productId));
+            if (qty > availableStock) {
+                alert(`Stok ${product.name || product.code || 'produk'} hanya ${availableStock}, tidak dapat menambahkan ${qty}.`);
+                return;
+            }
+            const remainingStock = availableStock - qty;
+            setAvailableStock(String(productId), remainingStock);
+
+            const row = buildRow({ product, qty, price, discount, tax, stockBefore: availableStock, stockAfter: remainingStock });
+            itemsTableBody.appendChild(row);
+            toggleEmptyState();
+            refreshRowNumbers();
+            updateTotals();
+            updateQuickStockIndicator(String(productId));
+            resetQuickEntry(true);
+            if (quickProductInput) {
+                quickProductInput.focus();
+            }
+        }
+
+        function resetSaleForm() {
+            if (salesForm) {
+                salesForm.reset();
+            }
+            getRows().forEach(row => row.remove());
+            toggleEmptyState();
+            refreshRowNumbers();
+            updateTotals();
+            resetQuickEntry(true);
+            resetProductStockMap();
+            updateQuickStockIndicator(null);
+            manualPriceLevelId = null;
+            customerPriceLevelId = null;
+            if (priceLevelSelect) {
+                priceLevelSelect.value = '';
+            }
+            updateCurrentPriceLevel(false);
+            applyCustomerSelectionFromSelect();
+            updateCustomerMeta();
+        }
+
+        function updateCustomerMeta() {
+            if (!customerMeta || !customerSelect) {
+                return;
+            }
+            const selected = customerSelect.value;
+            const data = customers[selected] || null;
+            if (data) {
+                customerPriceLevelId = data.price_level_id !== undefined && data.price_level_id !== null
+                    ? String(data.price_level_id)
+                    : null;
+                const levelLabel = data.price_level_name || 'Harga standar';
+                customerMeta.innerHTML = `
+                    <span class="badge badge-light mr-2">${data.code || '-'}</span>
+                    <span class="d-block mt-1">Kontak: ${data.kontak || 'belum diisi'}</span>
+                    <span class="d-block">Alamat: ${data.alamat || 'belum diisi'}</span>
+                    <span class="d-block mt-1">Level harga: ${levelLabel}</span>
+                `;
+            } else {
+                customerPriceLevelId = null;
+                customerMeta.textContent = 'Pilih pelanggan untuk menampilkan kontak dan alamat.';
+            }
+            updateCurrentPriceLevel();
+        }
+
+        function handleKeyboardNavigation(element) {
+            if (!element) {
+                return;
+            }
+            element.addEventListener('keydown', event => {
+                if (event.key !== 'Enter') {
+                    return;
+                }
+                event.preventDefault();
+                const targetAttr = event.shiftKey ? element.dataset.prev : element.dataset.next;
+                if (targetAttr === 'ADD_ITEM') {
+                    addItemFromQuickEntry();
+                    return;
+                }
+                if (targetAttr) {
+                    const nextEl = document.querySelector(targetAttr);
+                    if (nextEl) {
+                        nextEl.focus();
+                        return;
+                    }
+                }
+                if (element === quickTax) {
+                    addItemFromQuickEntry();
+                }
+            });
+        }
+
+        [customerInput, quickProductInput, quickQty, quickPrice, quickDiscount, quickTax].forEach(handleKeyboardNavigation);
+
+        if (priceLevelSelect) {
+            priceLevelSelect.addEventListener('change', () => {
+                const value = priceLevelSelect.value;
+                manualPriceLevelId = value ? String(value) : null;
+                updateCurrentPriceLevel();
+            });
+        }
+
+        if (quickProductInput) {
+            quickProductInput.addEventListener('change', () => syncProductInputToId(true));
+            quickProductInput.addEventListener('input', () => { syncProductInputToId(false); handleProductSearchSuggestions(); });
+            quickProductInput.addEventListener('focus', () => handleProductSearchSuggestions());
+            quickProductInput.addEventListener('keydown', (e) => {
+                if (!productSuggestionBox) return;
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (productSuggestionBox.hidden) { handleProductSearchSuggestions(); }
+                    moveProductActive(1);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    moveProductActive(-1);
+                } else if (e.key === 'Enter') {
+                    if (productActiveIndex >= 0) {
+                        e.preventDefault();
+                        const btn = productSuggestionBox.children[productActiveIndex];
+                        if (btn) btn.click();
+                    }
+                } else if (e.key === 'Escape') {
+                    if (!productSuggestionBox.hidden) {
+                        productSuggestionBox.hidden = true;
+                        setProductActiveIndex(-1);
+                        e.preventDefault();
+                    }
+                }
+            });
+        }
+
+        if (quickAddButton) {
+            quickAddButton.addEventListener('click', addItemFromQuickEntry);
+        }
+
+        if (cancelEntryButton) {
+            cancelEntryButton.addEventListener('click', () => {
+                resetQuickEntry(true);
+                if (quickProductInput) {
+                    quickProductInput.focus();
+                }
+            });
+        }
+
+        if (newSaleButton) {
+            newSaleButton.addEventListener('click', () => {
+                if (confirm('Mulai transaksi baru? Semua item akan dihapus.')) {
+                    resetSaleForm();
+                }
+            });
+        }
+
+        if (goBackButton) {
+            goBackButton.addEventListener('click', () => {
+                window.history.back();
+            });
+        }
+
+        function submitForm() {
+            if (!salesForm) {
+                return;
+            }
+            salesForm.requestSubmit ? salesForm.requestSubmit() : salesForm.submit();
+        }
+
+        if (payButton) {
+            payButton.addEventListener('click', submitForm);
         }
 
         if (salesForm) {
-            salesForm.addEventListener('submit', function (event) {
-                const rows = itemsTableBody.querySelectorAll('tr');
-                let hasValidRow = false;
-
-                rows.forEach(row => {
-                    const productSelect = row.querySelector('.product-select');
-                    const qtyInput = row.querySelector('.item-qty');
-                    const qty = parseNumber(qtyInput.value);
-                    if (productSelect && productSelect.value && qty > 0) {
-                        hasValidRow = true;
-                    }
-                });
-
-                if (!hasValidRow) {
+            salesForm.addEventListener('submit', event => {
+                if (getRows().length === 0) {
                     event.preventDefault();
-                    alert('Tambahkan minimal satu produk dengan jumlah valid sebelum menyimpan.');
+                    alert('Tambahkan minimal satu produk sebelum menyimpan penjualan.');
+                }
+            });
+        }
+
+        if (customerInput) {
+            customerInput.addEventListener('input', () => { syncCustomerInputToSelect(false); handleCustomerSearchSuggestions(); });
+            customerInput.addEventListener('change', () => syncCustomerInputToSelect(true));
+            customerInput.addEventListener('focus', () => handleCustomerSearchSuggestions());
+            customerInput.addEventListener('keydown', (e) => {
+                if (!customerSuggestionBox) return;
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (customerSuggestionBox.hidden) { handleCustomerSearchSuggestions(); }
+                    moveCustomerActive(1);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    moveCustomerActive(-1);
+                } else if (e.key === 'Enter') {
+                    if (customerActiveIndex >= 0) {
+                        e.preventDefault();
+                        const btn = customerSuggestionBox.children[customerActiveIndex];
+                        if (btn) btn.click();
+                    }
+                } else if (e.key === 'Escape') {
+                    if (!customerSuggestionBox.hidden) {
+                        customerSuggestionBox.hidden = true;
+                        setCustomerActiveIndex(-1);
+                        e.preventDefault();
+                    }
                 }
             });
         }
 
         if (customerSelect) {
-            customerSelect.addEventListener('change', updateCustomerMeta);
+            customerSelect.addEventListener('change', () => {
+                applyCustomerSelectionFromSelect();
+                updateCustomerMeta();
+            });
         }
 
+        document.addEventListener('keydown', event => {
+            if (event.key === 'F1') {
+                event.preventDefault();
+                resetSaleForm();
+            } else if (event.key === 'F2') {
+                event.preventDefault();
+                addItemFromQuickEntry();
+            } else if (event.key === 'F3') {
+                event.preventDefault();
+                resetQuickEntry(true);
+                if (quickProductInput) {
+                    quickProductInput.focus();
+                }
+            } else if (event.key === 'F4') {
+                event.preventDefault();
+                submitForm();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                window.history.back();
+            }
+        });
+
+        applyCustomerSelectionFromSelect();
         updateCustomerMeta();
-        addItemRow();
+        syncProductInputToId(false);
+        updateQuickStockIndicator(quickProductHidden && quickProductHidden.value ? quickProductHidden.value : null);
+        toggleEmptyState();
+        updateTotals();
+        if (quickProductInput) {
+            quickProductInput.focus();
+        }
     });
 </script>
 {% endblock %}

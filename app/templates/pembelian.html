@@ -70,65 +70,152 @@
         <form id="pembelianForm" autocomplete="off">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-            <div class="card shadow-sm mb-4">
-                <div class="card-body">
-                    <h2 class="h5 font-weight-bold mb-3">Informasi faktur</h2>
-                    <div class="form-row">
-                        <div class="form-group col-md-6">
-                            <label for="tanggal_faktur" class="font-weight-semibold">Tanggal faktur</label>
-                            <input type="date" class="form-control form-control-lg" id="tanggal_faktur" name="tanggal_faktur" required>
+            <div class="card shadow-sm mb-4 data-panel">
+                <div class="card-header bg-white border-0">
+                    <h2 class="h5 font-weight-bold mb-0">Data Pembelian</h2>
+                </div>
+                <div class="card-body data-grid">
+                    <div class="form-group">
+                        <label for="tanggal_faktur" class="font-weight-semibold">Tanggal faktur</label>
+                        <input type="date" class="form-control form-control-lg" id="tanggal_faktur" name="tanggal_faktur" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="no_faktur" class="font-weight-semibold">Nomor faktur</label>
+                        <input type="text" class="form-control form-control-lg" id="no_faktur" name="no_faktur" placeholder="Misal: INV-2025-001" required>
+                        <div id="fakturFeedback" class="invoice-feedback mt-2">
+                            <i class="icon fas fa-info-circle"></i>
+                            <span class="text">Pastikan nomor faktur unik.</span>
                         </div>
-            <div class="form-group col-md-6">
-                <label for="no_faktur" class="font-weight-semibold">Nomor faktur</label>
-                <input type="text" class="form-control form-control-lg" id="no_faktur" name="no_faktur" placeholder="Misal: INV-2025-001" required>
-                <div id="fakturFeedback" class="invoice-feedback mt-2">
-                    <i class="icon fas fa-info-circle"></i>
-                    <span class="text">Pastikan nomor faktur unik.</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="jenis_pembayaran" class="font-weight-semibold">Jenis pembayaran</label>
+                        <select id="jenis_pembayaran" name="jenis_pembayaran" class="custom-select custom-select-lg">
+                            <option value="Tunai">Tunai</option>
+                            <option value="Tempo">Tempo</option>
+                            <option value="Transfer">Transfer</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="supplier_id" class="font-weight-semibold">Supplier</label>
+                        <select id="supplier_id" name="supplier" class="custom-select custom-select-lg" required>
+                            <option value="">-- Pilih supplier --</option>
+                            {% for supplier in supplier_payload %}
+                                <option value="{{ supplier.id }}">{{ supplier.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="card-footer bg-light border-0">
+                    <div id="supplier-meta" class="small text-muted">
+                        Pilih supplier untuk melihat kontak, alamat, dan catatan lainnya.
+                    </div>
                 </div>
             </div>
+
+            <div class="card shadow-sm mb-4 data-panel">
+                <div class="card-header bg-white border-0">
+                    <h2 class="h5 font-weight-bold mb-0">Data Barang</h2>
+                    <small class="text-muted">Isi detail barang kemudian tekan tombol di bawah untuk memasukkan ke tabel.</small>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="font-weight-semibold">Cari produk</label>
+                        <div class="position-relative">
+                            <input type="text" class="form-control form-control-lg" id="item_product_search" placeholder="Ketik nama, kode, atau SKU" autocomplete="off">
+                            <div class="product-suggestions shadow-sm" id="product-suggestion-box" hidden></div>
+                        </div>
+                        <small class="text-muted">Pilih hasil pencarian untuk mengisi otomatis kode, nama, kategori, satuan, dan harga.</small>
+                    </div>
+                    <div class="entry-grid">
+                        <div class="form-group">
+                            <label for="item_kode">Kode barang</label>
+                            <input type="text" class="form-control" id="item_kode" placeholder="Wajib isi">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_nama">Nama barang</label>
+                            <input type="text" class="form-control" id="item_nama" placeholder="Nama produk">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_kategori">Kategori</label>
+                            <input type="text" class="form-control" id="item_kategori" placeholder="Kategori">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_satuan">Satuan</label>
+                            <input type="text" class="form-control" id="item_satuan" placeholder="Misal: Kg, Pcs">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_qty">Jumlah</label>
+                            <input type="number" class="form-control" id="item_qty" min="1" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_harga_beli">Harga beli</label>
+                            <input type="text" class="form-control" id="item_harga_beli" placeholder="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_diskon">Diskon (%)</label>
+                            <input type="number" class="form-control" id="item_diskon" min="0" max="100" step="0.5" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_pajak">Pajak (%)</label>
+                            <input type="number" class="form-control" id="item_pajak" min="0" step="0.5" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_harga_jual">Harga jual</label>
+                            <input type="text" class="form-control" id="item_harga_jual" placeholder="Opsional">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_exp_date">Tanggal expired</label>
+                            <input type="date" class="form-control" id="item_exp_date">
+                        </div>
+                        <div class="form-group">
+                            <label for="item_hpp_preview">HPP (otomatis)</label>
+                            <input type="text" class="form-control" id="item_hpp_preview" readonly placeholder="Rp 0">
+                        </div>
+                    </div>
+                    <div class="entry-actions mt-4">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="clear-items">
+                            <i class="fas fa-undo mr-1"></i>Bersihkan daftar
+                        </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="add-item">
+                            <i class="fas fa-save mr-1"></i><span id="add-item-label">Tambah ke tabel</span>
+                        </button>
                     </div>
                 </div>
             </div>
 
             <div class="card shadow-sm mb-4">
-                <div class="card-body">
-                    <h2 class="h5 font-weight-bold mb-3">Detail supplier</h2>
-                    <div class="form-row">
-                        <div class="form-group col-md-6">
-                            <label for="supplier_id" class="font-weight-semibold">Pilih supplier</label>
-                            <select id="supplier_id" name="supplier" class="custom-select custom-select-lg" required>
-                                <option value="">-- Pilih supplier --</option>
-                                {% for supplier in supplier_payload %}
-                                    <option value="{{ supplier.id }}">{{ supplier.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="form-group col-md-6">
-                            <div id="supplier-meta" class="border rounded p-3 bg-light small text-muted">
-                                Pilih supplier untuk melihat kontak dan alamat.
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card card-panel shadow-sm mb-4">
-                <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
-                    <div>
-                        <h2 class="h5 font-weight-bold mb-1">Barang pembelian</h2>
-                        <p class="small text-muted mb-0">Gunakan panel kartu untuk mengisi detail item tanpa perlu menggulir horizontal.</p>
-                    </div>
-                    <div class="mt-3 mt-md-0">
-                        <button type="button" class="btn btn-sm btn-outline-secondary mr-2" id="clear-items">
-                            <i class="fas fa-undo mr-1"></i>Kosongkan
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="add-item">
-                            <i class="fas fa-plus mr-1"></i>Tambah Barang
-                        </button>
-                    </div>
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <h3 class="h6 font-weight-bold mb-0">Daftar barang dibeli</h3>
+                    <span class="badge badge-light text-uppercase">Realtime</span>
                 </div>
                 <div class="card-body p-0">
-                    <div id="items-collection" class="items-collection p-3"></div>
+                    <div class="table-responsive">
+                        <table class="table table-modern table-hover mb-0" id="items-table">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th class="text-center">No</th>
+                                    <th>Kode Barang</th>
+                                    <th>Nama Barang</th>
+                                    <th>Satuan</th>
+                                    <th class="text-center">Jumlah</th>
+                                    <th class="text-right">Harga Beli</th>
+                                    <th class="text-right">Diskon</th>
+                                    <th class="text-right">Pajak</th>
+                                    <th class="text-right">HPP</th>
+                                    <th class="text-right">Total</th>
+                                    <th class="text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="items-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div id="items-empty-state" class="empty-state text-center py-4">
+                        <p class="mb-0 text-muted">Belum ada barang dalam daftar. Lengkapi data barang lalu tekan <strong>Tambah ke tabel</strong>.</p>
+                    </div>
+                    <div class="table-footer d-flex justify-content-between align-items-center px-4 py-3 border-top">
+                        <span class="text-muted">Grand total</span>
+                        <span class="h5 font-weight-bold mb-0 text-primary" id="table-grand-total">Rp 0</span>
+                    </div>
                 </div>
             </div>
 
@@ -230,76 +317,6 @@
     </div>
 </div>
 
-<template id="purchase-row-template">
-    <div class="item-card card shadow-sm mb-3">
-        <div class="card-body">
-            <div class="form-row">
-                <div class="form-group col-12">
-                    <label class="small text-muted mb-1">Cari Produk</label>
-                    <div class="position-relative">
-                        <input type="text" class="form-control item-product-search" placeholder="Ketik nama, kode, atau SKU untuk mengisi otomatis" autocomplete="off">
-                        <div class="product-suggestions shadow-sm" hidden></div>
-                    </div>
-                    <small class="form-text text-muted">Pilih salah satu hasil untuk mengisi detail barang secara otomatis.</small>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group col-md-6">
-                    <label class="small text-muted mb-1">Kode Barang</label>
-                    <input type="text" name="kode_barang[]" class="form-control item-code" placeholder="Kode barang" required>
-                </div>
-                <div class="form-group col-md-6">
-                    <label class="small text-muted mb-1">Nama Barang</label>
-                    <input type="text" name="nama_barang[]" class="form-control item-name" placeholder="Nama barang" required>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group col-md-6">
-                    <label class="small text-muted mb-1">Kategori</label>
-                    <input type="text" name="kategori[]" class="form-control item-category" placeholder="Kategori" required>
-                </div>
-            <div class="form-row">
-                <div class="form-group col-sm-6 col-md-3">
-                    <label class="small text-muted mb-1">Jumlah</label>
-                    <input type="number" name="jumlah[]" class="form-control item-qty" min="1" value="1" required>
-                </div>
-                <div class="form-group col-sm-6 col-md-3">
-                    <label class="small text-muted mb-1">Harga Beli</label>
-                    <input type="text" name="harga_beli[]" class="form-control item-price" inputmode="decimal" placeholder="0" required>
-                </div>
-                <div class="form-group col-sm-6 col-md-3">
-                    <label class="small text-muted mb-1">Diskon (%)</label>
-                    <input type="number" name="diskon[]" class="form-control item-discount" min="0" max="100" step="0.5" placeholder="0">
-                </div>
-                <div class="form-group col-sm-6 col-md-3">
-                    <label class="small text-muted mb-1">Pajak (%)</label>
-                    <input type="number" name="pajak[]" class="form-control item-tax" min="0" step="0.5" placeholder="0">
-                </div>
-            </div>
-            <div class="form-row align-items-center">
-                <div class="form-group col-sm-6 col-md-3">
-                    <label class="small text-muted mb-1">Harga Jual</label>
-                    <input type="text" name="harga_jual[]" class="form-control item-sale" inputmode="decimal" placeholder="0">
-                </div>
-                <div class="form-group col-sm-6 col-md-3">
-                    <label class="small text-muted mb-1">Exp Date</label>
-                    <input type="date" name="exp_date[]" class="form-control item-exp">
-                </div>
-                <div class="col-md-6 text-md-right">
-                    <div class="item-hpp-preview">
-                        <span class="badge badge-primary badge-pill px-3 py-2">
-                            HPP: <span class="item-hpp-value">Rp 0</span>
-                        </span>
-                        <button type="button" class="btn btn-link text-danger remove-item ml-2" title="Hapus baris">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
-
 <script type="application/json" id="supplier-data">{{ supplier_lookup|tojson }}</script>
 <script type="application/json" id="product-data">{{ product_payload|tojson }}</script>
 
@@ -320,70 +337,57 @@
     .font-weight-semibold {
         font-weight: 600;
     }
-    .stat-card {
-        border-radius: 18px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .stat-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 18px 35px rgba(15, 23, 42, 0.12);
-    }
-    .stat-card .stat-icon {
-        font-size: 1.75rem;
-    }
-    .stat-card .stat-value {
-        font-size: 1.85rem;
-        font-weight: 700;
-    }
-    .card-panel {
+    .data-panel {
         border-radius: 18px;
     }
-    .items-collection {
-        display: flex;
-        flex-direction: column;
+    .data-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        grid-gap: 1rem;
     }
-    .item-card {
-        border-radius: 18px;
-        transition: box-shadow 0.2s ease, transform 0.2s ease;
+    .entry-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        grid-gap: 0.85rem;
     }
-    .item-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
-    }
-    .item-card .form-control,
-    .item-card .custom-select {
+    .entry-grid .form-control {
         border-radius: 10px;
-        font-size: 0.95rem;
     }
-    .item-card .form-group label {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+    .entry-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+    .entry-actions .btn {
+        min-width: 150px;
     }
     .product-suggestions {
         position: absolute;
-        top: calc(100% + 0.35rem);
+        top: calc(100% + 0.4rem);
         left: 0;
         right: 0;
-        background: #ffffff;
-        border-radius: 12px;
+        background: #fff;
+        border-radius: 14px;
         border: 1px solid rgba(15, 23, 42, 0.08);
         box-shadow: 0 18px 35px rgba(15, 23, 42, 0.14);
-        max-height: 240px;
+        max-height: 260px;
         overflow-y: auto;
         z-index: 50;
+    }
+    .product-suggestions[hidden] {
+        display: none;
     }
     .product-suggestions button {
         width: 100%;
         background: none;
-        border: none;
+        border: 0;
+        padding: 0.6rem 0.9rem;
         text-align: left;
-        padding: 0.55rem 0.9rem;
-        font-size: 0.9rem;
-        color: #1f2937;
         display: flex;
-        align-items: baseline;
         justify-content: space-between;
+        font-size: 0.9rem;
+        color: #111827;
     }
     .product-suggestions button:hover,
     .product-suggestions button:focus {
@@ -392,15 +396,17 @@
     }
     .product-suggestions small {
         color: #6b7280;
-        margin-left: 0.75rem;
+        margin-left: 0.5rem;
     }
-    .item-hpp-preview {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
+    #items-table tbody tr td {
+        vertical-align: middle;
     }
-    .item-hpp-preview .badge {
-        font-size: 0.85rem;
+    #items-empty-state {
+        border-top: 1px dashed rgba(15, 23, 42, 0.1);
+        border-bottom: 1px dashed rgba(15, 23, 42, 0.1);
+    }
+    .table-footer {
+        background: rgba(248, 250, 252, 0.9);
     }
     .invoice-feedback {
         display: inline-flex;
@@ -434,669 +440,550 @@
     .grand-total .h4 {
         font-size: 1.5rem;
     }
+    .empty-state {
+        background: rgba(15, 23, 42, 0.02);
+        border-radius: 0 0 1rem 1rem;
+    }
     @media (max-width: 576px) {
         .hero-card {
             border-radius: 16px;
             padding: 2rem 1.5rem;
         }
-        .stat-card .stat-value {
-            font-size: 1.6rem;
+        .data-grid {
+            grid-template-columns: 1fr;
         }
-        .item-card {
-            border-radius: 16px;
-        }
-        .item-hpp-preview {
-            justify-content: space-between;
+        .entry-grid {
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
         }
     }
 </style>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const supplierDataScript = document.getElementById('supplier-data');
-        const productDataScript = document.getElementById('product-data');
-        const suppliers = supplierDataScript ? JSON.parse(supplierDataScript.textContent || '{}') : {};
-        const products = productDataScript ? JSON.parse(productDataScript.textContent || '[]') : [];
+document.addEventListener('DOMContentLoaded', function () {
+    const supplierDataScript = document.getElementById('supplier-data');
+    const productDataScript = document.getElementById('product-data');
+    const supplierMap = supplierDataScript ? JSON.parse(supplierDataScript.textContent || '{}') : {};
+    const products = productDataScript ? JSON.parse(productDataScript.textContent || '[]') : [];
 
-        const supplierSelect = document.getElementById('supplier_id');
-        const supplierMeta = document.getElementById('supplier-meta');
-        const invoiceInput = document.getElementById('no_faktur');
-        const invoiceFeedback = document.getElementById('fakturFeedback');
-        let invoiceValid = false;
-        let invoiceCheckTimeout = null;
-        const formElement = document.getElementById('pembelianForm');
-        const itemsContainer = document.getElementById('items-collection');
-        const addItemButton = document.getElementById('add-item');
-        const clearItemsButton = document.getElementById('clear-items');
-        const rowTemplate = document.getElementById('purchase-row-template');
-        const csrfField = document.querySelector('input[name="csrf_token"]');
-        const csrfTokenValue = csrfField ? csrfField.value : '';
+    const supplierSelect = document.getElementById('supplier_id');
+    const supplierMeta = document.getElementById('supplier-meta');
+    const paymentSelect = document.getElementById('jenis_pembayaran');
+    const invoiceInput = document.getElementById('no_faktur');
+    const invoiceFeedback = document.getElementById('fakturFeedback');
+    const tanggalInput = document.getElementById('tanggal_faktur');
+    const formElement = document.getElementById('pembelianForm');
+    const csrfTokenValue = document.querySelector('input[name="csrf_token"]')?.value || '';
 
-        const itemsSummaryEl = document.getElementById('summary-items');
-        const discountSummaryEl = document.getElementById('summary-discount');
-        const taxSummaryEl = document.getElementById('summary-tax');
-        const grandSummaryEl = document.getElementById('summary-grand');
+    const entry = {
+        search: document.getElementById('item_product_search'),
+        suggestionBox: document.getElementById('product-suggestion-box'),
+        kode: document.getElementById('item_kode'),
+        nama: document.getElementById('item_nama'),
+        kategori: document.getElementById('item_kategori'),
+        satuan: document.getElementById('item_satuan'),
+        qty: document.getElementById('item_qty'),
+        hargaBeli: document.getElementById('item_harga_beli'),
+        diskon: document.getElementById('item_diskon'),
+        pajak: document.getElementById('item_pajak'),
+        hargaJual: document.getElementById('item_harga_jual'),
+        expDate: document.getElementById('item_exp_date'),
+        hpp: document.getElementById('item_hpp_preview')
+    };
 
-        function formatCurrency(value) {
-            const formatter = new Intl.NumberFormat('id-ID', {
-                style: 'currency',
-                currency: 'IDR',
-                minimumFractionDigits: 0
-            });
-            return formatter.format(value || 0);
+    const addItemButton = document.getElementById('add-item');
+    const addItemLabel = document.getElementById('add-item-label');
+    const clearItemsButton = document.getElementById('clear-items');
+    const itemsTableBody = document.getElementById('items-table-body');
+    const itemsEmptyState = document.getElementById('items-empty-state');
+    const tableGrandTotalEl = document.getElementById('table-grand-total');
+    const summaryEls = {
+        items: document.getElementById('summary-items'),
+        discount: document.getElementById('summary-discount'),
+        tax: document.getElementById('summary-tax'),
+        grand: document.getElementById('summary-grand')
+    };
+
+    const state = {
+        items: [],
+        editingIndex: null
+    };
+
+    let invoiceValid = false;
+    let invoiceCheckTimeout = null;
+    let suggestionTimer = null;
+
+function sanitizeNumericString(value) {
+        if (value === null || value === undefined) {
+            return '';
         }
-
-        function parseNumber(value) {
-            const parsed = parseFloat(value);
-            return Number.isFinite(parsed) ? parsed : 0;
+        let str = value.toString().trim();
+        if (!str) {
+            return '';
         }
-
-        function sanitizeNumericString(value) {
-            if (value === null || value === undefined) {
-                return '';
-            }
-            let str = value.toString().trim();
-            if (!str) {
-                return '';
-            }
-            str = str.replace(/[^0-9,.-]/g, '');
-
-            const isNegative = str.startsWith('-');
-            if (isNegative) {
-                str = '-' + str.slice(1).replace(/-/g, '');
+        str = str.replace(/[^0-9,.-]/g, '');
+        const isNegative = str.startsWith('-');
+        if (isNegative) {
+            str = '-' + str.slice(1).replace(/-/g, '');
+        } else {
+            str = str.replace(/-/g, '');
+        }
+        if (str.includes(',')) {
+            str = str.replace(/\./g, '').replace(/,/g, '.');
+        }
+        if (str.includes('.')) {
+            const firstDot = str.indexOf('.');
+            const lastDot = str.lastIndexOf('.');
+            if (firstDot !== lastDot) {
+                str = str.replace(/\./g, '');
             } else {
-                str = str.replace(/-/g, '');
-            }
-
-            const hasComma = str.includes(',');
-            const hasDot = str.includes('.');
-
-            if (hasComma) {
-                str = str.replace(/\./g, '').replace(',', '.');
-            } else if (hasDot) {
-                const firstDot = str.indexOf('.');
-                const lastDot = str.lastIndexOf('.');
-                if (firstDot !== lastDot) {
+                const decimalPart = str.slice(lastDot + 1);
+                if (!decimalPart || (decimalPart.length === 3 && /^\d{3}$/.test(decimalPart))) {
                     str = str.replace(/\./g, '');
-                } else {
-                    const decimalPart = str.slice(lastDot + 1);
-                    if (!decimalPart || (decimalPart.length === 3 && /^\d{3}$/.test(decimalPart))) {
-                        str = str.replace(/\./g, '');
-                    }
                 }
-            }
-
-            return str;
-        }
-
-        function formatNumberInput(value) {
-            const sanitized = sanitizeNumericString(value);
-            if (!sanitized) {
-                return '';
-            }
-            const numeric = parseNumber(sanitized);
-            return numeric.toLocaleString('id-ID');
-        }
-
-        function clamp(input, minValue, maxValue) {
-            if (!input) {
-                return;
-            }
-            const sanitized = sanitizeNumericString(input.value);
-            let value = parseNumber(sanitized);
-            if (!Number.isFinite(value)) {
-                value = 0;
-            }
-            if (value < minValue) {
-                value = minValue;
-            }
-            if (Number.isFinite(maxValue) && value > maxValue) {
-                value = maxValue;
-            }
-            if (sanitized) {
-                input.value = value.toLocaleString('id-ID');
-            } else {
-                input.value = value ? value.toLocaleString('id-ID') : '';
             }
         }
+        return str;
+    }
 
-        function setInvoiceFeedback(state, message) {
-            if (!invoiceFeedback) {
-                return;
-            }
-            invoiceFeedback.classList.remove('is-success', 'is-error', 'is-checking');
-            const icon = invoiceFeedback.querySelector('.icon');
-            const text = invoiceFeedback.querySelector('.text');
-            if (text) {
-                text.textContent = message;
-            }
-            if (icon) {
-                icon.className = 'icon fas fa-info-circle';
-            }
-            switch (state) {
-                case 'checking':
-                    invoiceFeedback.classList.add('is-checking');
-                    if (icon) icon.className = 'icon fas fa-sync-alt fa-spin';
-                    break;
-                case 'success':
-                    invoiceFeedback.classList.add('is-success');
-                    if (icon) icon.className = 'icon fas fa-check-circle';
-                    break;
-                case 'error':
-                    invoiceFeedback.classList.add('is-error');
-                    if (icon) icon.className = 'icon fas fa-exclamation-circle';
-                    break;
-                case 'neutral':
-                    if (icon) icon.className = 'icon fas fa-info-circle';
-                    break;
-                default:
-                    if (icon) icon.className = 'icon fas fa-info-circle';
-                    break;
-            }
+    function parseNumber(value) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function formatCurrency(value) {
+        const formatter = new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            minimumFractionDigits: 0
+        });
+        return formatter.format(value || 0);
+    }
+
+    function formatNumberInput(value) {
+        const raw = parseNumber(sanitizeNumericString(value));
+        return raw ? raw.toLocaleString('id-ID') : '';
+    }
+
+    function calculateMetrics(item) {
+        const qty = parseNumber(item.jumlah);
+        const price = parseNumber(item.harga_beli);
+        const discountRate = parseNumber(item.diskon) / 100;
+        const taxRate = parseNumber(item.pajak) / 100;
+        const base = qty * price;
+        const discountValue = base * discountRate;
+        const taxable = base - discountValue;
+        const taxValue = taxable * taxRate;
+        const total = taxable + taxValue;
+        const hpp = qty ? total / qty : total;
+        return { base, discountValue, taxValue, total, hpp };
+    }
+
+    function updateEntryHPPPreview() {
+        if (!entry.hpp) {
+            return;
         }
+        const qty = Math.max(1, parseNumber(entry.qty.value));
+        const hargaBeli = parseNumber(sanitizeNumericString(entry.hargaBeli.value));
+        const diskon = Math.max(0, parseNumber(entry.diskon.value));
+        const pajak = Math.max(0, parseNumber(entry.pajak.value));
+        const metrics = calculateMetrics({ jumlah: qty, harga_beli: hargaBeli, diskon, pajak });
+        entry.hpp.value = formatCurrency(metrics.hpp);
+    }
 
-        function updateSupplierMeta() {
-            const id = supplierSelect ? supplierSelect.value : null;
-            const data = suppliers[id];
-            if (!supplierMeta) {
-                return;
-            }
-            if (data) {
-                supplierMeta.innerHTML = `
-                    <span class="badge badge-light mr-2">Kontak: ${data.contact_person || '-'}</span>
-                    <span class="d-block mt-1">Telp: ${data.phone || '-'}</span>
-                    <span class="d-block">Email: ${data.email || '-'}</span>
-                    <span class="d-block">Alamat: ${data.address || '-'}</span>
-                `;
-            } else {
-                supplierMeta.textContent = 'Pilih supplier untuk melihat kontak dan alamat.';
-            }
+    function updateSupplierMeta() {
+        if (!supplierMeta) {
+            return;
         }
-
-        function updateRowTotals(card) {
-            if (!card) {
-                return;
-            }
-            const qtyInput = card.querySelector('.item-qty');
-            const priceInput = card.querySelector('.item-price');
-            const discountInput = card.querySelector('.item-discount');
-            const taxInput = card.querySelector('.item-tax');
-
-            const rawQty = sanitizeNumericString(qtyInput && qtyInput.value);
-            let qty = parseNumber(rawQty);
-            qty = qty > 0 ? qty : 1;
-            if (qtyInput && qtyInput !== document.activeElement) {
-                qtyInput.value = qty.toLocaleString('id-ID');
-            }
-
-            const rawPrice = sanitizeNumericString(priceInput && priceInput.value);
-            let price = parseNumber(rawPrice);
-            price = price >= 0 ? price : 0;
-            if (priceInput && priceInput !== document.activeElement) {
-                priceInput.value = rawPrice ? price.toLocaleString('id-ID') : '';
-            }
-
-            const rawDiscount = sanitizeNumericString(discountInput && discountInput.value);
-            let normalizedDiscount = parseNumber(rawDiscount);
-            normalizedDiscount = Math.min(Math.max(normalizedDiscount, 0), 100);
-            if (discountInput && discountInput !== document.activeElement) {
-                discountInput.value = rawDiscount ? normalizedDiscount.toString() : '';
-            }
-
-            const rawTax = sanitizeNumericString(taxInput && taxInput.value);
-            let tax = parseNumber(rawTax);
-            tax = tax >= 0 ? tax : 0;
-            if (taxInput && taxInput !== document.activeElement) {
-                taxInput.value = rawTax ? tax.toString() : '';
-            }
-
-            const discountAmount = price * (normalizedDiscount / 100);
-            const taxableBase = price - discountAmount;
-            const taxAmount = taxableBase * (tax / 100);
-            const finalUnitCost = taxableBase + taxAmount;
-            const totalCost = finalUnitCost * qty;
-
-            card.dataset.discount = discountAmount * qty;
-            card.dataset.tax = taxAmount * qty;
-            card.dataset.total = totalCost;
-            card.dataset.qty = qty;
-
-            if (typeof card.updateHppDisplay === 'function') {
-                card.updateHppDisplay(totalCost);
-            } else {
-                const fallbackLabel = card.querySelector('.item-hpp-value');
-                if (fallbackLabel) {
-                    fallbackLabel.textContent = formatCurrency(totalCost);
-                }
-            }
-
-            updateTotals();
+        const selected = supplierMap[supplierSelect.value];
+        if (!selected) {
+            supplierMeta.textContent = 'Pilih supplier untuk melihat kontak, alamat, dan catatan lainnya.';
+            return;
         }
+        supplierMeta.innerHTML = `
+            <div class="d-flex flex-column">
+                <span class="font-weight-semibold text-dark">${selected.name || '-'}</span>
+                <span>${selected.address || 'Alamat belum tercatat'}</span>
+                <span>T: ${selected.phone || '-'}</span>
+                <span>Email: ${selected.email || '-'}</span>
+            </div>
+        `;
+    }
 
-        function updateTotals() {
-            let totalItems = 0;
-            let totalDiscount = 0;
-            let totalTax = 0;
-            let totalCost = 0;
-
-            itemsContainer.querySelectorAll('.item-card').forEach(card => {
-                totalItems += parseNumber(card.dataset.qty);
-                totalDiscount += parseNumber(card.dataset.discount);
-                totalTax += parseNumber(card.dataset.tax);
-                totalCost += parseNumber(card.dataset.total);
-            });
-
-            itemsSummaryEl.textContent = totalItems.toString();
-            discountSummaryEl.textContent = formatCurrency(totalDiscount);
-            taxSummaryEl.textContent = formatCurrency(totalTax);
-            grandSummaryEl.textContent = formatCurrency(totalCost);
+    function setInvoiceState(stateName, message) {
+        invoiceFeedback.classList.remove('is-checking', 'is-success', 'is-error');
+        invoiceFeedback.querySelector('.text').textContent = message;
+        if (stateName === 'checking') {
+            invoiceFeedback.classList.add('is-checking');
+        } else if (stateName === 'success') {
+            invoiceFeedback.classList.add('is-success');
+        } else if (stateName === 'error') {
+            invoiceFeedback.classList.add('is-error');
         }
+    }
 
-        function setupMonetaryField(input, autoFormat = true) {
-            if (!input) {
-                return;
-            }
-            input.addEventListener('focus', function () {
-                const raw = sanitizeNumericString(this.value);
-                this.value = raw ? parseNumber(raw).toString() : '';
-                this.select();
-            });
-            input.addEventListener('blur', function () {
-                const raw = sanitizeNumericString(this.value);
-                this.value = raw ? parseNumber(raw).toLocaleString('id-ID') : '';
-            });
+    function checkInvoiceUniqueness() {
+        const value = invoiceInput.value.trim();
+        if (!value) {
+            invoiceValid = false;
+            setInvoiceState('info', 'Nomor faktur wajib diisi.');
+            return;
         }
-
-        function attachRowEvents(card) {
-            if (!card) {
-                return;
-            }
-            const productSearchInput = card.querySelector('.item-product-search');
-            const suggestionBox = card.querySelector('.product-suggestions');
-            const codeInput = card.querySelector('.item-code');
-            const nameInput = card.querySelector('.item-name');
-            const categoryInput = card.querySelector('.item-category');
-            const qtyInput = card.querySelector('.item-qty');
-            const priceInput = card.querySelector('.item-price');
-            const discountInput = card.querySelector('.item-discount');
-            const taxInput = card.querySelector('.item-tax');
-            const saleInput = card.querySelector('.item-sale');
-            const removeButton = card.querySelector('.remove-item');
-
-            let suggestionTimer = null;
-
-            function clearSuggestions() {
-                if (!suggestionBox) {
-                    return;
-                }
-                suggestionBox.innerHTML = '';
-                suggestionBox.hidden = true;
-            }
-
-            function applyProduct(product) {
-                if (!product) {
-                    return;
-                }
-                if (productSearchInput) {
-                    productSearchInput.value = product.nama
-                        ? `${product.nama} (${product.kode})`
-                        : (product.kode || '');
-                }
-                if (codeInput) {
-                    codeInput.value = product.kode || '';
-                }
-                if (nameInput) {
-                    nameInput.value = product.nama || '';
-                }
-                if (categoryInput) {
-                    categoryInput.value = product.kategori || '';
-                }
-                if (priceInput) {
-                    priceInput.value = formatNumberInput(product.harga_beli);
-                }
-                if (saleInput) {
-                    saleInput.value = formatNumberInput(product.harga_jual);
-                }
-                if (card) {
-                    card.dataset.selectedProductCode = product.kode || '';
-                }
-                clearSuggestions();
-                updateRowTotals(card);
-            }
-
-            function renderSuggestions(matches) {
-                if (!suggestionBox) {
-                    return;
-                }
-                suggestionBox.innerHTML = '';
-                if (!matches.length) {
-                    suggestionBox.hidden = true;
-                    return;
-                }
-                matches.forEach(product => {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'suggestion-item';
-                    const primary = document.createElement('span');
-                    primary.textContent = product.nama || product.kode || 'Produk tanpa nama';
-                    const meta = document.createElement('small');
-                    const kodeInfo = product.kode ? product.kode : 'Kode tidak ada';
-                    const skuInfo = product.sku ? ` • SKU ${product.sku}` : '';
-                    meta.textContent = `${kodeInfo}${skuInfo}`;
-                    button.appendChild(primary);
-                    button.appendChild(meta);
-                    button.addEventListener('click', function () {
-                        applyProduct(product);
-                    });
-                    suggestionBox.appendChild(button);
-                });
-                suggestionBox.hidden = false;
-            }
-
-            if (productSearchInput) {
-                productSearchInput.addEventListener('input', function () {
-                    if (card) {
-                        card.dataset.selectedProductCode = '';
-                    }
-                    const query = productSearchInput.value.trim().toLowerCase();
-                    if (suggestionTimer) {
-                        clearTimeout(suggestionTimer);
-                    }
-                    suggestionTimer = setTimeout(function () {
-                        if (query.length < 2) {
-                            clearSuggestions();
-                            return;
-                        }
-                        const matches = products.filter(product => {
-                            const name = (product.nama || '').toLowerCase();
-                            const kode = (product.kode || '').toLowerCase();
-                            const sku = (product.sku || '').toLowerCase();
-                            return name.includes(query) || kode.includes(query) || sku.includes(query);
-                       }).slice(0, 8);
-                       renderSuggestions(matches);
-                   }, 150);
-               });
-
-                productSearchInput.addEventListener('focus', function () {
-                    if (productSearchInput.value.trim().length >= 2) {
-                        const query = productSearchInput.value.trim().toLowerCase();
-                        const matches = products.filter(product => {
-                            const name = (product.nama || '').toLowerCase();
-                            const kode = (product.kode || '').toLowerCase();
-                            const sku = (product.sku || '').toLowerCase();
-                            return name.includes(query) || kode.includes(query) || sku.includes(query);
-                        }).slice(0, 8);
-                        renderSuggestions(matches);
-                    }
-                });
-
-                productSearchInput.addEventListener('blur', function () {
-                    setTimeout(clearSuggestions, 200);
-                });
-
-                productSearchInput.addEventListener('keydown', function (event) {
-                    if (event.key === 'Enter') {
-                        event.preventDefault();
-                        const firstSuggestion = suggestionBox && suggestionBox.querySelector('button');
-                        if (firstSuggestion) {
-                            firstSuggestion.click();
-                        }
-                    }
-                });
-            }
-
-            [codeInput, nameInput, categoryInput].forEach(input => {
-                if (!input) {
-                    return;
-                }
-                input.addEventListener('change', function () {
-                    input.value = (input.value || '').toUpperCase();
-                });
-            });
-
-            [qtyInput, discountInput, taxInput].forEach(input => {
-                if (!input) {
-                    return;
-                }
-                input.addEventListener('input', function () {
-                    updateRowTotals(card);
-                });
-                input.addEventListener('blur', function () {
-                    updateRowTotals(card);
-                });
-            });
-
-            setupMonetaryField(priceInput);
-            setupMonetaryField(saleInput);
-            if (priceInput) {
-                priceInput.addEventListener('input', function () {
-                    updateRowTotals(card);
-                });
-                priceInput.addEventListener('blur', function () {
-                    updateRowTotals(card);
-                });
-            }
-            if (saleInput) {
-                saleInput.addEventListener('input', function () {
-                    const raw = sanitizeNumericString(saleInput.value);
-                    saleInput.dataset.rawValue = raw;
-                });
-                saleInput.addEventListener('blur', function () {
-                    const raw = sanitizeNumericString(saleInput.value);
-                    saleInput.value = raw ? parseNumber(raw).toLocaleString('id-ID') : '';
-                });
-            }
-
-            card.updateHppDisplay = function (value) {
-                const hppValue = card.querySelector('.item-hpp-value');
-                if (hppValue) {
-                    hppValue.textContent = formatCurrency(value);
-                }
-            };
-
-            if (removeButton) {
-                removeButton.addEventListener('click', function () {
-                    card.remove();
-                    ensureAtLeastOneRow();
-                    updateTotals();
-                });
-            }
-        }
-
-        function ensureAtLeastOneRow() {
-            if (!itemsContainer.querySelector('.item-card')) {
-                addRow();
-            } else {
-                const cards = itemsContainer.querySelectorAll('.item-card');
-                cards.forEach(card => {
-                    const removeButton = card.querySelector('.remove-item');
-                    if (removeButton) {
-                        removeButton.disabled = cards.length === 1;
-                    }
-                });
-            }
-        }
-
-        function addRow() {
-            const fragment = rowTemplate.content.cloneNode(true);
-            const card = fragment.querySelector('.item-card');
-            itemsContainer.appendChild(card);
-            card.dataset.discount = 0;
-            card.dataset.tax = 0;
-            card.dataset.total = 0;
-            card.dataset.qty = 0;
-            card.dataset.selectedProductCode = '';
-            attachRowEvents(card);
-            updateRowTotals(card);
-            ensureAtLeastOneRow();
-        }
-
-        function validateInvoiceNumber(number) {
-            if (!number) {
-                setInvoiceFeedback('error', 'Nomor faktur wajib diisi.');
-                invoiceValid = false;
-                return;
-            }
-
-            if (number.length < 2) {
-                setInvoiceFeedback('neutral', 'Nomor faktur minimal 2 karakter sebelum diperiksa.');
-                invoiceValid = false;
-                return;
-            }
-
-            setInvoiceFeedback('checking', 'Memeriksa ketersediaan nomor faktur...');
-
-            fetch('{{ url_for("main.check_no_faktur") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrfTokenValue
-                },
-                body: JSON.stringify({ no_faktur: number })
-            })
-            .then(response => response.json())
-            .then(result => {
-                if (result.success && result.exists === false) {
-                    setInvoiceFeedback('success', 'Nomor faktur tersedia dan siap digunakan.');
+        setInvoiceState('checking', 'Memeriksa ketersediaan nomor faktur...');
+        fetch('{{ url_for("main.check_no_faktur") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfTokenValue
+            },
+            body: JSON.stringify({ no_faktur: value })
+        })
+            .then(response => response.json().then(body => ({ ok: response.ok, body })))
+            .then(({ ok, body }) => {
+                const isAvailable = typeof body.available === 'boolean'
+                    ? body.available
+                    : !body.exists;
+                if (ok && isAvailable) {
                     invoiceValid = true;
+                    setInvoiceState('success', body.message || 'Nomor faktur tersedia.');
                 } else {
-                    setInvoiceFeedback('error', result.message || 'Nomor faktur sudah digunakan.');
                     invoiceValid = false;
+                    setInvoiceState('error', body.message || 'Nomor faktur sudah digunakan.');
                 }
             })
             .catch(() => {
-                setInvoiceFeedback('error', 'Tidak dapat memeriksa nomor faktur saat ini.');
                 invoiceValid = false;
+                setInvoiceState('error', 'Gagal memeriksa nomor faktur.');
             });
-        }
+    }
 
-        if (invoiceInput) {
-            setInvoiceFeedback('neutral', 'Pastikan nomor faktur unik.');
-            invoiceInput.addEventListener('input', function () {
-                invoiceValid = false;
-                if (invoiceCheckTimeout) {
-                    clearTimeout(invoiceCheckTimeout);
+function resetEntryForm() {
+        entry.search.value = '';
+        entry.kode.value = '';
+        entry.nama.value = '';
+        entry.kategori.value = '';
+        if (entry.satuan) {
+            entry.satuan.value = '';
+        }
+        entry.qty.value = 1;
+        entry.hargaBeli.value = '';
+        entry.diskon.value = 0;
+        entry.pajak.value = 0;
+        entry.hargaJual.value = '';
+        entry.expDate.value = '';
+        if (entry.hpp) {
+            entry.hpp.value = 'Rp 0';
+        }
+        state.editingIndex = null;
+        addItemLabel.textContent = 'Tambah ke tabel';
+        addItemButton.classList.remove('btn-success');
+        updateEntryHPPPreview();
+    }
+
+    function collectEntryValues() {
+        const kode = entry.kode.value.trim();
+        const nama = entry.nama.value.trim();
+        const kategori = entry.kategori.value.trim();
+        const satuan = entry.satuan ? entry.satuan.value.trim() : '';
+        const qty = Math.max(1, parseNumber(entry.qty.value));
+        const hargaBeli = parseNumber(sanitizeNumericString(entry.hargaBeli.value));
+        const diskon = Math.max(0, parseNumber(entry.diskon.value));
+        const pajak = Math.max(0, parseNumber(entry.pajak.value));
+        const hargaJual = parseNumber(sanitizeNumericString(entry.hargaJual.value));
+        const expDate = entry.expDate.value || null;
+
+        if (!kode || !nama) {
+            alert('Kode dan nama barang wajib diisi.');
+            return null;
+        }
+        const item = {
+            kode_barang: kode,
+            nama_barang: nama,
+            kategori,
+            satuan,
+            jumlah: qty,
+            harga_beli: hargaBeli,
+            diskon,
+            pajak,
+            harga_jual: hargaJual,
+            exp_date: expDate
+        };
+        const metrics = calculateMetrics(item);
+        item.hpp = metrics.hpp;
+        return item;
+    }
+
+    function renderItemsTable() {
+        itemsTableBody.innerHTML = '';
+        if (!state.items.length) {
+            itemsEmptyState.hidden = false;
+        } else {
+            itemsEmptyState.hidden = true;
+        }
+        let totalQty = 0;
+        let totalDiscount = 0;
+        let totalTax = 0;
+        let totalCost = 0;
+
+        state.items.forEach((item, index) => {
+            const metrics = calculateMetrics(item);
+            totalQty += parseNumber(item.jumlah);
+            totalDiscount += metrics.discountValue;
+            totalTax += metrics.taxValue;
+            totalCost += metrics.total;
+            const hppValue = item.hpp != null ? item.hpp : metrics.hpp;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="text-center align-middle">${index + 1}</td>
+                <td class="align-middle">${item.kode_barang}</td>
+                <td class="align-middle">${item.nama_barang}</td>
+                <td class="align-middle">${item.satuan || '-'}</td>
+                <td class="text-center align-middle">${item.jumlah}</td>
+                <td class="text-right align-middle">${formatCurrency(item.harga_beli)}</td>
+                <td class="text-right align-middle">${item.diskon}%</td>
+                <td class="text-right align-middle">${item.pajak}%</td>
+                <td class="text-right align-middle">${formatCurrency(hppValue)}</td>
+                <td class="text-right align-middle">${formatCurrency(metrics.total)}</td>
+                <td class="text-center align-middle">
+                    <button type="button" class="btn btn-link text-secondary p-1" data-action="edit" data-index="${index}" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button type="button" class="btn btn-link text-danger p-1" data-action="remove" data-index="${index}" title="Hapus">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </td>
+            `;
+            itemsTableBody.appendChild(tr);
+        });
+
+        summaryEls.items.textContent = totalQty.toString();
+        summaryEls.discount.textContent = formatCurrency(totalDiscount);
+        summaryEls.tax.textContent = formatCurrency(totalTax);
+        summaryEls.grand.textContent = formatCurrency(totalCost);
+        tableGrandTotalEl.textContent = formatCurrency(totalCost);
+    }
+
+    function handleAddItem() {
+        const item = collectEntryValues();
+        if (!item) {
+            return;
+        }
+        if (state.editingIndex !== null) {
+            state.items[state.editingIndex] = item;
+        } else {
+            state.items.push(item);
+        }
+        state.editingIndex = null;
+        addItemLabel.textContent = 'Tambah ke tabel';
+        addItemButton.classList.remove('btn-success');
+        renderItemsTable();
+        resetEntryForm();
+        entry.search.focus();
+    }
+
+    function handleTableAction(event) {
+        const button = event.target.closest('button[data-action]');
+        if (!button) {
+            return;
+        }
+        const index = Number(button.dataset.index);
+        if (!Number.isFinite(index)) {
+            return;
+        }
+        if (button.dataset.action === 'remove') {
+            state.items.splice(index, 1);
+            renderItemsTable();
+            resetEntryForm();
+        } else if (button.dataset.action === 'edit') {
+            const item = state.items[index];
+            entry.kode.value = item.kode_barang;
+            entry.nama.value = item.nama_barang;
+            entry.kategori.value = item.kategori;
+            if (entry.satuan) {
+                entry.satuan.value = item.satuan || '';
+            }
+            entry.qty.value = item.jumlah;
+            entry.hargaBeli.value = formatNumberInput(item.harga_beli);
+            entry.diskon.value = item.diskon;
+            entry.pajak.value = item.pajak;
+            entry.hargaJual.value = formatNumberInput(item.harga_jual);
+            entry.expDate.value = item.exp_date || '';
+            if (entry.hpp) {
+                entry.hpp.value = formatCurrency(item.hpp != null ? item.hpp : calculateMetrics(item).hpp);
+            }
+            state.editingIndex = index;
+            addItemLabel.textContent = 'Perbarui item';
+            addItemButton.classList.add('btn-success');
+            entry.kode.focus();
+            updateEntryHPPPreview();
+        }
+    }
+
+    function clearItemList() {
+        state.items = [];
+        state.editingIndex = null;
+        renderItemsTable();
+        resetEntryForm();
+    }
+
+    function renderSuggestions(matches) {
+        if (!entry.suggestionBox) {
+            return;
+        }
+        entry.suggestionBox.innerHTML = '';
+        if (!matches.length) {
+            entry.suggestionBox.hidden = true;
+            return;
+        }
+        matches.slice(0, 6).forEach(product => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.innerHTML = `<span>${product.nama || product.kode || 'Produk tanpa nama'}</span><small>${product.kode || '-'}${product.sku ? ' • ' + product.sku : ''}</small>`;
+            button.addEventListener('click', () => {
+                entry.search.value = product.nama || product.kode || '';
+                entry.kode.value = product.kode || '';
+                entry.nama.value = product.nama || '';
+                entry.kategori.value = product.kategori || '';
+                entry.hargaBeli.value = formatNumberInput(product.harga_beli);
+                entry.hargaJual.value = formatNumberInput(product.harga_jual);
+                if (entry.satuan) {
+                    entry.satuan.value = product.satuan || '';
                 }
-                const value = invoiceInput.value.trim();
-                if (value.length < 2) {
-                    setInvoiceFeedback('neutral', 'Nomor faktur minimal 2 karakter sebelum diperiksa.');
-                }
-                invoiceCheckTimeout = setTimeout(function () {
-                    validateInvoiceNumber(invoiceInput.value.trim());
-                }, 400);
+                entry.search.focus();
+                entry.suggestionBox.hidden = true;
+                updateEntryHPPPreview();
             });
-            invoiceInput.addEventListener('blur', function () {
-                validateInvoiceNumber(invoiceInput.value.trim());
+            entry.suggestionBox.appendChild(button);
+        });
+        entry.suggestionBox.hidden = false;
+    }
+
+    function handleProductSearch() {
+        const query = entry.search.value.trim().toLowerCase();
+        if (suggestionTimer) {
+            clearTimeout(suggestionTimer);
+        }
+        if (!query) {
+            entry.suggestionBox.hidden = true;
+            return;
+        }
+        suggestionTimer = setTimeout(() => {
+            const matches = products.filter(product => {
+                const name = (product.nama || '').toLowerCase();
+                const kode = (product.kode || '').toLowerCase();
+                const sku = (product.sku || '').toLowerCase();
+                return name.includes(query) || kode.includes(query) || sku.includes(query);
             });
+            renderSuggestions(matches);
+        }, 200);
+    }
+
+    function submitForm(event) {
+        event.preventDefault();
+        if (!invoiceValid) {
+            alert('Validasi nomor faktur masih berlangsung atau gagal. Mohon cek kembali.');
+            return;
+        }
+        if (!state.items.length) {
+            alert('Tambahkan minimal satu barang ke dalam tabel.');
+            return;
+        }
+        const payload = {
+            tanggal_faktur: tanggalInput.value,
+            no_faktur: invoiceInput.value.trim(),
+            supplier: supplierSelect.value,
+            jenis_pembayaran: paymentSelect ? paymentSelect.value : 'Tunai',
+            items: state.items.map(item => ({
+                kode_barang: item.kode_barang,
+                nama_barang: item.nama_barang,
+                kategori: item.kategori,
+                satuan: item.satuan,
+                jumlah: item.jumlah,
+                harga_beli: item.harga_beli,
+                diskon: item.diskon,
+                pajak: item.pajak,
+                harga_jual: item.harga_jual,
+                exp_date: item.exp_date,
+                hpp: item.hpp
+            }))
+        };
+
+        if (!payload.tanggal_faktur || !payload.no_faktur || !payload.supplier) {
+            alert('Lengkapi data faktur dan pilih supplier.');
+            return;
         }
 
-        if (supplierSelect) {
-            supplierSelect.addEventListener('change', updateSupplierMeta);
+        if (!payload.jenis_pembayaran) {
+            alert('Pilih jenis pembayaran terlebih dahulu.');
+            return;
         }
 
-        if (addItemButton) {
-            addItemButton.addEventListener('click', addRow);
-        }
-
-        if (clearItemsButton) {
-            clearItemsButton.addEventListener('click', function () {
-                itemsContainer.innerHTML = '';
-                addRow();
-                updateTotals();
+        fetch('{{ url_for("main.pembelian") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfTokenValue
+            },
+            body: JSON.stringify(payload)
+        })
+            .then(response => response.json().then(body => ({ ok: response.ok, body })))
+            .then(({ ok, body }) => {
+                if (ok && body.success) {
+                    alert(`${body.message} Total biaya: ${formatCurrency(body.total_biaya)}`);
+                    window.location.reload();
+                } else {
+                    alert(body.message || 'Gagal menyimpan pembelian.');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Terjadi kesalahan saat menyimpan pembelian.');
             });
+    }
+
+    supplierSelect.addEventListener('change', updateSupplierMeta);
+    updateSupplierMeta();
+
+    invoiceInput.addEventListener('input', function () {
+        invoiceValid = false;
+        setInvoiceState('info', 'Memeriksa nomor faktur...');
+        if (invoiceCheckTimeout) {
+            clearTimeout(invoiceCheckTimeout);
         }
-
-        if (formElement) {
-            formElement.addEventListener('submit', function (event) {
-                event.preventDefault();
-
-                const cards = itemsContainer.querySelectorAll('.item-card');
-                if (cards.length === 0) {
-                    alert('Tambahkan minimal satu barang.');
-                    return;
-                }
-
-                if (!invoiceValid) {
-                    alert('Nomor faktur belum valid atau belum diperiksa.');
-                    invoiceInput.focus();
-                    return;
-                }
-
-                const items = [];
-                let hasInvalid = false;
-
-                cards.forEach(card => {
-                    const kode = card.querySelector('.item-code').value.trim();
-                    const nama = card.querySelector('.item-name').value.trim();
-                    const kategori = card.querySelector('.item-category').value.trim();
-                    const qty = parseNumber(sanitizeNumericString(card.querySelector('.item-qty').value));
-                    const hargaBeli = parseNumber(sanitizeNumericString(card.querySelector('.item-price').value));
-                    const diskon = parseNumber(sanitizeNumericString(card.querySelector('.item-discount').value));
-                    const pajak = parseNumber(sanitizeNumericString(card.querySelector('.item-tax').value));
-                    const hargaJual = parseNumber(sanitizeNumericString(card.querySelector('.item-sale').value));
-                    const expDate = card.querySelector('.item-exp').value;
-
-                    if (!kode || !nama || !kategori || qty <= 0) {
-                        hasInvalid = true;
-                        return;
-                    }
-
-                    items.push({
-                        kode_barang: kode,
-                        nama_barang: nama,
-                        kategori: kategori,
-                        jumlah: qty,
-                        harga_beli: hargaBeli,
-                        diskon: diskon,
-                        pajak: pajak,
-                        harga_jual: hargaJual,
-                        exp_date: expDate
-                    });
-                });
-
-                if (hasInvalid) {
-                    alert('Periksa kembali kode, nama, kategori, dan jumlah barang.');
-                    return;
-                }
-
-                const payload = {
-                    tanggal_faktur: document.getElementById('tanggal_faktur').value,
-                    no_faktur: invoiceInput.value.trim(),
-                    supplier: supplierSelect.value,
-                    items: items
-                };
-
-                if (!payload.tanggal_faktur || !payload.no_faktur || !payload.supplier) {
-                    alert('Lengkapi data faktur dan supplier terlebih dahulu.');
-                    return;
-                }
-
-                fetch('{{ url_for("main.pembelian") }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': csrfTokenValue
-                    },
-                    body: JSON.stringify(payload)
-                })
-                .then(response => response.json().then(body => ({ ok: response.ok, body })))
-                .then(({ ok, body }) => {
-                    if (ok && body.success) {
-                        alert(`${body.message} Total biaya: ${formatCurrency(body.total_biaya)}`);
-                        window.location.reload();
-                    } else {
-                        alert(body.message || 'Gagal menyimpan pembelian.');
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    alert('Terjadi kesalahan saat menyimpan pembelian.');
-                });
-            });
-        }
-
-        updateSupplierMeta();
-        addRow();
+        invoiceCheckTimeout = setTimeout(checkInvoiceUniqueness, 600);
     });
+
+    addItemButton.addEventListener('click', handleAddItem);
+    clearItemsButton.addEventListener('click', clearItemList);
+    itemsTableBody.addEventListener('click', handleTableAction);
+    formElement.addEventListener('submit', submitForm);
+
+    ['qty', 'hargaBeli', 'diskon', 'pajak'].forEach(key => {
+        if (entry[key]) {
+            entry[key].addEventListener('input', updateEntryHPPPreview);
+            entry[key].addEventListener('blur', updateEntryHPPPreview);
+        }
+    });
+
+    if (entry.hargaBeli) {
+        entry.hargaBeli.addEventListener('blur', function () {
+            this.value = formatNumberInput(this.value);
+        });
+    }
+    if (entry.hargaJual) {
+        entry.hargaJual.addEventListener('blur', function () {
+            this.value = formatNumberInput(this.value);
+        });
+    }
+    entry.search.addEventListener('input', handleProductSearch);
+    document.addEventListener('click', function (event) {
+        if (!entry.suggestionBox.contains(event.target) && event.target !== entry.search) {
+            entry.suggestionBox.hidden = true;
+        }
+    });
+
+    renderItemsTable();
+    updateEntryHPPPreview();
+});
 </script>
 {% endblock %}

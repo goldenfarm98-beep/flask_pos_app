@@ -78,8 +78,8 @@
                 'Maintenance',
                 'sidebar-maintenance',
                 [
-                    {'href': 'update-harga', 'icon': 'fa-dollar-sign', 'label': 'Update Harga'},
-                    {'href': '#', 'icon': 'fa-clipboard-list', 'label': 'Stok Opname'},
+                    {'href': '/update-harga', 'icon': 'fa-dollar-sign', 'label': 'Update Harga'},
+                    {'href': '/stok-opname', 'icon': 'fa-clipboard-list', 'label': 'Stok Opname'},
                 ],
                 show_default=False
             ) }}
@@ -122,8 +122,8 @@
                 'Keuangan',
                 'sidebar-keuangan',
                 [
-                    {'href': '#', 'icon': 'fa-university', 'label': 'Data Akun'},
-                    {'href': '#', 'icon': 'fa-money-check-alt', 'label': 'Transaksi Keuangan'},
+                    {'href': '/akun', 'icon': 'fa-university', 'label': 'Data Akun'},
+                    {'href': '/jurnal', 'icon': 'fa-money-check-alt', 'label': 'Jurnal Umum'},
                 ],
                 show_default=False
             ) }}
@@ -136,6 +136,133 @@
                 <div>
                     <h2 class="mb-2">Welcome, {{ username }}</h2>
                     <p class="text-muted mb-0">Gunakan menu di sisi kiri untuk mengelola penjualan, pembelian, dan data master.</p>
+                </div>
+            </div>
+
+            {% if summary %}
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Total Penjualan</span>
+                            <div class="metric-value text-primary mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.total_revenue).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Transaksi: {{ summary.total_transactions }}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Penjualan Bulan Ini</span>
+                            <div class="metric-value text-success mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.month_revenue).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Transaksi: {{ summary.month_transactions }}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Penjualan Hari Ini</span>
+                            <div class="metric-value text-info mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.today_revenue).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Transaksi: {{ summary.today_transactions }}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Rata-rata Order</span>
+                            <div class="metric-value text-warning mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.average_ticket).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Pelanggan aktif: {{ summary.customer_count }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="row">
+                <div class="col-lg-6">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Tren Penjualan</h5>
+                            <span class="badge badge-light text-uppercase">6 bulan</span>
+                        </div>
+                        <div class="card-body">
+                            {% if monthly_trend %}
+                                <ul class="list-unstyled mb-0">
+                                    {% for item in monthly_trend %}
+                                    <li class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                                        <span>{{ item.label }}</span>
+                                        <span class="font-weight-semibold text-primary">
+                                            {{ 'Rp {:,.0f}'.format(item.amount).replace(',', '.') }}
+                                        </span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted mb-0">Belum ada data penjualan untuk ditampilkan.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-6">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-white border-0">
+                            <h5 class="mb-0">Produk Terlaris</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if top_products %}
+                                <ul class="list-group list-group-flush">
+                                    {% for product in top_products %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div>
+                                            <div class="font-weight-semibold">{{ product.name }}</div>
+                                            <small class="text-muted">Terjual {{ product.units }} unit</small>
+                                        </div>
+                                        <span class="badge badge-light text-primary">
+                                            {{ 'Rp {:,.0f}'.format(product.revenue).replace(',', '.') }}
+                                        </span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted mb-0">Belum ada data detail penjualan produk.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Stok Perlu Perhatian</h5>
+                            <span class="badge badge-pill badge-warning text-dark">Kritis</span>
+                        </div>
+                        <div class="card-body">
+                            {% if low_stock_products %}
+                                <ul class="list-group list-group-flush">
+                                    {% for product in low_stock_products %}
+                                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="font-weight-semibold">{{ product.nama_produk }}</div>
+                                            <small class="text-muted">Stok: {{ product.stok_lama or 0 }} | Minimal: {{ product.stok_minimal or 0 }}</small>
+                                        </div>
+                                        <a href="{{ url_for('main.produk', edit=product.id) }}" class="btn btn-sm btn-outline-primary">Kelola</a>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted mb-0">Tidak ada produk dengan stok kritis.</p>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -222,6 +349,15 @@
         background: rgba(37, 99, 235, 0.15);
         color: #1d4ed8;
         font-weight: 600;
+    }
+    .analytics-card .metric-label {
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        color: #6b7280;
+    }
+    .analytics-card .metric-value {
+        font-size: 1.6rem;
+        font-weight: 700;
     }
 
     @media (max-width: 767.98px) {

@@ -27,6 +27,26 @@
         .navbar {
             padding: 0.85rem 0;
         }
+        .navbar .dropdown-menu {
+            border-radius: 16px;
+            border: none;
+            min-width: 14rem;
+            padding: 0.75rem;
+        }
+        .navbar .dropdown-item {
+            border-radius: 8px;
+            font-weight: 500;
+            padding: 0.35rem 0.75rem;
+        }
+        .navbar .dropdown-item.active,
+        .navbar .dropdown-item:active {
+            background-color: rgba(37, 99, 235, 0.1);
+            color: var(--primary-600);
+        }
+        .mega-dropdown.active > a,
+        .mega-dropdown:hover > a {
+            color: #fff;
+        }
         .navbar-brand {
             font-weight: 600;
             letter-spacing: 0.01em;
@@ -55,21 +75,60 @@
     <header class="shadow-sm">
         {% set current = request.endpoint or '' %}
         {% if session.get('user_id') %}
-            {% set nav_links = [
+            {% set primary_links = [
                 {'label': 'Beranda', 'endpoint': 'main.index', 'icon': 'fa-home', 'active_prefix': 'main.index'},
-                {'label': 'Dashboard', 'endpoint': 'main.dashboard', 'icon': 'fa-chart-line', 'active_prefix': 'main.dashboard'},
-                {'label': 'Produk', 'endpoint': 'main.produk', 'icon': 'fa-box', 'active_prefix': 'main.produk'},
-                {'label': 'Pelanggan', 'endpoint': 'main.pelanggan', 'icon': 'fa-user-friends', 'active_prefix': 'main.pelanggan'},
-                {'label': 'Penjualan', 'endpoint': 'main.penjualan', 'icon': 'fa-cash-register', 'active_prefix': 'main.penjualan'},
-                {'label': 'Pembelian', 'endpoint': 'main.pembelian', 'icon': 'fa-shopping-basket', 'active_prefix': 'main.pembelian'},
-                {'label': 'Supplier', 'endpoint': 'main.supplier', 'icon': 'fa-truck', 'active_prefix': 'main.supplier'},
-                {'label': 'Tentang', 'endpoint': 'main.about', 'icon': 'fa-info-circle', 'active_prefix': 'main.about'}
+                {'label': 'Dashboard', 'endpoint': 'main.dashboard', 'icon': 'fa-chart-line', 'active_prefix': 'main.dashboard'}
+            ] %}
+            {% set grouped_links = [
+                {
+                    'label': 'Master Data',
+                    'icon': 'fa-database',
+                    'links': [
+                        {'label': 'Produk', 'endpoint': 'main.produk', 'active_prefix': 'main.produk'},
+                        {'label': 'Pelanggan', 'endpoint': 'main.pelanggan', 'active_prefix': 'main.pelanggan'},
+                        {'label': 'Supplier', 'endpoint': 'main.supplier', 'active_prefix': 'main.supplier'},
+                        {'label': 'Level Harga', 'endpoint': 'main.harga_level', 'active_prefix': 'main.harga_level'}
+                    ]
+                },
+                {
+                    'label': 'Maintenance',
+                    'icon': 'fa-tools',
+                    'links': [
+                        {'label': 'Update Harga', 'endpoint': 'main.update_harga', 'active_prefix': 'main.update_harga'},
+                        {'label': 'Stok Opname', 'endpoint': 'main.stok_opname', 'active_prefix': 'main.stok_opname'}
+                    ]
+                },
+                {
+                    'label': 'Transaksi',
+                    'icon': 'fa-exchange-alt',
+                    'links': [
+                        {'label': 'Penjualan', 'endpoint': 'main.penjualan', 'active_prefix': 'main.penjualan'},
+                        {'label': 'Pembelian', 'endpoint': 'main.pembelian', 'active_prefix': 'main.pembelian'},
+                        {'label': 'Data Penjualan', 'endpoint': 'main.data_penjualan', 'active_prefix': 'main.data_penjualan'}
+                    ]
+                },
+                {
+                    'label': 'Keuangan',
+                    'icon': 'fa-wallet',
+                    'links': [
+                        {'label': 'Data Akun', 'endpoint': 'main.akun', 'active_prefix': 'main.akun'},
+                        {'label': 'Jurnal Umum', 'endpoint': 'main.jurnal', 'active_prefix': 'main.jurnal'}
+                    ]
+                },
+                {
+                    'label': 'Tim',
+                    'icon': 'fa-users-cog',
+                    'links': [
+                        {'label': 'Sales & Kasir', 'endpoint': 'main.sales_staff', 'active_prefix': 'main.sales_staff'}
+                    ]
+                }
             ] %}
         {% else %}
-            {% set nav_links = [
+            {% set primary_links = [
                 {'label': 'Beranda', 'endpoint': 'main.index', 'icon': 'fa-home', 'active_prefix': 'main.index'},
                 {'label': 'Tentang', 'endpoint': 'main.about', 'icon': 'fa-info-circle', 'active_prefix': 'main.about'}
             ] %}
+            {% set grouped_links = [] %}
         {% endif %}
 
         <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
@@ -82,13 +141,31 @@
                 </button>
 
                 <div class="collapse navbar-collapse" id="navbarMain">
-                    <ul class="navbar-nav mr-auto">
-                        {% for item in nav_links %}
+                    <ul class="navbar-nav mr-auto align-items-lg-center">
+                        {% for item in primary_links %}
                             {% set is_active = current.startswith(item.active_prefix) %}
                             <li class="nav-item {% if is_active %}active{% endif %}">
                                 <a class="nav-link {% if is_active %}font-weight-bold{% endif %}" href="{{ url_for(item.endpoint) }}">
                                     <i class="icon fas {{ item.icon }}"></i>{{ item.label }}
                                 </a>
+                            </li>
+                        {% endfor %}
+                        {% for group in grouped_links %}
+                            {% set group_active = false %}
+                            {% for entry in group.links %}
+                                {% if current.startswith(entry.active_prefix) %}
+                                    {% set group_active = true %}
+                                {% endif %}
+                            {% endfor %}
+                            <li class="nav-item dropdown mega-dropdown {% if group_active %}active{% endif %}">
+                                <a class="nav-link dropdown-toggle {% if group_active %}font-weight-bold{% endif %}" href="#" id="dropdown-{{ loop.index }}" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <i class="icon fas {{ group.icon }}"></i>{{ group.label }}
+                                </a>
+                                <div class="dropdown-menu shadow-lg" aria-labelledby="dropdown-{{ loop.index }}">
+                                    {% for entry in group.links %}
+                                        <a class="dropdown-item {% if current.startswith(entry.active_prefix) %}active{% endif %}" href="{{ url_for(entry.endpoint) }}">{{ entry.label }}</a>
+                                    {% endfor %}
+                                </div>
                             </li>
                         {% endfor %}
                     </ul>

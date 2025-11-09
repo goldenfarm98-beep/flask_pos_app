@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}Update Harga{% endblock %}
+
+{% macro format_currency(value) -%}
+    {{ ('Rp {:,.0f}'.format(value or 0)).replace(',', '.') }}
+{%- endmacro %}
+
+{% block content %}
+<section class="price-update">
+    <div class="card shadow-sm border-0 mb-4 update-hero">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Maintenance Harga</p>
+                <h1 class="display-5 mb-2 text-navy">Kelola harga jual secara terkontrol</h1>
+                <p class="mb-0 text-muted">Pantau margin, catat alasan perubahan, dan simpan histori otomatis untuk setiap produk.</p>
+            </div>
+            <div class="mt-4 mt-lg-0 text-lg-right">
+                <small class="d-block text-muted text-uppercase">Total produk</small>
+                <div class="h4 font-weight-bold">{{ products|length }}</div>
+            </div>
+        </div>
+    </div>
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <div class="d-flex flex-column flex-md-row align-items-md-center mb-3">
+                <div class="flex-fill mr-md-3 w-100">
+                    <label class="small text-muted text-uppercase mb-1">Cari produk</label>
+                    <div class="input-group">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        </div>
+                        <input type="text" class="form-control" id="product-search" placeholder="Ketik nama, kode, atau SKU...">
+                    </div>
+                </div>
+                <div class="mt-3 mt-md-0">
+                    <label class="small text-muted text-uppercase mb-1">&nbsp;</label>
+                    <button class="btn btn-primary btn-lg" id="submit-updates">
+                        <i class="fas fa-save mr-2"></i>Simpan Perubahan
+                    </button>
+                </div>
+            </div>
+            <div id="update-feedback" class="mb-3" hidden></div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle" id="price-table">
+                    <thead class="text-uppercase small text-muted">
+                        <tr>
+                            <th>Produk</th>
+                            <th class="text-right">HPP</th>
+                            <th class="text-right">Harga saat ini</th>
+                            <th style="width: 220px;">Harga baru & margin</th>
+                            <th style="width: 220px;">Alasan</th>
+                            <th class="text-center" style="width: 80px;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for product in products %}
+                        {% set search_blob = (product.name ~ ' ' ~ product.code ~ ' ' ~ product.sku ~ ' ' ~ product.kategori ~ ' ' ~ product.supplier).lower() %}
+                        <tr data-product-row
+                            data-product-id="{{ product.id }}"
+                            data-old-price="{{ '%.4f'|format(product.price) }}"
+                            data-cost="{{ '%.4f'|format(product.cost) }}"
+                            data-search="{{ search_blob }}">
+                            <td>
+                                <div class="font-weight-semibold">{{ product.name }}</div>
+                                <small class="text-muted d-block">{{ product.code }} • {{ product.sku }}</small>
+                                <small class="text-muted d-block">{{ product.kategori }} • {{ product.supplier }}</small>
+                            </td>
+                            <td class="text-right">
+                                {{ format_currency(product.cost) }}
+                            </td>
+                            <td class="text-right">
+                                <div>{{ format_currency(product.price) }}</div>
+                                <small class="text-muted">
+                                    Margin {{ format_currency(product.margin_value) }}
+                                    ({{ '%.1f'|format(product.margin_percent) }}%)
+                                </small>
+                            </td>
+                            <td>
+                                <input type="number" class="form-control form-control-sm new-price-input" min="0" step="100" placeholder="Harga baru">
+                                <small class="d-block mt-1 text-muted margin-preview">Margin baru: -</small>
+                            </td>
+                            <td>
+                                <input type="text" class="form-control form-control-sm reason-input" maxlength="255" placeholder="Alasan (opsional)">
+                            </td>
+                            <td class="text-center">
+                                <span class="badge badge-quiet state-pill">-</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <p class="eyebrow text-uppercase mb-1">Riwayat Perubahan</p>
+                    <h3 class="h5 mb-0">10 update terakhir</h3>
+                </div>
+            </div>
+            {% if recent_changes %}
+            <div class="table-responsive">
+                <table class="table table-striped table-borderless mb-0">
+                    <thead class="text-uppercase small text-muted">
+                        <tr>
+                            <th>Waktu</th>
+                            <th>Produk</th>
+                            <th class="text-right">Harga lama</th>
+                            <th class="text-right">Harga baru</th>
+                            <th class="text-right">Margin →</th>
+                            <th>User</th>
+                            <th>Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for change in recent_changes %}
+                        <tr>
+                            <td>{{ change.created_at.strftime('%d %b %Y %H:%M') }}</td>
+                            <td>{{ change.product.nama_produk if change.product else 'Produk dihapus' }}</td>
+                            <td class="text-right">{{ format_currency(change.old_price) }}</td>
+                            <td class="text-right">{{ format_currency(change.new_price) }}</td>
+                            <td class="text-right">
+                                {{ format_currency(change.margin_before) }} → {{ format_currency(change.margin_after) }}
+                            </td>
+                            <td>{{ change.user.username if change.user else 'System' }}</td>
+                            <td>{{ change.reason or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">Belum ada histori perubahan harga.</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const rows = Array.from(document.querySelectorAll('[data-product-row]'));
+        const searchInput = document.getElementById('product-search');
+        const submitButton = document.getElementById('submit-updates');
+        const csrfTokenValue = document.querySelector('input[name="csrf_token"]')?.value || '';
+        const feedback = document.getElementById('update-feedback');
+
+        function formatCurrency(number) {
+            if (!Number.isFinite(number)) {
+                return '-';
+            }
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number);
+        }
+
+        function updateRowState(row) {
+            const oldPrice = parseFloat(row.dataset.oldPrice);
+            const cost = parseFloat(row.dataset.cost);
+            const input = row.querySelector('.new-price-input');
+            const badge = row.querySelector('.state-pill');
+            const marginPreview = row.querySelector('.margin-preview');
+            const value = parseFloat(input.value);
+
+            if (!Number.isFinite(value)) {
+                badge.textContent = '-';
+                badge.className = 'badge badge-quiet state-pill';
+                marginPreview.textContent = 'Margin baru: -';
+                row.classList.remove('pending-change');
+                return;
+            }
+
+            const marginValue = value - cost;
+            const marginPercent = cost > 0 ? (marginValue / cost) * 100 : 0;
+            marginPreview.textContent = `Margin baru: ${formatCurrency(marginValue)} (${marginPercent.toFixed(1)}%)`;
+
+            if (Math.abs(value - oldPrice) < 0.005) {
+                badge.textContent = '-';
+                badge.className = 'badge badge-quiet state-pill';
+                row.classList.remove('pending-change');
+            } else if (value > oldPrice) {
+                badge.textContent = 'Naik';
+                badge.className = 'badge badge-success state-pill';
+                row.classList.add('pending-change');
+            } else {
+                badge.textContent = 'Turun';
+                badge.className = 'badge badge-danger state-pill';
+                row.classList.add('pending-change');
+            }
+        }
+
+        rows.forEach(row => {
+            const input = row.querySelector('.new-price-input');
+            input.addEventListener('input', () => updateRowState(row));
+            input.addEventListener('blur', () => updateRowState(row));
+        });
+
+        if (searchInput) {
+            searchInput.addEventListener('input', function () {
+                const query = (this.value || '').toLowerCase();
+                rows.forEach(row => {
+                    const haystack = row.dataset.search || '';
+                    row.classList.toggle('d-none', query && !haystack.includes(query));
+                });
+            });
+        }
+
+        function setFeedback(message, type = 'info') {
+            if (!feedback) return;
+            feedback.hidden = false;
+            feedback.className = `alert alert-${type}`;
+            feedback.textContent = message;
+        }
+
+        if (submitButton) {
+            submitButton.addEventListener('click', function () {
+                const payload = [];
+                rows.forEach(row => {
+                    const input = row.querySelector('.new-price-input');
+                    const reasonInput = row.querySelector('.reason-input');
+                    const value = parseFloat(input.value);
+                    const oldPrice = parseFloat(row.dataset.oldPrice);
+                    if (!Number.isFinite(value)) {
+                        return;
+                    }
+                    if (Math.abs(value - oldPrice) < 0.005) {
+                        return;
+                    }
+                    payload.push({
+                        product_id: row.dataset.productId,
+                        new_price: value,
+                        reason: reasonInput.value || ''
+                    });
+                });
+
+                if (!payload.length) {
+                    setFeedback('Tidak ada perubahan harga yang perlu disimpan.', 'warning');
+                    return;
+                }
+
+                submitButton.disabled = true;
+                fetch('{{ url_for("main.update_harga") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfTokenValue
+                    },
+                    body: JSON.stringify({ items: payload })
+                })
+                    .then(response => response.json().then(body => ({ ok: response.ok, body })))
+                    .then(({ ok, body }) => {
+                        if (ok && body.success) {
+                            setFeedback(body.message || 'Harga berhasil diperbarui.', 'success');
+                            window.setTimeout(() => window.location.reload(), 800);
+                        } else {
+                            setFeedback(body.message || 'Gagal memperbarui harga.', 'danger');
+                        }
+                    })
+                    .catch(() => setFeedback('Terjadi kesalahan jaringan.', 'danger'))
+                    .finally(() => { submitButton.disabled = false; });
+            });
+        }
+    });
+</script>
+
+<style>
+    .price-update .eyebrow {
+        letter-spacing: 0.25em;
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+
+    .price-update .text-navy {
+        color: #0f172a;
+    }
+
+    .update-hero {
+        border-radius: 22px;
+    }
+
+    .state-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+
+    .badge-quiet {
+        background: rgba(148, 163, 184, 0.2);
+        color: #475569;
+    }
+
+    #price-table tbody tr.pending-change {
+        background: rgba(59, 130, 246, 0.05);
+    }
+
+    .price-update table td {
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}

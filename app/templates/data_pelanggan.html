@@ -4,7 +4,12 @@
 
 {% block content %}
 {% set is_editing = edit_pelanggan is not none %}
-{% set form_action = url_for('main.edit_pelanggan', pelanggan_id=edit_pelanggan.id) if is_editing else url_for('main.pelanggan') %}
+{% set form_action = url_for('main.edit_pelanggan', pelanggan_id=edit_pelanggan.id) if is_editing else
+url_for('main.pelanggan') %}
+{% set contact_completion_pct = contact_completion if contact_completion is not none else 0 %}
+{% set address_completion_pct = address_completion if address_completion is not none else 0 %}
+{% set contact_progress_width = '{}%'.format(contact_completion_pct) %}
+{% set address_progress_width = '{}%'.format(address_completion_pct) %}
 
 <section class="page-hero hero-card hero-gradient text-white mb-4">
     <div class="row align-items-center">
@@ -30,7 +35,8 @@
             <div class="hero-meta text-lg-right">
                 <span class="badge badge-pill badge-light text-uppercase px-3 py-2">Insight cepat</span>
                 <p class="small text-white-75 mt-3 mb-0">
-                    Pastikan setiap pelanggan memiliki kontak dan alamat lengkap agar tim sales dan layanan purna jual lebih sigap.
+                    Pastikan setiap pelanggan memiliki kontak dan alamat lengkap agar tim sales dan layanan purna jual
+                    lebih sigap.
                 </p>
             </div>
         </div>
@@ -40,22 +46,22 @@
 {% if stat_cards %}
 <div class="row stat-grid mb-4">
     {% for card in stat_cards %}
-        <div class="col-sm-6 col-xl-3 mb-3">
-            <div class="card stat-card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <span class="stat-icon {{ card.accent }}">
-                            <i class="fas {{ card.icon }}"></i>
-                        </span>
-                        <span class="badge badge-light text-uppercase font-weight-semibold">{{ card.label }}</span>
-                    </div>
-                    <div class="stat-value mb-1">
-                        {{ '{:,}'.format(card.value).replace(',', '.') }}
-                    </div>
-                    <p class="small text-muted mb-0">{{ card.description }}</p>
+    <div class="col-sm-6 col-xl-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="stat-icon {{ card.accent }}">
+                        <i class="fas {{ card.icon }}"></i>
+                    </span>
+                    <span class="badge badge-light text-uppercase font-weight-semibold">{{ card.label }}</span>
                 </div>
+                <div class="stat-value mb-1">
+                    {{ '{:,}'.format(card.value).replace(',', '.') }}
+                </div>
+                <p class="small text-muted mb-0">{{ card.description }}</p>
             </div>
         </div>
+    </div>
     {% endfor %}
 </div>
 {% endif %}
@@ -63,11 +69,13 @@
 <div class="row align-items-start">
     <div class="col-lg-8">
         <div class="card card-panel shadow-sm mb-4">
-            <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
+            <div
+                class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
                 <div>
                     <h2 class="h5 font-weight-bold mb-1">Daftar Pelanggan</h2>
                     <p class="small text-muted mb-0">
-                        Menampilkan {{ filtered_count }} dari {{ total_customers }} pelanggan terdaftar.
+                        Menampilkan {{ pelanggans|length }} pelanggan pada halaman ini dari {{ filtered_count }} hasil
+                        pencarian. Total terdaftar: {{ total_customers }}.
                     </p>
                 </div>
                 <a href="{{ url_for('main.pelanggan') }}" class="btn btn-sm btn-outline-primary mt-3 mt-md-0">
@@ -83,14 +91,8 @@
                                 <div class="input-group-prepend">
                                     <span class="input-group-text"><i class="fas fa-search"></i></span>
                                 </div>
-                                <input
-                                    type="text"
-                                    id="searchCustomer"
-                                    name="search"
-                                    class="form-control"
-                                    placeholder="Cari nama, ID, atau kontak"
-                                    value="{{ search_query }}"
-                                >
+                                <input type="text" id="searchCustomer" name="search" class="form-control"
+                                    placeholder="Cari nama, ID, atau kontak" value="{{ search_query }}">
                             </div>
                         </div>
                         <div class="col-6 col-md-3 mb-3">
@@ -107,70 +109,117 @@
                 </form>
 
                 {% if pelanggans %}
-                    <div class="table-responsive">
-                        <table class="table table-modern table-hover align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Pelanggan</th>
-                                    <th>Kontak</th>
-                                    <th>Alamat</th>
-                                    <th class="text-right">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for pelanggan in pelanggans %}
-                                    <tr>
-                                        <td>
-                                            <div class="font-weight-semibold">{{ pelanggan.nama }}</div>
-                                            <div class="small text-muted">
-                                                <span class="mr-2">
-                                                    <i class="fas fa-id-card mr-1"></i>{{ pelanggan.pelanggan_id }}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            {% if pelanggan.kontak %}
-                                                <a href="tel:{{ pelanggan.kontak }}" class="badge badge-pill badge-success">
-                                                    <i class="fas fa-phone-alt mr-1"></i>{{ pelanggan.kontak }}
-                                                </a>
-                                            {% else %}
-                                                <span class="badge badge-pill badge-warning text-dark">
-                                                    <i class="fas fa-exclamation-circle mr-1"></i>Belum diisi
-                                                </span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if pelanggan.alamat %}
-                                                <div class="small text-muted text-break">{{ pelanggan.alamat }}</div>
-                                            {% else %}
-                                                <span class="badge badge-pill badge-light text-muted">Alamat belum tersedia</span>
-                                            {% endif %}
-                                        </td>
-                                        <td class="text-right">
-                                            <div class="btn-group" role="group" aria-label="Aksi pelanggan">
-                                                <a href="{{ url_for('main.edit_pelanggan', pelanggan_id=pelanggan.id) }}" class="btn btn-sm btn-outline-secondary">
-                                                    <i class="fas fa-edit"></i>
-                                                </a>
-                                                <form action="{{ url_for('main.delete_pelanggan', pelanggan_id=pelanggan.id) }}" method="POST" class="d-inline">
-                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Hapus pelanggan ini?')">
-                                                        <i class="fas fa-trash"></i>
-                                                    </button>
-                                                </form>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="table-responsive">
+                    <table class="table table-modern table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>Pelanggan</th>
+                                <th>Kontak</th>
+                                <th>Alamat</th>
+                                <th>Level Harga</th>
+                                <th class="text-right">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pelanggan in pelanggans %}
+                            <tr>
+                                <td>
+                                    <div class="font-weight-semibold">{{ pelanggan.nama }}</div>
+                                    <div class="small text-muted">
+                                        <span class="mr-2">
+                                            <i class="fas fa-id-card mr-1"></i>{{ pelanggan.pelanggan_id }}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if pelanggan.kontak %}
+                                    <a href="tel:{{ pelanggan.kontak }}" class="badge badge-pill badge-success">
+                                        <i class="fas fa-phone-alt mr-1"></i>{{ pelanggan.kontak }}
+                                    </a>
+                                    {% else %}
+                                    <span class="badge badge-pill badge-warning text-dark">
+                                        <i class="fas fa-exclamation-circle mr-1"></i>Belum diisi
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if pelanggan.alamat %}
+                                    <div class="small text-muted text-break">{{ pelanggan.alamat }}</div>
+                                    {% else %}
+                                    <span class="badge badge-pill badge-light text-muted">Alamat belum tersedia</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if pelanggan.price_level %}
+                                        <span class="badge badge-pill badge-info">{{ pelanggan.price_level.name }}</span>
+                                    {% else %}
+                                        <span class="badge badge-pill badge-light text-muted">Standar</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-right">
+                                    <div class="btn-group" role="group" aria-label="Aksi pelanggan">
+                                        <a href="{{ url_for('main.edit_pelanggan', pelanggan_id=pelanggan.id) }}"
+                                            class="btn btn-sm btn-outline-secondary">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <form action="{{ url_for('main.delete_pelanggan', pelanggan_id=pelanggan.id) }}"
+                                            method="POST" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                onclick="return confirm('Hapus pelanggan ini?')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if pagination and pagination.pages > 1 %}
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mt-3">
+                    <small class="text-muted mb-2 mb-md-0">Halaman {{ page }} dari {{ pagination.pages }}</small>
+                    <nav aria-label="Navigasi halaman pelanggan">
+                        <ul class="pagination pagination-sm mb-0">
+                            <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                                <a class="page-link"
+                                    href="{{ url_for('main.pelanggan', page=pagination.prev_num, search=search_query, per_page=per_page) }}"
+                                    aria-label="Sebelumnya">
+                                    <span aria-hidden="true">&laquo;</span>
+                                </a>
+                            </li>
+                            {% for page_number in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                                {% if page_number %}
+                                    <li class="page-item {% if page_number == page %}active{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('main.pelanggan', page=page_number, search=search_query, per_page=per_page) }}">
+                                            {{ page_number }}
+                                        </a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                                {% endif %}
+                            {% endfor %}
+                            <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                                <a class="page-link"
+                                    href="{{ url_for('main.pelanggan', page=pagination.next_num, search=search_query, per_page=per_page) }}"
+                                    aria-label="Berikutnya">
+                                    <span aria-hidden="true">&raquo;</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+                {% endif %}
                 {% else %}
-                    <div class="empty-state text-center py-5">
-                        <div class="empty-icon text-primary mb-3">
-                            <i class="fas fa-users-slash fa-2x"></i>
-                        </div>
-                        <p class="mb-0 text-muted">Belum ada pelanggan sesuai pencarian. Tambahkan pelanggan baru atau ubah filter.</p>
+                <div class="empty-state text-center py-5">
+                    <div class="empty-icon text-primary mb-3">
+                        <i class="fas fa-users-slash fa-2x"></i>
                     </div>
+                    <p class="mb-0 text-muted">Belum ada pelanggan sesuai pencarian. Tambahkan pelanggan baru atau ubah
+                        filter.</p>
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -183,19 +232,25 @@
                         <div class="mb-3">
                             <div class="d-flex justify-content-between small text-muted mb-1">
                                 <span>Kontak lengkap</span>
-                                <span>{{ contact_completion }}%</span>
+                                <span>{{ contact_completion_pct }}%</span>
                             </div>
                             <div class="progress">
-                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ contact_completion }}%;" aria-valuenow="{{ contact_completion }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                <div class="progress-bar bg-success" role="progressbar"
+                                    style="width: {{ contact_progress_width }};"
+                                    aria-valuenow="{{ contact_completion_pct }}" aria-valuemin="0" aria-valuemax="100">
+                                </div>
                             </div>
                         </div>
                         <div>
                             <div class="d-flex justify-content-between small text-muted mb-1">
                                 <span>Alamat lengkap</span>
-                                <span>{{ address_completion }}%</span>
+                                <span>{{ address_completion_pct }}%</span>
                             </div>
                             <div class="progress">
-                                <div class="progress-bar bg-info" role="progressbar" style="width: {{ address_completion }}%;" aria-valuenow="{{ address_completion }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                <div class="progress-bar bg-info" role="progressbar"
+                                    style="width: {{ address_progress_width }};"
+                                    aria-valuenow="{{ address_completion_pct }}" aria-valuemin="0" aria-valuemax="100">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -205,18 +260,20 @@
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
                         <h3 class="h6 font-weight-bold mb-3">Prioritas tindak lanjut</h3>
-                        {% set badge_map = {'warning': 'badge-warning', 'info': 'badge-info', 'success': 'badge-success', 'secondary': 'badge-secondary'} %}
+                        {% set badge_map = {'warning': 'badge-warning', 'info': 'badge-info', 'success':
+                        'badge-success', 'secondary': 'badge-secondary'} %}
                         <ul class="list-unstyled mb-0">
                             {% for insight in insights %}
-                                <li class="mb-3">
-                                    <div class="d-flex align-items-center justify-content-between">
-                                        <span class="font-weight-semibold">{{ insight.title }}</span>
-                                        <span class="badge badge-pill {{ badge_map.get(insight.status, 'badge-secondary') }}">
-                                            {{ '{:,}'.format(insight.value).replace(',', '.') }}
-                                        </span>
-                                    </div>
-                                    <p class="small text-muted mb-0">{{ insight.description }}</p>
-                                </li>
+                            <li class="mb-3">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span class="font-weight-semibold">{{ insight.title }}</span>
+                                    <span
+                                        class="badge badge-pill {{ badge_map.get(insight.status, 'badge-secondary') }}">
+                                        {{ '{:,}'.format(insight.value).replace(',', '.') }}
+                                    </span>
+                                </div>
+                                <p class="small text-muted mb-0">{{ insight.description }}</p>
+                            </li>
                             {% endfor %}
                         </ul>
                     </div>
@@ -233,9 +290,9 @@
                 </span>
                 <h2 class="h5 font-weight-bold mt-3 mb-2">
                     {% if is_editing %}
-                        Perbarui data <span class="text-primary">{{ edit_pelanggan.nama }}</span>
+                    Perbarui data <span class="text-primary">{{ edit_pelanggan.nama }}</span>
                     {% else %}
-                        Input pelanggan baru
+                    Input pelanggan baru
                     {% endif %}
                 </h2>
                 <p class="small text-muted">
@@ -244,9 +301,10 @@
                 </p>
 
                 {% if is_editing %}
-                    <div class="alert alert-info small" role="alert">
-                        Anda sedang mengedit pelanggan. Simpan perubahan atau <a href="{{ url_for('main.pelanggan') }}" class="alert-link">batalkan untuk kembali menambah pelanggan baru</a>.
-                    </div>
+                <div class="alert alert-info small" role="alert">
+                    Anda sedang mengedit pelanggan. Simpan perubahan atau <a href="{{ url_for('main.pelanggan') }}"
+                        class="alert-link">batalkan untuk kembali menambah pelanggan baru</a>.
+                </div>
                 {% endif %}
 
                 <form method="POST" action="{{ form_action }}">
@@ -254,36 +312,46 @@
 
                     <div class="form-group">
                         <label for="pelanggan_id">ID Pelanggan</label>
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="pelanggan_id"
-                            name="pelanggan_id"
+                        <input type="text" class="form-control" id="pelanggan_id" name="pelanggan_id"
                             value="{{ edit_pelanggan.pelanggan_id if is_editing else '' }}"
-                            placeholder="{{ next_customer_id }}"
-                            readonly
-                        >
+                            placeholder="{{ next_customer_id }}" readonly>
                     </div>
                     <div class="form-group">
                         <label for="nama">Nama Pelanggan</label>
-                        <input type="text" class="form-control" id="nama" name="nama" placeholder="Nama lengkap" value="{{ edit_pelanggan.nama if is_editing else '' }}" required>
+                        <input type="text" class="form-control" id="nama" name="nama" placeholder="Nama lengkap"
+                            value="{{ edit_pelanggan.nama if is_editing else '' }}" required>
                     </div>
                     <div class="form-group">
                         <label for="kontak">Kontak</label>
-                        <input type="text" class="form-control" id="kontak" name="kontak" placeholder="Nomor telepon atau WhatsApp" value="{{ edit_pelanggan.kontak if is_editing else '' }}" required>
+                        <input type="text" class="form-control" id="kontak" name="kontak"
+                            placeholder="Nomor telepon atau WhatsApp"
+                            value="{{ edit_pelanggan.kontak if is_editing else '' }}" required>
                     </div>
                     <div class="form-group">
                         <label for="alamat">Alamat</label>
-                        <textarea class="form-control" id="alamat" name="alamat" rows="3" placeholder="Alamat lengkap" required>{{ edit_pelanggan.alamat if is_editing else '' }}</textarea>
+                        <textarea class="form-control" id="alamat" name="alamat" rows="3" placeholder="Alamat lengkap"
+                            required>{{ edit_pelanggan.alamat if is_editing else '' }}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="price_level_id">Level Harga</label>
+                        <select class="custom-select" id="price_level_id" name="price_level_id">
+                            <option value="">Harga standar</option>
+                            {% for level in price_levels %}
+                                <option value="{{ level.id }}" {% if is_editing and edit_pelanggan.price_level_id == level.id %}selected{% endif %}>
+                                    {{ level.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted">Pelanggan akan otomatis memakai harga khusus level ini saat transaksi.</small>
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-block">
                         {% if is_editing %}Simpan Perubahan{% else %}Simpan{% endif %}
                     </button>
                     {% if is_editing %}
-                        <a href="{{ url_for('main.pelanggan') }}" class="btn btn-light btn-block mt-2">Batalkan edit</a>
+                    <a href="{{ url_for('main.pelanggan') }}" class="btn btn-light btn-block mt-2">Batalkan edit</a>
                     {% else %}
-                        <button type="reset" class="btn btn-outline-secondary btn-block mt-2">Reset form</button>
+                    <button type="reset" class="btn btn-outline-secondary btn-block mt-2">Reset form</button>
                     {% endif %}
                 </form>
             </div>
@@ -293,29 +361,30 @@
             <div class="card-body">
                 <h3 class="h6 font-weight-bold mb-3">Baru ditambahkan</h3>
                 {% if recent_customers %}
-                    <ul class="list-group list-group-flush">
-                        {% for pelanggan in recent_customers %}
-                            <li class="list-group-item px-0 d-flex justify-content-between align-items-start">
-                                <div>
-                                    <div class="font-weight-semibold">{{ pelanggan.nama }}</div>
-                                    <small class="text-muted d-block">
-                                        <i class="fas fa-id-card mr-1"></i>{{ pelanggan.pelanggan_id }}
-                                    </small>
-                                </div>
-                                <div class="text-right">
-                                    {% if pelanggan.kontak %}
-                                        <span class="badge badge-success">
-                                            <i class="fas fa-phone-alt mr-1"></i>{{ pelanggan.kontak }}
-                                        </span>
-                                    {% else %}
-                                        <span class="badge badge-light text-muted">Kontak kosong</span>
-                                    {% endif %}
-                                </div>
-                            </li>
-                        {% endfor %}
-                    </ul>
+                <ul class="list-group list-group-flush">
+                    {% for pelanggan in recent_customers %}
+                    <li class="list-group-item px-0 d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="font-weight-semibold">{{ pelanggan.nama }}</div>
+                            <small class="text-muted d-block">
+                                <i class="fas fa-id-card mr-1"></i>{{ pelanggan.pelanggan_id }}
+                            </small>
+                        </div>
+                        <div class="text-right">
+                            {% if pelanggan.kontak %}
+                            <span class="badge badge-success">
+                                <i class="fas fa-phone-alt mr-1"></i>{{ pelanggan.kontak }}
+                            </span>
+                            {% else %}
+                            <span class="badge badge-light text-muted">Kontak kosong</span>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
                 {% else %}
-                    <p class="small text-muted mb-0">Belum ada data pelanggan. Mulai tambahkan untuk melihat daftar terbaru di sini.</p>
+                <p class="small text-muted mb-0">Belum ada data pelanggan. Mulai tambahkan untuk melihat daftar terbaru
+                    di sini.</p>
                 {% endif %}
             </div>
         </div>
@@ -327,36 +396,46 @@
         border-radius: 20px;
         padding: 2.5rem 2rem;
     }
+
     .hero-card .btn {
         border-radius: 999px;
     }
+
     .hero-meta .badge {
         letter-spacing: 0.08em;
     }
+
     .text-white-75 {
         color: rgba(255, 255, 255, 0.75) !important;
     }
+
     .font-weight-semibold {
         font-weight: 600;
     }
+
     .stat-card {
         border-radius: 18px;
         transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
+
     .stat-card:hover {
         transform: translateY(-4px);
         box-shadow: 0 18px 35px rgba(15, 23, 42, 0.12);
     }
+
     .stat-card .stat-icon {
         font-size: 1.75rem;
     }
+
     .stat-card .stat-value {
         font-size: 1.85rem;
         font-weight: 700;
     }
+
     .card-panel {
         border-radius: 18px;
     }
+
     .table-modern thead th {
         text-transform: uppercase;
         font-size: 0.75rem;
@@ -364,12 +443,15 @@
         border-bottom: 2px solid rgba(15, 23, 42, 0.08);
         white-space: nowrap;
     }
+
     .table-modern tbody td {
         vertical-align: middle;
     }
+
     .table-modern tbody tr:hover {
         background-color: rgba(37, 99, 235, 0.04);
     }
+
     .empty-icon {
         width: 72px;
         height: 72px;
@@ -379,24 +461,32 @@
         justify-content: center;
         background: rgba(37, 99, 235, 0.12);
     }
+
     .form-card {
         border-radius: 20px;
     }
+
     .sticky-card {
         position: sticky;
         top: 1.25rem;
+        max-height: calc(100vh - 2.5rem);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
+
     @media (max-width: 992px) {
         .sticky-card {
             position: static;
             top: auto;
         }
     }
+
     @media (max-width: 576px) {
         .hero-card {
             border-radius: 16px;
             padding: 2rem 1.5rem;
         }
+
         .stat-card .stat-value {
             font-size: 1.6rem;
         }

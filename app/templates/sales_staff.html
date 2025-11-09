@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}Sales & Kasir{% endblock %}
+
+{% block content %}
+<section class="sales-staff">
+    <div class="page-hero hero-card hero-gradient text-white mb-4">
+        <div>
+            <p class="eyebrow text-uppercase mb-2">Tim Sales & Kasir</p>
+            <h1 class="display-5 font-weight-bold mb-2">Kelola akun sales dan kasir dari satu tempat.</h1>
+            <p class="mb-0 text-white-75">Tambahkan personel baru, pantau performa masing-masing, dan lihat transaksi terbaru yang mereka proses.</p>
+        </div>
+        <div class="hero-meta text-lg-right mt-4 mt-lg-0">
+            <span class="badge badge-pill badge-light text-uppercase px-3 py-2">{{ staff_table|length }} akun tercatat</span>
+            <p class="small text-white-75 mt-3 mb-0">Gunakan form di samping untuk menambah staf kasir atau sales baru.</p>
+        </div>
+    </div>
+
+    {% if stats_cards %}
+    <div class="row stat-grid mb-4">
+        {% for card in stats_cards %}
+            <div class="col-sm-6 col-xl-3 mb-3">
+                <div class="card stat-card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <span class="stat-icon {{ card.accent }}"><i class="fas {{ card.icon }}"></i></span>
+                            <span class="badge badge-light text-uppercase font-weight-semibold">{{ card.label }}</span>
+                        </div>
+                        <div class="stat-value mb-1">{{ '{:,}'.format(card.value).replace(',', '.') }}</div>
+                        <p class="small text-muted mb-0">{{ card.description }}</p>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row align-items-start">
+        <div class="col-xl-5">
+            <div class="card shadow-sm mb-4 add-card">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Tambah sales atau kasir</h2>
+                    <form method="POST" autocomplete="off">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Nama login</label>
+                            <input type="text" name="username" class="form-control form-control-lg {% if form_errors.username %}is-invalid{% endif %}" placeholder="contoh: andi.sales" value="{{ form_values.username }}">
+                            {% if form_errors.username %}
+                                <div class="invalid-feedback">{{ form_errors.username }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Email</label>
+                            <input type="email" name="email" class="form-control form-control-lg {% if form_errors.email %}is-invalid{% endif %}" placeholder="nama@contoh.com" value="{{ form_values.email }}">
+                            {% if form_errors.email %}
+                                <div class="invalid-feedback">{{ form_errors.email }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Password awal</label>
+                            <input type="password" name="password" class="form-control form-control-lg {% if form_errors.password %}is-invalid{% endif %}" placeholder="minimal 6 karakter">
+                            {% if form_errors.password %}
+                                <div class="invalid-feedback">{{ form_errors.password }}</div>
+                            {% else %}
+                                <small class="form-text text-muted">Beritahukan pengguna untuk mengganti password setelah login.</small>
+                            {% endif %}
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Peran</label>
+                            <select name="role" class="custom-select custom-select-lg">
+                                {% for role in role_choices %}
+                                    <option value="{{ role.value }}" {% if form_values.role == role.value %}selected{% endif %}>{{ role.label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-lg btn-block">
+                            <i class="fas fa-user-plus mr-2"></i>Simpan akun
+                        </button>
+                        <p class="small text-muted mt-3 mb-0">Akun baru otomatis bisa dipakai untuk login ke aplikasi kasir.</p>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3">Transaksi terbaru</h3>
+                    {% if recent_sales %}
+                        <ul class="list-group list-group-flush">
+                            {% for sale in recent_sales %}
+                                <li class="list-group-item px-0">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <div class="font-weight-semibold">{{ sale.no_faktur }}</div>
+                                            <small class="text-muted">{{ sale.pelanggan.nama if sale.pelanggan else 'Umum' }} • {{ sale.sales.username if sale.sales else '-' }}</small>
+                                        </div>
+                                        <span class="font-weight-semibold text-primary">{{ ('Rp {:,.0f}'.format(sale.total_harga)).replace(',', '.') }}</span>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="small text-muted mb-0">Belum ada transaksi terbaru.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-7">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap">
+                    <div>
+                        <h3 class="h5 font-weight-bold mb-1">Daftar sales & kasir</h3>
+                        <p class="small text-muted mb-0">Tersusun berdasarkan nama login. Klik kolom untuk melihat detail singkat.</p>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 staff-table">
+                        <thead>
+                            <tr>
+                                <th>Nama Login</th>
+                                <th>Email</th>
+                                <th>Peran</th>
+                                <th class="text-center">Faktur</th>
+                                <th class="text-center">Pelanggan</th>
+                                <th class="text-right">Omzet</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if staff_table %}
+                                {% for staff in staff_table %}
+                                    <tr>
+                                        <td class="align-middle font-weight-semibold">{{ staff.username }}</td>
+                                        <td class="align-middle">{{ staff.email }}</td>
+                                        <td class="align-middle"><span class="badge badge-soft">{{ staff.role }}</span></td>
+                                        <td class="align-middle text-center">{{ staff.orders }}</td>
+                                        <td class="align-middle text-center">{{ staff.customers }}</td>
+                                        <td class="align-middle text-right font-weight-semibold">{{ ('Rp {:,.0f}'.format(staff.revenue)).replace(',', '.') }}</td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-5 text-muted">
+                                        <i class="fas fa-user-plus fa-2x mb-3"></i>
+                                        <div>Belum ada data sales atau kasir yang terdaftar.</div>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .sales-staff .page-hero.hero-card {
+        padding: 2.5rem 2.5rem;
+        border-radius: 24px;
+    }
+    @media (max-width: 576px) {
+        .sales-staff .page-hero.hero-card {
+            padding: 1.75rem;
+        }
+    }
+    .sales-staff .eyebrow {
+        letter-spacing: 0.3em;
+        font-size: 0.75rem;
+    }
+    .stat-card {
+        border-radius: 16px;
+    }
+    .stat-card .stat-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+    .add-card {
+        border-radius: 18px;
+    }
+    .badge-soft {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.2rem 0.75rem;
+        border-radius: 999px;
+        background: rgba(14, 165, 233, 0.1);
+        color: #0ea5e9;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+    }
+    .staff-table thead th {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #475569;
+        border-top: none;
+        background: #f8fafc;
+    }
+    .staff-table tbody tr:hover {
+        background: rgba(79, 70, 229, 0.05);
+    }
+</style>
+{% endblock %}

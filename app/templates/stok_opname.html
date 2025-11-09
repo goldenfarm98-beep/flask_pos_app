@@ -1,0 +1,498 @@
+{% extends "base.html" %}
+
+{% block title %}Stok Opname{% endblock %}
+
+{% block content %}
+<section class="stock-opname">
+    <div class="card shadow-sm border-0 mb-4 opname-hero">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Stok Opname</p>
+                <h1 class="display-5 mb-2 text-navy">Catat stok fisik dan sesuaikan sistem</h1>
+                <p class="mb-0 text-muted">Gunakan panel di bawah untuk memilih produk, masukkan jumlah fisik, lalu simpan agar stok otomatis diperbarui.</p>
+            </div>
+            <div class="mt-4 mt-lg-0 text-lg-right d-flex flex-column flex-md-row gap-md-4">
+                <div>
+                    <small class="text-uppercase text-muted d-block">Total produk</small>
+                    <div class="h4 mb-0">{{ stats.product_count }}</div>
+                </div>
+                <div class="mt-3 mt-md-0 ml-md-4">
+                    <small class="text-uppercase text-muted d-block">Sesi opname</small>
+                    <div class="h4 mb-0">{{ stats.session_count }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="small text-muted text-uppercase">Lokasi / Gudang</label>
+                    <input type="text" class="form-control" id="location-input" placeholder="Contoh: Gudang Utama">
+                </div>
+                <div class="col-md-8 mb-3">
+                    <label class="small text-muted text-uppercase">Catatan sesi</label>
+                    <input type="text" class="form-control" id="note-input" placeholder="Opsional, mis. alasan opname">
+                </div>
+            </div>
+
+            <div class="opname-panel">
+                <div class="form-row align-items-end">
+                    <div class="form-group col-md-5 position-relative">
+                        <label class="small text-muted text-uppercase">Cari produk</label>
+                        <input type="text" class="form-control" id="product-input" placeholder="Ketik nama / kode / SKU">
+                        <input type="hidden" id="product-id">
+                        <div class="suggestion-box" id="product-suggestions" hidden></div>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label class="small text-muted text-uppercase">Qty fisik</label>
+                        <input type="number" min="0" class="form-control" id="counted-input" placeholder="0">
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label class="small text-muted text-uppercase">Catatan item</label>
+                        <input type="text" class="form-control" id="item-note-input" placeholder="Opsional">
+                    </div>
+                    <div class="form-group col-md-1">
+                        <button class="btn btn-primary btn-block" type="button" id="add-item-btn">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle" id="opname-table">
+                    <thead class="text-uppercase small text-muted">
+                        <tr>
+                            <th>Produk</th>
+                            <th class="text-center" style="width: 100px;">Stok sistem</th>
+                            <th class="text-center" style="width: 140px;">Stok fisik</th>
+                            <th class="text-center" style="width: 120px;">Selisih</th>
+                            <th>Catatan</th>
+                            <th class="text-center" style="width: 80px;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="opname-items">
+                        <tr id="empty-row">
+                            <td colspan="6" class="text-center text-muted">Belum ada produk yang ditambahkan.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="row align-items-center mt-3">
+                <div class="col-md-8">
+                    <div class="summary-cards">
+                        <div>
+                            <small class="text-muted text-uppercase">Total baris</small>
+                            <div class="h5 mb-0" data-summary="rows">0</div>
+                        </div>
+                        <div>
+                            <small class="text-muted text-uppercase text-success">Selisih +</small>
+                            <div class="h5 mb-0 text-success" data-summary="plus">0</div>
+                        </div>
+                        <div>
+                            <small class="text-muted text-uppercase text-danger">Selisih -</small>
+                            <div class="h5 mb-0 text-danger" data-summary="minus">0</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 text-md-right mt-3 mt-md-0">
+                    <button class="btn btn-success btn-lg" id="submit-opname">
+                        <i class="fas fa-clipboard-check mr-2"></i>Simpan & Finalisasi
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Riwayat sesi</p>
+                    <h3 class="h5 mb-3">5 stok opname terakhir</h3>
+            {% if not opname_ready %}
+            <div class="alert alert-warning">
+                Modul stok opname belum siap. Jalankan migrasi <code>flask db upgrade</code> dan muat ulang server untuk mengaktifkan riwayat sesi.
+            </div>
+            {% endif %}
+            {% if sessions %}
+                    <ul class="list-group list-group-flush">
+                        {% for session in sessions %}
+                        <li class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="font-weight-semibold">{{ session.reference }}</div>
+                                    <small class="text-muted d-block">{{ session.created_at }} • {{ session.user }}</small>
+                                    <small class="text-muted d-block">Lokasi: {{ session.location }}</small>
+                                </div>
+                                <div class="text-right">
+                                    <div class="font-weight-semibold">{{ session.item_count }} item</div>
+                                    <small class="text-muted">Selisih: {{ session.diff_total }}</small>
+                                </div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada sesi stok opname.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Tips singkat</p>
+                    <h3 class="h5 mb-3">Best practice opname</h3>
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-3">• Kunci transaksi penjualan/pembelian saat opname untuk menghindari selisih baru.</li>
+                        <li class="mb-3">• Gunakan alat scan barcode untuk mempercepat input produk.</li>
+                        <li class="mb-3">• Tambahkan catatan pada item berselisih besar agar mudah ditindaklanjuti.</li>
+                        <li>• Unduh laporan dari menu laporan stok untuk arsip audit.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script type="application/json" id="product-data">{{ product_payload|tojson }}</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const productData = JSON.parse(document.getElementById('product-data').textContent || '[]');
+        const productMap = new Map(productData.map(product => [String(product.id), product]));
+        const productInput = document.getElementById('product-input');
+        const productHidden = document.getElementById('product-id');
+        const suggestionBox = document.getElementById('product-suggestions');
+        const countedInput = document.getElementById('counted-input');
+        const itemNoteInput = document.getElementById('item-note-input');
+        const addButton = document.getElementById('add-item-btn');
+        const tableBody = document.getElementById('opname-items');
+        const emptyRow = document.getElementById('empty-row');
+        const summaryNodes = {
+            rows: document.querySelector('[data-summary="rows"]'),
+            plus: document.querySelector('[data-summary="plus"]'),
+            minus: document.querySelector('[data-summary="minus"]')
+        };
+        const csrfTokenValue = document.querySelector('input[name="csrf_token"]')?.value || '';
+        const locationInput = document.getElementById('location-input');
+        const noteInput = document.getElementById('note-input');
+        const submitButton = document.getElementById('submit-opname');
+
+        function toggleEmptyState() {
+            if (!emptyRow) return;
+            const hasRows = tableBody.querySelectorAll('tr[data-row="true"]').length > 0;
+            emptyRow.classList.toggle('d-none', hasRows);
+        }
+
+        function renderSummary() {
+            let rows = 0;
+            let plus = 0;
+            let minus = 0;
+            tableBody.querySelectorAll('tr[data-row="true"]').forEach(row => {
+                rows += 1;
+                const diff = parseInt(row.dataset.difference || '0', 10);
+                if (diff > 0) plus += diff;
+                if (diff < 0) minus += diff;
+            });
+            if (summaryNodes.rows) summaryNodes.rows.textContent = rows;
+            if (summaryNodes.plus) summaryNodes.plus.textContent = plus;
+            if (summaryNodes.minus) summaryNodes.minus.textContent = minus;
+        }
+
+        function updateRowMetrics(row) {
+            const systemQty = parseInt(row.dataset.systemQty || '0', 10);
+            const countedInput = row.querySelector('.counted-input');
+            const diffBadge = row.querySelector('.difference-badge');
+            let counted = parseInt(countedInput.value, 10);
+            if (!Number.isFinite(counted) || counted < 0) counted = 0;
+            const diff = counted - systemQty;
+            row.dataset.countedQty = counted;
+            row.dataset.difference = diff;
+            diffBadge.textContent = diff;
+            diffBadge.classList.remove('badge-success', 'badge-danger', 'badge-secondary');
+            if (diff > 0) {
+                diffBadge.classList.add('badge-success');
+            } else if (diff < 0) {
+                diffBadge.classList.add('badge-danger');
+            } else {
+                diffBadge.classList.add('badge-secondary');
+            }
+            renderSummary();
+        }
+
+        function addRow(product, countedValue = null, note = '') {
+            const existing = tableBody.querySelector(`tr[data-product-id="${product.id}"]`);
+            if (existing) {
+                existing.querySelector('.counted-input').value = countedValue ?? existing.dataset.systemQty;
+                existing.querySelector('.note-input').value = note;
+                updateRowMetrics(existing);
+                return;
+            }
+            const systemQty = parseInt(product.stock || 0, 10);
+            const counted = Number.isFinite(countedValue) && countedValue !== null ? countedValue : systemQty;
+            const row = document.createElement('tr');
+            row.dataset.row = 'true';
+            row.dataset.productId = product.id;
+            row.dataset.systemQty = systemQty;
+            row.dataset.countedQty = counted;
+            row.dataset.difference = counted - systemQty;
+            row.innerHTML = `
+                <td>
+                    <div class="font-weight-semibold">${product.name}</div>
+                    <small class="text-muted d-block">${product.code} • ${product.sku}</small>
+                    <small class="text-muted d-block">${product.kategori}</small>
+                </td>
+                <td class="text-center"><span class="badge badge-soft">${systemQty}</span></td>
+                <td class="text-center">
+                    <input type="number" min="0" class="form-control form-control-sm counted-input" value="${counted}">
+                </td>
+                <td class="text-center">
+                    <span class="badge difference-badge">${counted - systemQty}</span>
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm note-input" value="${note}">
+                </td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-outline-danger remove-row">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </td>
+            `;
+            tableBody.appendChild(row);
+            const countedField = row.querySelector('.counted-input');
+            countedField.addEventListener('input', () => updateRowMetrics(row));
+            const removeBtn = row.querySelector('.remove-row');
+            removeBtn.addEventListener('click', () => {
+                row.remove();
+                toggleEmptyState();
+                renderSummary();
+            });
+            updateRowMetrics(row);
+            toggleEmptyState();
+        }
+
+        function clearSuggestionBox() {
+            if (suggestionBox) {
+                suggestionBox.innerHTML = '';
+                suggestionBox.hidden = true;
+            }
+        }
+
+        function fillProductSelection(product) {
+            if (!product) return;
+            if (productInput) productInput.value = `${product.code} — ${product.name}`;
+            if (productHidden) productHidden.value = product.id;
+            clearSuggestionBox();
+        }
+
+        function renderSuggestions(query) {
+            if (!suggestionBox || !productInput) return;
+            const q = (query || '').toLowerCase();
+            if (!q) {
+                clearSuggestionBox();
+                return;
+            }
+            const matches = productData.filter(product => {
+                return (
+                    (product.name || '').toLowerCase().includes(q) ||
+                    (product.code || '').toLowerCase().includes(q) ||
+                    (product.sku || '').toLowerCase().includes(q)
+                );
+            }).slice(0, 8);
+            if (!matches.length) {
+                clearSuggestionBox();
+                return;
+            }
+            suggestionBox.innerHTML = '';
+            matches.forEach(product => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'suggestion-item';
+                btn.innerHTML = `
+                    <div>
+                        <div class="font-weight-semibold">${product.code} — ${product.name}</div>
+                        <small>${product.sku}</small>
+                    </div>
+                    <span class="badge badge-soft ml-2">Stok ${product.stock}</span>
+                `;
+                btn.addEventListener('click', () => fillProductSelection(product));
+                suggestionBox.appendChild(btn);
+            });
+            suggestionBox.hidden = false;
+        }
+
+        if (productInput) {
+            productInput.addEventListener('input', () => {
+                if (productHidden) productHidden.value = '';
+                renderSuggestions(productInput.value);
+            });
+            productInput.addEventListener('focus', () => renderSuggestions(productInput.value));
+            productInput.addEventListener('blur', () => {
+                setTimeout(clearSuggestionBox, 150);
+            });
+        }
+
+        if (addButton) {
+            addButton.addEventListener('click', () => {
+                const productId = productHidden?.value;
+                let product = productId ? productMap.get(String(productId)) : null;
+                if (!product && productInput?.value) {
+                    const q = productInput.value.toLowerCase();
+                    product = productData.find(p =>
+                        (p.name || '').toLowerCase() === q ||
+                        `${p.code} — ${p.name}`.toLowerCase() === q
+                    ) || null;
+                }
+                if (!product) {
+                    alert('Pilih produk terlebih dahulu.');
+                    return;
+                }
+                const countedValue = countedInput.value ? parseInt(countedInput.value, 10) : null;
+                const note = itemNoteInput.value || '';
+                addRow(product, countedValue, note);
+                countedInput.value = '';
+                itemNoteInput.value = '';
+                if (productInput) productInput.value = '';
+                if (productHidden) productHidden.value = '';
+                productInput?.focus();
+            });
+        }
+
+        if (submitButton) {
+            submitButton.addEventListener('click', () => {
+                const rows = Array.from(tableBody.querySelectorAll('tr[data-row="true"]'));
+                if (!rows.length) {
+                    alert('Tambahkan produk yang dihitung terlebih dahulu.');
+                    return;
+                }
+                const items = rows.map(row => ({
+                    product_id: row.dataset.productId,
+                    counted_qty: parseInt(row.dataset.countedQty || '0', 10),
+                    note: row.querySelector('.note-input').value || ''
+                }));
+                submitButton.disabled = true;
+                fetch('{{ url_for("main.stok_opname") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfTokenValue
+                    },
+                    body: JSON.stringify({
+                        location: locationInput.value,
+                        note: noteInput.value,
+                        items
+                    })
+                })
+                    .then(response => response.json().then(body => ({ ok: response.ok, body })))
+                    .then(({ ok, body }) => {
+                        if (ok && body.success) {
+                            alert(body.message || 'Stock opname tersimpan.');
+                            window.location.reload();
+                        } else {
+                            alert(body.message || 'Gagal menyimpan stock opname.');
+                        }
+                    })
+                    .catch(() => alert('Terjadi kesalahan jaringan.'))
+                    .finally(() => { submitButton.disabled = false; });
+            });
+        }
+    });
+</script>
+
+<style>
+    .stock-opname .eyebrow {
+        letter-spacing: 0.25em;
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+
+    .stock-opname .text-navy {
+        color: #0f172a;
+    }
+
+    .opname-hero {
+        border-radius: 22px;
+    }
+
+    .opname-panel {
+        padding: 1rem;
+        background: #f8fafc;
+        border-radius: 16px;
+        margin-bottom: 1.5rem;
+    }
+
+    .badge-soft {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        background: rgba(99, 102, 241, 0.12);
+        color: #312e81;
+        font-weight: 600;
+    }
+
+    .difference-badge {
+        min-width: 64px;
+    }
+
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 1rem;
+    }
+
+    .suggestion-box {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 30;
+        background: #fff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 12px;
+        box-shadow: 0 18px 30px rgba(15, 23, 42, 0.1);
+        max-height: 240px;
+        overflow-y: auto;
+    }
+
+    .suggestion-item {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+        color: #0f172a;
+    }
+
+    .suggestion-item small {
+        color: #94a3b8;
+        margin-left: 0.5rem;
+    }
+
+    .suggestion-item:hover,
+    .suggestion-item:focus {
+        background: rgba(59, 130, 246, 0.08);
+        outline: none;
+    }
+
+    .stock-opname table td {
+        vertical-align: middle;
+    }
+
+    @media (max-width: 767px) {
+        .summary-cards {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+</style>
+{% endblock %}
