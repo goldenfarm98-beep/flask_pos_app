@@ -715,7 +715,8 @@ def _build_supplier_page_context(
         .all()
     )
     for purchase in recent_query:
-        total_units = sum(item.jumlah for item in purchase.barang)
+        total_units = sum(item.jumlah or 0 for item in purchase.barang)
+        total_cost = sum(item.hpp or 0.0 for item in purchase.barang)
         recent_purchases.append(
             {
                 "no_faktur": purchase.no_faktur,
@@ -728,6 +729,7 @@ def _build_supplier_page_context(
                     purchase.supplier.name if purchase.supplier else "Tanpa supplier"
                 ),
                 "items": total_units,
+                "total": total_cost,
             }
         )
 
