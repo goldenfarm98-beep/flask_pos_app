@@ -335,7 +335,10 @@ def register():
             else None
         )
         if existing_username:
-            flash("Username is already registered. Please use a different username.", "danger")
+            flash(
+                "Username is already registered. Please use a different username.",
+                "danger",
+            )
             return render_template("register.html")
 
         # Periksa apakah email sudah ada
@@ -1080,7 +1083,10 @@ def edit_satuan(satuan_id):
 def delete_satuan(satuan_id):
     satuan = Satuan.query.get_or_404(satuan_id)
     if Produk.query.filter_by(satuan_id=satuan.id).count():
-        flash("Tidak dapat menghapus satuan karena masih digunakan oleh produk.", "warning")
+        flash(
+            "Tidak dapat menghapus satuan karena masih digunakan oleh produk.",
+            "warning",
+        )
         return redirect(url_for("main.satuan"))
     db.session.delete(satuan)
     db.session.commit()
@@ -1131,7 +1137,10 @@ def edit_kategori(kategori_id):
 def delete_kategori(kategori_id):
     kategori = Kategori.query.get_or_404(kategori_id)
     if Produk.query.filter_by(kategori_id=kategori.id).count():
-        flash("Tidak dapat menghapus kategori karena masih digunakan oleh produk.", "warning")
+        flash(
+            "Tidak dapat menghapus kategori karena masih digunakan oleh produk.",
+            "warning",
+        )
         return redirect(url_for("main.kategori"))
     db.session.delete(kategori)
     db.session.commit()
@@ -1529,11 +1538,21 @@ def jurnal():
         payload = request.get_json(silent=True) or {}
         lines = payload.get("lines") or []
         if not lines or len(lines) < 2:
-            return jsonify({"success": False, "message": "Minimal dua baris jurnal (debit/kredit)."}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Minimal dua baris jurnal (debit/kredit).",
+                    }
+                ),
+                400,
+            )
 
         date_value = _parse_date_param(payload.get("date")) or datetime.utcnow().date()
         memo = (payload.get("memo") or "").strip()
-        reference = (payload.get("reference") or "").strip() or _generate_journal_reference()
+        reference = (
+            payload.get("reference") or ""
+        ).strip() or _generate_journal_reference()
 
         total_debit = 0.0
         total_credit = 0.0
@@ -1544,28 +1563,91 @@ def jurnal():
             try:
                 account_id = int(account_id)
             except (TypeError, ValueError):
-                return jsonify({"success": False, "message": f"Akun tidak valid (baris {idx})."}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Akun tidak valid (baris {idx}).",
+                        }
+                    ),
+                    400,
+                )
             account = Account.query.get(account_id)
             if not account:
-                return jsonify({"success": False, "message": f"Akun ID {account_id} tidak ditemukan (baris {idx})."}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Akun ID {account_id} tidak ditemukan (baris {idx}).",
+                        }
+                    ),
+                    400,
+                )
             try:
                 debit = float(raw.get("debit") or 0.0)
                 credit = float(raw.get("credit") or 0.0)
             except (TypeError, ValueError):
-                return jsonify({"success": False, "message": f"Nominal tidak valid (baris {idx})."}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Nominal tidak valid (baris {idx}).",
+                        }
+                    ),
+                    400,
+                )
             if debit < 0 or credit < 0:
-                return jsonify({"success": False, "message": f"Debit/kredit tidak boleh negatif (baris {idx})."}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Debit/kredit tidak boleh negatif (baris {idx}).",
+                        }
+                    ),
+                    400,
+                )
             if debit == 0 and credit == 0:
-                return jsonify({"success": False, "message": f"Isi salah satu debit/kredit (baris {idx})."}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Isi salah satu debit/kredit (baris {idx}).",
+                        }
+                    ),
+                    400,
+                )
             if debit > 0 and credit > 0:
-                return jsonify({"success": False, "message": f"Debit dan kredit tidak boleh diisi bersamaan (baris {idx})."}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Debit dan kredit tidak boleh diisi bersamaan (baris {idx}).",
+                        }
+                    ),
+                    400,
+                )
 
             total_debit += debit
             total_credit += credit
-            parsed_lines.append({"account": account, "description": description, "debit": debit, "credit": credit})
+            parsed_lines.append(
+                {
+                    "account": account,
+                    "description": description,
+                    "debit": debit,
+                    "credit": credit,
+                }
+            )
 
         if round(total_debit, 2) != round(total_credit, 2):
-            return jsonify({"success": False, "message": "Total debit dan kredit harus seimbang."}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Total debit dan kredit harus seimbang.",
+                    }
+                ),
+                400,
+            )
 
         entry = JournalEntry(
             reference=reference,
@@ -1587,11 +1669,19 @@ def jurnal():
                 )
             )
         db.session.commit()
-        return jsonify({"success": True, "message": "Jurnal berhasil disimpan.", "reference": reference})
+        return jsonify(
+            {
+                "success": True,
+                "message": "Jurnal berhasil disimpan.",
+                "reference": reference,
+            }
+        )
 
     accounts = Account.query.order_by(Account.code.asc()).all()
     recent_entries = (
-        JournalEntry.query.options(joinedload(JournalEntry.lines).joinedload(JournalLine.account))
+        JournalEntry.query.options(
+            joinedload(JournalEntry.lines).joinedload(JournalLine.account)
+        )
         .order_by(JournalEntry.date.desc(), JournalEntry.id.desc())
         .limit(10)
         .all()
@@ -1750,7 +1840,7 @@ def import_produk():
     # Simpan data ke database
     for _, row in df.iterrows():
         # Validasi data
-        kode_produk = str(row["Kode Produk"]).strip()
+        kode_produk = row["Kode Produk"]
         existing_produk = Produk.query.filter_by(kode_produk=kode_produk).first()
         if existing_produk:
             flash(
@@ -1758,21 +1848,6 @@ def import_produk():
                 "warning",
             )
             continue
-
-        raw_sku = row["SKU"]
-        sku_value = (
-            str(raw_sku).strip()
-            if raw_sku is not None and not (pd.isna(raw_sku))
-            else ""
-        )
-        if sku_value:
-            duplicate_sku = Produk.query.filter(Produk.sku == sku_value).first()
-            if duplicate_sku:
-                flash(
-                    f"SKU '{sku_value}' sudah digunakan oleh {duplicate_sku.nama_produk}. Data dilewati.",
-                    "warning",
-                )
-                continue
 
         # Pastikan foreign key valid
         satuan = Satuan.query.get(row["Satuan ID"])
@@ -1789,7 +1864,7 @@ def import_produk():
         # Buat produk baru
         produk = Produk(
             kode_produk=row["Kode Produk"],
-            sku=sku_value or None,
+            sku=row["SKU"],
             nama_produk=row["Nama Produk"],
             satuan_id=row["Satuan ID"],
             kategori_id=row["Kategori ID"],
@@ -2041,7 +2116,10 @@ def edit_pelanggan(pelanggan_id):
 def delete_pelanggan(pelanggan_id):
     pelanggan = Pelanggan.query.get_or_404(pelanggan_id)
     if Penjualan.query.filter_by(pelanggan_id=pelanggan.id).count():
-        flash("Pelanggan masih memiliki riwayat transaksi dan tidak dapat dihapus.", "warning")
+        flash(
+            "Pelanggan masih memiliki riwayat transaksi dan tidak dapat dihapus.",
+            "warning",
+        )
         return redirect("/pelanggan")
     pelanggan_name = pelanggan.nama  # Simpan nama pelanggan untuk pesan flash
     db.session.delete(pelanggan)
@@ -2133,7 +2211,9 @@ def pembelian():
 
             if jenis_pembayaran not in allowed_payments:
                 return (
-                    jsonify({"success": False, "message": "Jenis pembayaran tidak valid."}),
+                    jsonify(
+                        {"success": False, "message": "Jenis pembayaran tidak valid."}
+                    ),
                     400,
                 )
 
@@ -2353,7 +2433,9 @@ def pembelian():
     level_price_entries_penjualan = ProductPriceLevel.query.all()
     level_price_map = {}
     for entry in level_price_entries_penjualan:
-        level_price_map.setdefault(entry.product_id, {})[entry.level_id] = float(entry.price or 0.0)
+        level_price_map.setdefault(entry.product_id, {})[entry.level_id] = float(
+            entry.price or 0.0
+        )
     price_levels = PriceLevel.query.order_by(PriceLevel.name.asc()).all()
     product_payload = [
         {
@@ -3393,9 +3475,6 @@ def laporan_pembelian():
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
     end_date = _parse_date_param(request.args.get("end_date")) or today
-    supplier_filter = _parse_int_param(request.args.get("supplier"))
-    search_query = (request.args.get("search") or "").strip()
-    supplier_options = Supplier.query.order_by(Supplier.name.asc()).all()
     if end_date < start_date:
         start_date, end_date = end_date, start_date
 
@@ -3408,16 +3487,6 @@ def laporan_pembelian():
         .filter(Pembelian.tanggal_faktur <= end_date)
         .order_by(Pembelian.tanggal_faktur.asc(), Pembelian.id.asc())
     )
-    if supplier_filter:
-        purchase_query = purchase_query.filter(Pembelian.supplier_id == supplier_filter)
-    if search_query:
-        like_value = f"%{search_query}%"
-        purchase_query = purchase_query.filter(
-            or_(
-                Pembelian.no_faktur.ilike(like_value),
-                Pembelian.supplier.has(Supplier.name.ilike(like_value)),
-            )
-        )
     purchase_records = purchase_query.all()
 
     totals = {
@@ -3434,14 +3503,12 @@ def laporan_pembelian():
     )
 
     largest_invoice = {"amount": 0.0, "supplier": "Tanpa supplier", "date": "-"}
-    purchase_table = []
 
     for purchase in purchase_records:
         invoice_total = 0.0
         invoice_units = 0
         invoice_date = purchase.tanggal_faktur or today
         month_key = (invoice_date.year, invoice_date.month)
-        line_items = []
 
         for item in purchase.barang:
             qty = item.jumlah or 0
@@ -3462,18 +3529,6 @@ def laporan_pembelian():
 
             invoice_total += final_total
             invoice_units += qty
-            line_items.append(
-                {
-                    "name": item.nama_barang,
-                    "code": item.kode_barang,
-                    "kategori": item.kategori,
-                    "qty": qty,
-                    "unit_price": unit_price,
-                    "discount": discount_pct,
-                    "tax": tax_pct,
-                    "line_total": final_total,
-                }
-            )
 
         daily_map[invoice_date]["spent"] += invoice_total
         daily_map[invoice_date]["units"] += invoice_units
@@ -3494,24 +3549,6 @@ def laporan_pembelian():
                 purchase.supplier.name if purchase.supplier else "Tanpa supplier"
             )
             largest_invoice["date"] = _format_date_id(invoice_date)
-
-        purchase_table.append(
-            {
-                "id": purchase.id,
-                "no_faktur": purchase.no_faktur,
-                "supplier": purchase.supplier.name
-                if purchase.supplier
-                else "Tanpa supplier",
-                "tanggal": purchase.tanggal_faktur,
-                "tanggal_label": _format_date_id(purchase.tanggal_faktur)
-                if purchase.tanggal_faktur
-                else "-",
-                "total": invoice_total,
-                "units": invoice_units,
-                "line_items": line_items,
-                "payment": getattr(purchase, "jenis_pembayaran", None),
-            }
-        )
 
     average_invoice = (
         totals["spend"] / totals["invoices"] if totals["invoices"] else 0.0
@@ -3539,19 +3576,6 @@ def laporan_pembelian():
     top_suppliers = sorted(
         supplier_map.values(), key=lambda entry: entry["spent"], reverse=True
     )[:5]
-    supplier_breakdown = sorted(
-        [
-            {
-                "name": entry["name"],
-                "spent": entry["spent"],
-                "units": entry["units"],
-                "invoices": entry["invoices"],
-            }
-            for entry in supplier_map.values()
-            if entry["invoices"]
-        ],
-        key=lambda entry: entry["name"].lower(),
-    )
 
     summary_cards = [
         {
@@ -3614,16 +3638,8 @@ def laporan_pembelian():
     filter_values = {
         "start_date": start_date.strftime("%Y-%m-%d"),
         "end_date": end_date.strftime("%Y-%m-%d"),
-        "supplier": supplier_filter or "",
-        "search": search_query,
     }
     range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
-    filter_active = bool(
-        supplier_filter
-        or search_query
-        or start_date != default_start
-        or end_date != today
-    )
 
     return render_template(
         "laporan_pembelian.html",
@@ -3638,20 +3654,11 @@ def laporan_pembelian():
         largest_invoice=largest_invoice,
         range_label=range_label,
         filter_values=filter_values,
-        supplier_options=supplier_options,
-        supplier_breakdown=supplier_breakdown,
-        purchase_table=purchase_table,
-        filter_active=filter_active,
     )
 
 
 def _product_cost_basis(product):
-    return float(
-        product.harga_lama
-        or product.harga_beli
-        or product.harga
-        or 0.0
-    )
+    return float(product.harga_lama or product.harga_beli or product.harga or 0.0)
 
 
 def _ensure_table(model):
@@ -3689,7 +3696,10 @@ def update_harga():
         if not request.is_json:
             return (
                 jsonify(
-                    {"success": False, "message": "Content-Type harus application/json."}
+                    {
+                        "success": False,
+                        "message": "Content-Type harus application/json.",
+                    }
                 ),
                 415,
             )
@@ -3820,8 +3830,12 @@ def update_harga():
                 "code": product.kode_produk,
                 "name": product.nama_produk,
                 "sku": product.sku or "-",
-                "kategori": product.kategori.name if product.kategori else "Tanpa kategori",
-                "supplier": product.supplier.name if product.supplier else "Tanpa supplier",
+                "kategori": (
+                    product.kategori.name if product.kategori else "Tanpa kategori"
+                ),
+                "supplier": (
+                    product.supplier.name if product.supplier else "Tanpa supplier"
+                ),
                 "cost": cost_basis,
                 "price": current_price,
                 "margin_value": margin_value,
@@ -3862,7 +3876,10 @@ def stok_opname():
         if not request.is_json:
             return (
                 jsonify(
-                    {"success": False, "message": "Content-Type harus application/json."}
+                    {
+                        "success": False,
+                        "message": "Content-Type harus application/json.",
+                    }
                 ),
                 415,
             )
@@ -3880,7 +3897,9 @@ def stok_opname():
             )
         location = (payload.get("location") or "").strip()
         note = (payload.get("note") or "").strip()
-        reference = (payload.get("reference") or "").strip() or _generate_stock_reference()
+        reference = (
+            payload.get("reference") or ""
+        ).strip() or _generate_stock_reference()
 
         opname_session = StockOpnameSession(
             reference=reference,
@@ -3952,7 +3971,9 @@ def stok_opname():
             )
         db.session.commit()
         plus = sum(item["difference"] for item in adjustments if item["difference"] > 0)
-        minus = sum(item["difference"] for item in adjustments if item["difference"] < 0)
+        minus = sum(
+            item["difference"] for item in adjustments if item["difference"] < 0
+        )
         return jsonify(
             {
                 "success": True,
@@ -3986,7 +4007,9 @@ def stok_opname():
             sessions = (
                 StockOpnameSession.query.options(
                     joinedload(StockOpnameSession.user),
-                    joinedload(StockOpnameSession.items).joinedload(StockOpnameItem.product),
+                    joinedload(StockOpnameSession.items).joinedload(
+                        StockOpnameItem.product
+                    ),
                 )
                 .order_by(StockOpnameSession.created_at.desc())
                 .limit(5)
@@ -4002,9 +4025,11 @@ def stok_opname():
         session_payload.append(
             {
                 "reference": opname.reference,
-                "created_at": _format_date_id(opname.created_at.date())
-                if opname.created_at
-                else "-",
+                "created_at": (
+                    _format_date_id(opname.created_at.date())
+                    if opname.created_at
+                    else "-"
+                ),
                 "user": opname.user.username if opname.user else "System",
                 "location": opname.location or "-",
                 "status": opname.status.title() if opname.status else "-",
@@ -4049,11 +4074,19 @@ def laporan_stok_opname():
     if opname_ready:
         sessions = (
             StockOpnameSession.query.options(
-                joinedload(StockOpnameSession.items).joinedload(StockOpnameItem.product),
+                joinedload(StockOpnameSession.items).joinedload(
+                    StockOpnameItem.product
+                ),
                 joinedload(StockOpnameSession.user),
             )
-            .filter(StockOpnameSession.created_at >= datetime.combine(start_date, datetime.min.time()))
-            .filter(StockOpnameSession.created_at <= datetime.combine(end_date, datetime.max.time()))
+            .filter(
+                StockOpnameSession.created_at
+                >= datetime.combine(start_date, datetime.min.time())
+            )
+            .filter(
+                StockOpnameSession.created_at
+                <= datetime.combine(end_date, datetime.max.time())
+            )
             .order_by(StockOpnameSession.created_at.desc())
             .all()
         )
@@ -4135,7 +4168,11 @@ def laporan_stok_opname():
     recent_sessions = [
         {
             "reference": session.reference,
-            "date": _format_date_id(session.created_at.date()) if session.created_at else "-",
+            "date": (
+                _format_date_id(session.created_at.date())
+                if session.created_at
+                else "-"
+            ),
             "user": session.user.username if session.user else "System",
             "location": session.location or "-",
             "items": len(session.items),
@@ -4216,7 +4253,9 @@ def laporan_stok_barang():
                     "code": product.kode_produk,
                     "stock": stock,
                     "minimal": minimal,
-                    "supplier": product.supplier.name if product.supplier else "Tanpa supplier",
+                    "supplier": (
+                        product.supplier.name if product.supplier else "Tanpa supplier"
+                    ),
                 }
             )
         category_name = product.kategori.name if product.kategori else "Tanpa kategori"
@@ -4231,7 +4270,9 @@ def laporan_stok_barang():
                 "code": product.kode_produk,
                 "sku": product.sku or "-",
                 "kategori": category_name,
-                "supplier": product.supplier.name if product.supplier else "Tanpa supplier",
+                "supplier": (
+                    product.supplier.name if product.supplier else "Tanpa supplier"
+                ),
                 "stock": stock,
                 "minimal": minimal,
                 "cost": cost,
@@ -4304,11 +4345,6 @@ def laporan_penjualan_report():
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
     end_date = _parse_date_param(request.args.get("end_date")) or today
-    sales_filter = _parse_int_param(request.args.get("sales"))
-    customer_filter = _parse_int_param(request.args.get("customer"))
-    search_query = (request.args.get("search") or "").strip()
-    sales_options = User.query.order_by(User.username.asc()).all()
-    customer_options = Pelanggan.query.order_by(Pelanggan.nama.asc()).all()
     if end_date < start_date:
         start_date, end_date = end_date, start_date
 
@@ -4322,19 +4358,6 @@ def laporan_penjualan_report():
         .filter(Penjualan.tanggal_penjualan <= end_date)
         .order_by(Penjualan.tanggal_penjualan.asc(), Penjualan.id.asc())
     )
-    if sales_filter:
-        sales_query = sales_query.filter(Penjualan.sales_id == sales_filter)
-    if customer_filter:
-        sales_query = sales_query.filter(Penjualan.pelanggan_id == customer_filter)
-    if search_query:
-        like_value = f"%{search_query}%"
-        sales_query = sales_query.filter(
-            or_(
-                Penjualan.no_faktur.ilike(like_value),
-                Penjualan.pelanggan.has(Pelanggan.nama.ilike(like_value)),
-                Penjualan.sales.has(User.username.ilike(like_value)),
-            )
-        )
     sales_records = sales_query.all()
 
     totals = {
@@ -4354,7 +4377,6 @@ def laporan_penjualan_report():
     customer_map = defaultdict(
         lambda: {"name": "Pelanggan umum", "orders": 0, "revenue": 0.0}
     )
-    sales_map = defaultdict(lambda: {"name": "Sales", "orders": 0, "revenue": 0.0})
     largest_invoice = {"amount": 0.0, "customer": "Pelanggan umum", "date": "-"}
     transaction_details = []
 
@@ -4411,9 +4433,9 @@ def laporan_penjualan_report():
             item_rows.append(
                 {
                     "product_id": detail.produk.id if detail.produk else None,
-                    "product_name": detail.produk.nama_produk
-                    if detail.produk
-                    else detail.produk_id,
+                    "product_name": (
+                        detail.produk.nama_produk if detail.produk else detail.produk_id
+                    ),
                     "sku": detail.produk.sku if detail.produk else "-",
                     "qty": qty,
                     "unit_price": price,
@@ -4447,13 +4469,6 @@ def laporan_penjualan_report():
         customer_entry["orders"] += 1
         customer_entry["revenue"] += invoice_revenue
 
-        sales_key = sale.sales_id or f"sales-{sale.id}"
-        sales_entry = sales_map[sales_key]
-        if sale.sales:
-            sales_entry["name"] = sale.sales.username
-        sales_entry["orders"] += 1
-        sales_entry["revenue"] += invoice_revenue
-
         if invoice_total > largest_invoice["amount"]:
             largest_invoice["amount"] = invoice_total
             largest_invoice["customer"] = (
@@ -4470,7 +4485,6 @@ def laporan_penjualan_report():
             if sale.pelanggan and sale.pelanggan.price_level
             else "Harga standar"
         )
-        item_count = sum(item["qty"] for item in item_rows)
         transaction_details.append(
             {
                 "id": sale.id,
@@ -4478,7 +4492,7 @@ def laporan_penjualan_report():
                 "timestamp": _format_date_id(sale_date),
                 "staff": staff_name,
                 "customer": {"name": customer_name, "code": customer_code},
-                "line_items": item_rows,
+                "items": item_rows,
                 "subtotal_before_discount": gross_subtotal_sum,
                 "total_discount": discount_sum,
                 "net_subtotal": net_subtotal,
@@ -4493,13 +4507,10 @@ def laporan_penjualan_report():
                 "cost_total": cost_sum,
                 "gross_profit": net_subtotal - cost_sum,
                 "print_link": url_for("main.penjualan"),
-                "items_count": item_count,
             }
         )
 
-    average_order = (
-        totals["revenue"] / totals["orders"] if totals["orders"] else 0.0
-    )
+    average_order = totals["revenue"] / totals["orders"] if totals["orders"] else 0.0
     margin_percent = (
         (totals["gross"] / totals["revenue"]) * 100 if totals["revenue"] else 0.0
     )
@@ -4520,9 +4531,9 @@ def laporan_penjualan_report():
             "revenue": values["revenue"],
             "gross": values["gross"],
             "orders": values["orders"],
-            "avg_order": (values["revenue"] / values["orders"])
-            if values["orders"]
-            else 0.0,
+            "avg_order": (
+                (values["revenue"] / values["orders"]) if values["orders"] else 0.0
+            ),
         }
         for (year, month), values in sorted(monthly_map.items())
     ]
@@ -4533,32 +4544,6 @@ def laporan_penjualan_report():
     top_customers = sorted(
         customer_map.values(), key=lambda entry: entry["revenue"], reverse=True
     )[:5]
-    sales_breakdown = sorted(
-        [
-            {
-                "name": entry["name"],
-                "orders": entry["orders"],
-                "revenue": entry["revenue"],
-            }
-            for entry in sales_map.values()
-            if entry["orders"]
-        ],
-        key=lambda entry: entry["revenue"],
-        reverse=True,
-    )
-    customer_breakdown = sorted(
-        [
-            {
-                "name": entry["name"],
-                "orders": entry["orders"],
-                "revenue": entry["revenue"],
-            }
-            for entry in customer_map.values()
-            if entry["orders"]
-        ],
-        key=lambda entry: entry["revenue"],
-        reverse=True,
-    )
 
     summary_cards = [
         {
@@ -4621,18 +4606,8 @@ def laporan_penjualan_report():
     filter_values = {
         "start_date": start_date.strftime("%Y-%m-%d"),
         "end_date": end_date.strftime("%Y-%m-%d"),
-        "sales": sales_filter or "",
-        "customer": customer_filter or "",
-        "search": search_query,
     }
     range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
-    filter_active = bool(
-        sales_filter
-        or customer_filter
-        or search_query
-        or start_date != default_start
-        or end_date != today
-    )
 
     return render_template(
         "laporan_penjualan.html",
@@ -4649,11 +4624,6 @@ def laporan_penjualan_report():
         filter_values=filter_values,
         largest_invoice=largest_invoice,
         transaction_details=transaction_details,
-        sales_options=sales_options,
-        customer_options=customer_options,
-        sales_breakdown=sales_breakdown,
-        customer_breakdown=customer_breakdown,
-        filter_active=filter_active,
     )
 
 
