@@ -112,6 +112,29 @@
             </div>
         </div>
     </div>
+
+    {% if net_revenue_total is not none and marketplace_cost_total is not none %}
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Pendapatan Bersih</p>
+                    <h3 class="h4 font-weight-bold mb-1">Rp {{ ('{:,.0f}'.format(net_revenue_total)).replace(',', '.') }}</h3>
+                    <p class="small text-muted mb-0">Sudah dikurangi biaya marketplace otomatis per transaksi.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Biaya Marketplace</p>
+                    <h3 class="h4 font-weight-bold text-danger mb-1">Rp {{ ('{:,.0f}'.format(marketplace_cost_total)).replace(',', '.') }}</h3>
+                    <p class="small text-muted mb-0">Komisi, cashback, ongkos gratis yang tercatat.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </section>
 
 <script type="application/json" id="account-data">{{ accounts|tojson }}</script>

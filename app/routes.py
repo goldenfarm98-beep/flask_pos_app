@@ -12,6 +12,7 @@ from functools import wraps
 from urllib.parse import urlparse, urljoin
 from collections import defaultdict
 import secrets
+import json
 from datetime import datetime, timedelta
 import logging
 from io import BytesIO
@@ -41,6 +42,7 @@ from app.models import (
     PasswordResetToken,
     PriceLevel,
     ProductPriceLevel,
+    PriceLevelCost,
     PriceChange,
     StockOpnameSession,
     StockOpnameItem,
@@ -105,6 +107,118 @@ def _safe_next_url(default_endpoint="main.dashboard", candidate=None):
     if target and _is_safe_redirect_target(target):
         return target
     return url_for(default_endpoint)
+
+
+def _normalize_price_value(raw_value):
+    if raw_value in (None, "", "null"):
+        return None
+    if isinstance(raw_value, (int, float)):
+        return float(raw_value)
+    try:
+        value = str(raw_value).strip()
+    except Exception:
+        return None
+    if not value:
+        return None
+    cleaned = value.replace("Rp", "").replace(" ", "")
+    if "," in cleaned and "." in cleaned:
+        if cleaned.find(",") > cleaned.find("."):
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+    else:
+        cleaned = cleaned.replace(",", ".")
+    try:
+        return float(cleaned)
+    except Exception:
+        try:
+            return float(value)
+        except Exception:
+            return None
+
+
+def _build_price_level_entries(payload, level_lookup):
+    payload = payload or []
+    normalized_entries = []
+    seen = set()
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        try:
+            level_id = int(row.get("level_id"))
+        except (TypeError, ValueError):
+            continue
+        if level_id in seen or level_id not in level_lookup:
+            continue
+        price_value = _normalize_price_value(row.get("price"))
+        if price_value is None:
+            continue
+        seen.add(level_id)
+        normalized_entries.append(
+            {
+                "level_id": level_id,
+                "price": price_value,
+            }
+        )
+    return normalized_entries
+
+
+def _sync_product_price_levels(
+    product, payload, level_lookup, normalized_entries=None
+):
+    normalized_entries = (
+        normalized_entries
+        if normalized_entries is not None
+        else _build_price_level_entries(payload, level_lookup)
+    )
+
+    existing_entries = {entry.level_id: entry for entry in product.level_prices}
+    keep_ids = set()
+
+    for entry in normalized_entries:
+        level_id = entry["level_id"]
+        keep_ids.add(level_id)
+        record = existing_entries.get(level_id)
+        if record:
+            record.price = entry["price"]
+        else:
+            record = ProductPriceLevel(
+                product_id=product.id,
+                level_id=level_id,
+                price=entry["price"],
+            )
+            db.session.add(record)
+
+    for level_id, record in list(existing_entries.items()):
+        if level_id not in keep_ids:
+            db.session.delete(record)
+
+    db.session.flush()
+
+    default_entry = None
+    if product.level_prices:
+        retail_level_id = next(
+            (
+                level_id
+                for level_id in keep_ids
+                if level_lookup.get(level_id)
+                and (level_lookup[level_id].name or "").lower() == "retail"
+            ),
+            None,
+        )
+        if retail_level_id is not None:
+            default_entry = next(
+                (
+                    entry
+                    for entry in product.level_prices
+                    if entry.level_id == retail_level_id
+                ),
+                None,
+            )
+        if not default_entry:
+            default_entry = product.level_prices[0]
+
+    product.harga = float(default_entry.price) if default_entry else 0.0
 
 
 def _create_password_reset_token(user, ttl_hours=1):
@@ -190,11 +304,12 @@ def _build_sales_filters(args):
     if end_date:
         filters.append(Penjualan.tanggal_penjualan <= end_date)
 
+    expr = Penjualan.total_harga - func.coalesce(Penjualan.marketplace_cost_total, 0)
     if min_total is not None:
-        filters.append(Penjualan.total_harga >= min_total)
+        filters.append(expr >= min_total)
 
     if max_total is not None:
-        filters.append(Penjualan.total_harga <= max_total)
+        filters.append(expr <= max_total)
 
     return {
         "filters": filters,
@@ -372,30 +487,32 @@ def dashboard():
     now = datetime.utcnow()
     month_start = now.replace(day=1).date()
 
-    total_revenue = (
-        db.session.query(func.coalesce(func.sum(Penjualan.total_harga), 0)).scalar()
+    net_expr = Penjualan.total_harga - func.coalesce(Penjualan.marketplace_cost_total, 0)
+    total_net_revenue = (
+        db.session.query(func.coalesce(func.sum(net_expr), 0)).scalar() or 0
+    )
+    total_marketplace_cost = (
+        db.session.query(func.coalesce(func.sum(Penjualan.marketplace_cost_total), 0)).scalar()
         or 0
     )
     total_transactions = Penjualan.query.count()
-    average_ticket = total_revenue / total_transactions if total_transactions else 0
+    average_ticket = total_net_revenue / total_transactions if total_transactions else 0
 
     today_sales = Penjualan.query.filter(Penjualan.tanggal_penjualan == today).all()
-    today_revenue = sum(sale.total_harga or 0 for sale in today_sales)
+    today_revenue = sum(sale.net_revenue for sale in today_sales)
     today_transactions = len(today_sales)
 
     month_sales = Penjualan.query.filter(
         Penjualan.tanggal_penjualan >= month_start
     ).all()
-    month_revenue = sum(sale.total_harga or 0 for sale in month_sales)
+    month_revenue = sum(sale.net_revenue for sale in month_sales)
     month_transactions = len(month_sales)
 
     monthly_sales_map = {}
     for sale in Penjualan.query.order_by(Penjualan.tanggal_penjualan.asc()):
         if sale.tanggal_penjualan:
             key = (sale.tanggal_penjualan.year, sale.tanggal_penjualan.month)
-            monthly_sales_map[key] = monthly_sales_map.get(key, 0) + (
-                sale.total_harga or 0
-            )
+        monthly_sales_map[key] = monthly_sales_map.get(key, 0) + sale.net_revenue
 
     monthly_trend = []
     for (year, month), amount in sorted(monthly_sales_map.items())[-6:]:
@@ -435,12 +552,13 @@ def dashboard():
     )
 
     dashboard_summary = {
-        "total_revenue": total_revenue,
+        "total_net_revenue": total_net_revenue,
+        "total_marketplace_cost": total_marketplace_cost,
         "total_transactions": total_transactions,
         "average_ticket": average_ticket,
-        "today_revenue": today_revenue,
+        "today_net_revenue": today_revenue,
         "today_transactions": today_transactions,
-        "month_revenue": month_revenue,
+        "month_net_revenue": month_revenue,
         "month_transactions": month_transactions,
         "customer_count": Pelanggan.query.count(),
         "product_count": Produk.query.count(),
@@ -1156,6 +1274,8 @@ def produk():
     satuans = Satuan.query.all()
     kategoris = Kategori.query.all()
     suppliers = Supplier.query.all()
+    price_levels = PriceLevel.query.order_by(PriceLevel.name.asc()).all()
+    price_level_lookup = {level.id: level for level in price_levels}
 
     # Ambil parameter pencarian dan filter
     search_query = request.args.get("search", "").strip()
@@ -1202,6 +1322,12 @@ def produk():
             if produk_id_form:
                 produk_to_edit = Produk.query.get(produk_id_form)
 
+        redirect_target = (
+            url_for("main.produk", edit=produk_to_edit.id)
+            if produk_to_edit
+            else url_for("main.produk")
+        )
+
         kode_produk = request.form.get("kode_produk", "").strip()
         nama_produk = request.form.get("nama_produk", "").strip()
         satuan_id = _parse_int(request.form.get("satuan"))
@@ -1212,6 +1338,59 @@ def produk():
         berat = _parse_float(request.form.get("berat"))
         stok_minimal = _parse_int(request.form.get("stok_minimal"), default=0)
         tanggal_expired = _parse_date(request.form.get("tanggal_expired"))
+        raw_price_payload = (request.form.get("price_level_payload") or "").strip()
+        price_level_payload = []
+
+        if raw_price_payload:
+            try:
+                parsed_payload = json.loads(raw_price_payload)
+            except (TypeError, ValueError):
+                flash(
+                    "Format level harga tidak valid. Muat ulang halaman lalu coba lagi.",
+                    "danger",
+                )
+                return redirect(redirect_target)
+            if isinstance(parsed_payload, list):
+                price_level_payload = parsed_payload
+            else:
+                flash("Format level harga tidak dikenali.", "danger")
+                return redirect(redirect_target)
+
+        if not price_levels:
+            flash(
+                "Belum ada level harga. Buat level terlebih dahulu di menu Level Harga.",
+                "warning",
+            )
+            return redirect(redirect_target)
+
+        normalized_price_entries = _build_price_level_entries(
+            price_level_payload, price_level_lookup
+        )
+
+        if not normalized_price_entries:
+            flash(
+                "Tambahkan minimal satu level harga dengan nilai rupiah yang valid.",
+                "warning",
+            )
+            return redirect(redirect_target)
+
+        retail_level = next(
+            (
+                level
+                for level in price_levels
+                if (level.name or "").strip().lower() == "retail"
+            ),
+            None,
+        )
+
+        if retail_level and not any(
+            entry["level_id"] == retail_level.id for entry in normalized_price_entries
+        ):
+            flash(
+                "Isi harga untuk level Retail agar dapat menjadi harga default kasir.",
+                "warning",
+            )
+            return redirect(redirect_target)
 
         if (
             not kode_produk
@@ -1242,6 +1421,12 @@ def produk():
                 produk_to_edit.berat = berat
                 produk_to_edit.stok_minimal = stok_minimal or 0
                 produk_to_edit.tanggal_expired = tanggal_expired
+                _sync_product_price_levels(
+                    produk_to_edit,
+                    price_level_payload,
+                    price_level_lookup,
+                    normalized_entries=normalized_price_entries,
+                )
                 db.session.commit()
                 flash("Produk updated successfully!", "success")
             else:
@@ -1263,6 +1448,13 @@ def produk():
                     tanggal_expired=tanggal_expired,
                 )
                 db.session.add(new_produk)
+                db.session.flush()
+                _sync_product_price_levels(
+                    new_produk,
+                    price_level_payload,
+                    price_level_lookup,
+                    normalized_entries=normalized_price_entries,
+                )
                 db.session.commit()
                 flash("Produk added successfully!", "success")
 
@@ -1301,6 +1493,33 @@ def produk():
     produks = pagination.items
 
     product_ids = [produk.id for produk in produks]
+    product_price_levels_map = defaultdict(list)
+    if product_ids:
+        level_rows = (
+            ProductPriceLevel.query.options(
+                joinedload(ProductPriceLevel.level)
+            )
+            .join(PriceLevel)
+            .filter(ProductPriceLevel.product_id.in_(product_ids))
+            .order_by(PriceLevel.name.asc())
+            .all()
+        )
+        for row in level_rows:
+            product_price_levels_map[row.product_id].append(
+                {
+                    "level_id": row.level_id,
+                    "level_name": row.level.name if row.level else "Level",
+                    "price": row.price,
+                }
+            )
+
+    product_price_levels = {
+        product_id: sorted(
+            entries,
+            key=lambda item: (item["level_name"] or "").lower(),
+        )
+        for product_id, entries in product_price_levels_map.items()
+    }
     price_updates = {}
     if product_ids:
         try:
@@ -1330,6 +1549,22 @@ def produk():
     no_barcode = Produk.query.filter(
         or_(Produk.barcode.is_(None), Produk.barcode == "")
     ).count()
+
+    edit_price_levels = []
+    if produk_to_edit:
+        edit_price_levels = [
+            {
+                "level_id": entry.level_id,
+                "level_name": entry.level.name if entry.level else "",
+                "price": entry.price,
+            }
+            for entry in sorted(
+                produk_to_edit.level_prices,
+                key=lambda record: (
+                    (record.level.name or "").lower() if record.level else ""
+                ),
+            )
+        ]
 
     stat_cards = [
         {
@@ -1434,16 +1669,25 @@ def produk():
         },
     ]
 
+    price_levels_context = [
+        {"id": level.id, "name": level.name or "", "description": level.description or ""}
+        for level in price_levels
+    ]
+
     return render_template(
         "data_produk.html",
         produks=produks,
         satuans=satuans,
         kategoris=kategoris,
         suppliers=suppliers,
+        price_levels=price_levels,
+        price_levels_context=price_levels_context,
         stat_cards=stat_cards,
         health_insights=health_insights,
         expiring_products=expiring_products,
         edit_produk=produk_to_edit,
+        edit_price_levels=edit_price_levels,
+        product_price_levels=product_price_levels,
         product_import_schema=product_import_schema,
         price_updates=price_updates,
         pagination=pagination,
@@ -1688,12 +1932,22 @@ def jurnal():
         .limit(10)
         .all()
     )
+    net_expr = Penjualan.total_harga - func.coalesce(Penjualan.marketplace_cost_total, 0)
+    total_net_revenue = (
+        db.session.query(func.coalesce(func.sum(net_expr), 0)).scalar() or 0.0
+    )
+    total_marketplace_cost = (
+        db.session.query(func.coalesce(func.sum(Penjualan.marketplace_cost_total), 0)).scalar()
+        or 0.0
+    )
 
     return render_template(
         "jurnal.html",
         accounts=accounts,
         recent_entries=recent_entries,
         default_date=datetime.utcnow().date().strftime("%Y-%m-%d"),
+        net_revenue_total=total_net_revenue,
+        marketplace_cost_total=total_marketplace_cost,
     )
 
 
@@ -2178,6 +2432,32 @@ def get_products():
     ]
 
     return {"products": product_list}
+
+
+@bp.route("/api/price_level_costs", methods=["GET"])
+@login_required
+def get_price_level_costs():
+    level_id = request.args.get("level_id")
+    try:
+        level_id_int = int(level_id)
+    except (TypeError, ValueError):
+        return {"costs": []}
+
+    costs = (
+        PriceLevelCost.query.filter_by(level_id=level_id_int, is_active=True)
+        .order_by(PriceLevelCost.name.asc())
+        .all()
+    )
+    payload = [
+        {
+            "id": cost.id,
+            "name": cost.name,
+            "type": cost.type,
+            "value": cost.value,
+        }
+        for cost in costs
+    ]
+    return {"costs": payload}
 
 
 @bp.route("/pembelian", methods=["GET", "POST"])
@@ -2921,8 +3201,32 @@ def penjualan():
             if not line_items:
                 raise ValueError("Tambahkan minimal satu produk dengan jumlah valid.")
 
+            price_level_id_raw = request.form.get("price_level_id")
+            marketplace_cost_total_raw = request.form.get("marketplace_cost_total", "0")
+            marketplace_cost_details_raw = request.form.get("marketplace_cost_details", "[]")
+            try:
+                price_level_id_value = int(price_level_id_raw)
+            except (TypeError, ValueError):
+                price_level_id_value = None
+            try:
+                marketplace_cost_total_value = float(marketplace_cost_total_raw)
+            except (TypeError, ValueError):
+                marketplace_cost_total_value = 0.0
+            marketplace_cost_details_value = (
+                marketplace_cost_details_raw
+                if isinstance(marketplace_cost_details_raw, str)
+                else str(marketplace_cost_details_raw)
+            )
+            if not marketplace_cost_details_value:
+                marketplace_cost_details_value = "[]"
+
             penjualan = Penjualan(
-                sales_id=sales_id, pelanggan_id=form.pelanggan_id.data, total_harga=0.0
+                sales_id=sales_id,
+                pelanggan_id=form.pelanggan_id.data,
+                total_harga=0.0,
+                price_level_id=price_level_id_value,
+                marketplace_cost_total=marketplace_cost_total_value,
+                marketplace_cost_details=marketplace_cost_details_value,
             )
             db.session.add(penjualan)
             db.session.flush()
@@ -2991,11 +3295,12 @@ def data_penjualan():
     def build_filtered_query(base_query):
         return base_query.filter(*filters) if filters else base_query
 
+    net_expr = Penjualan.total_harga - func.coalesce(Penjualan.marketplace_cost_total, 0)
     sort_map = {
         "date_asc": Penjualan.tanggal_penjualan.asc(),
         "date_desc": Penjualan.tanggal_penjualan.desc(),
-        "total_asc": Penjualan.total_harga.asc(),
-        "total_desc": Penjualan.total_harga.desc(),
+        "total_asc": net_expr.asc(),
+        "total_desc": net_expr.desc(),
     }
     order_clause = sort_map.get(sort_option, Penjualan.tanggal_penjualan.desc())
 
@@ -3024,7 +3329,7 @@ def data_penjualan():
 
     total_revenue = (
         apply_filters(
-            db.session.query(func.coalesce(func.sum(Penjualan.total_harga), 0))
+            db.session.query(func.coalesce(func.sum(net_expr), 0))
         ).scalar()
         or 0.0
     )
@@ -3043,40 +3348,48 @@ def data_penjualan():
         ).scalar()
         or 0
     )
+    total_marketplace_costs = (
+        apply_filters(
+            db.session.query(func.coalesce(func.sum(Penjualan.marketplace_cost_total), 0))
+        ).scalar()
+        or 0.0
+    )
     today = datetime.utcnow().date()
     today_revenue = (
         apply_filters(
-            db.session.query(func.coalesce(func.sum(Penjualan.total_harga), 0))
+            db.session.query(func.coalesce(func.sum(net_expr), 0))
         )
         .filter(Penjualan.tanggal_penjualan == today)
         .scalar()
         or 0.0
     )
 
+    net_sum_sales = func.coalesce(func.sum(net_expr), 0).label("total")
     top_sales_raw = (
         build_filtered_query(
             db.session.query(
                 User.username.label("name"),
                 func.count(Penjualan.id).label("orders"),
-                func.coalesce(func.sum(Penjualan.total_harga), 0).label("total"),
+                net_sum_sales,
             )
             .join(User, Penjualan.sales_id == User.id)
             .group_by(User.id)
-            .order_by(func.sum(Penjualan.total_harga).desc())
+            .order_by(net_sum_sales.desc())
         )
         .limit(5)
         .all()
     )
+    net_sum_customers = func.coalesce(func.sum(net_expr), 0).label("total")
     top_customers_raw = (
         build_filtered_query(
             db.session.query(
                 Pelanggan.nama.label("name"),
                 func.count(Penjualan.id).label("orders"),
-                func.coalesce(func.sum(Penjualan.total_harga), 0).label("total"),
+                net_sum_customers,
             )
             .join(Pelanggan, Penjualan.pelanggan_id == Pelanggan.id)
             .group_by(Pelanggan.id)
-            .order_by(func.sum(Penjualan.total_harga).desc())
+            .order_by(net_sum_customers.desc())
         )
         .limit(5)
         .all()
@@ -3101,7 +3414,7 @@ def data_penjualan():
             db.session.query(
                 Penjualan.tanggal_penjualan.label("date"),
                 func.count(Penjualan.id).label("orders"),
-                func.coalesce(func.sum(Penjualan.total_harga), 0).label("total"),
+                func.coalesce(func.sum(net_expr), 0).label("total"),
             )
             .group_by(Penjualan.tanggal_penjualan)
             .order_by(Penjualan.tanggal_penjualan.desc())
@@ -3176,19 +3489,20 @@ def data_penjualan():
 
     stats_cards = [
         {
-            "label": "Total Transaksi",
-            "value": total_records,
-            "icon": "fa-receipt",
-            "accent": "text-primary",
-            "description": "Jumlah faktur sesuai filter.",
-        },
-        {
-            "label": "Pendapatan",
+            "label": "Pendapatan Bersih",
             "value": total_revenue,
             "icon": "fa-wallet",
             "accent": "text-success",
             "type": "currency",
-            "description": "Total omzet periode ini.",
+            "description": "Setelah biaya marketplace.",
+        },
+        {
+            "label": "Biaya Marketplace",
+            "value": total_marketplace_costs,
+            "icon": "fa-coins",
+            "accent": "text-danger",
+            "type": "currency",
+            "description": "Komisi, cashback, dan bebas ongkir.",
         },
         {
             "label": "Rata-rata Order",
@@ -3217,7 +3531,7 @@ def data_penjualan():
             "title": "Pendapatan hari ini",
             "value": today_revenue,
             "type": "currency",
-            "description": "Total transaksi pada tanggal berjalan.",
+            "description": "Nilai bersih transaksi hari ini.",
         },
         {
             "title": "Rentang tanggal",
@@ -3312,6 +3626,7 @@ def laporan_laba_rugi():
         "gross": 0.0,
         "discount": 0.0,
         "tax": 0.0,
+        "marketplace_costs": 0.0,
         "orders": len(sales_records),
         "units": 0,
     }
@@ -3324,6 +3639,7 @@ def laporan_laba_rugi():
     for sale in sales_records:
         sale_date = sale.tanggal_penjualan or today
         month_key = (sale_date.year, sale_date.month)
+        invoice_revenue = 0.0
         for detail in sale.detail_penjualan:
             qty = detail.jumlah or 0
             price = detail.harga_satuan or 0.0
@@ -3351,6 +3667,8 @@ def laporan_laba_rugi():
             totals["cogs"] += cost_value
             totals["gross"] += gross_value
 
+            invoice_revenue += taxable
+
             daily_map[sale_date]["revenue"] += taxable
             daily_map[sale_date]["gross"] += gross_value
             monthly_map[month_key]["revenue"] += taxable
@@ -3362,6 +3680,12 @@ def laporan_laba_rugi():
             product_map[product_key]["units"] += qty
             product_map[product_key]["revenue"] += taxable
             product_map[product_key]["gross"] += gross_value
+
+        cost_total = float(sale.marketplace_cost_total or 0.0)
+        totals["marketplace_costs"] += cost_total
+        totals["revenue"] -= cost_total
+        daily_map[sale_date]["revenue"] -= cost_total
+        monthly_map[month_key]["revenue"] -= cost_total
 
     margin_percent = (
         (totals["gross"] / totals["revenue"]) * 100 if totals["revenue"] else 0.0
@@ -3397,7 +3721,14 @@ def laporan_laba_rugi():
             "value": totals["revenue"],
             "icon": "fa-coins",
             "accent": "text-primary",
-            "subtitle": "Setelah diskon",
+            "subtitle": "Setelah diskon & biaya marketplace",
+        },
+        {
+            "label": "Biaya Marketplace",
+            "value": totals["marketplace_costs"],
+            "icon": "fa-coins",
+            "accent": "text-danger",
+            "subtitle": "Komisi, cashback, bebas ongkir",
         },
         {
             "label": "HPP",
@@ -4379,6 +4710,7 @@ def laporan_penjualan_report():
         "tax": 0.0,
         "cogs": 0.0,
         "gross": 0.0,
+        "marketplace_costs": 0.0,
         "orders": len(sales_records),
         "items": 0,
     }
@@ -4429,7 +4761,6 @@ def laporan_penjualan_report():
             gross_value = taxable - cost_value
 
             totals["items"] += qty
-            totals["revenue"] += taxable
             totals["discount"] += discount_value
             totals["tax"] += tax_value
             totals["cogs"] += cost_value
@@ -4469,9 +4800,13 @@ def laporan_penjualan_report():
             product_map[product_key]["revenue"] += taxable
             product_map[product_key]["gross"] += gross_value
 
-        daily_map[sale_date]["revenue"] += invoice_revenue
+        cost_total = float(sale.marketplace_cost_total or 0.0)
+        net_invoice_revenue = max(invoice_revenue - cost_total, 0.0)
+        totals["marketplace_costs"] += cost_total
+        totals["revenue"] += net_invoice_revenue
+        daily_map[sale_date]["revenue"] += net_invoice_revenue
         daily_map[sale_date]["gross"] += invoice_gross
-        monthly_map[month_key]["revenue"] += invoice_revenue
+        monthly_map[month_key]["revenue"] += net_invoice_revenue
         monthly_map[month_key]["gross"] += invoice_gross
         monthly_map[month_key]["orders"] += 1
 
@@ -4480,7 +4815,7 @@ def laporan_penjualan_report():
         if sale.pelanggan:
             customer_entry["name"] = sale.pelanggan.nama
         customer_entry["orders"] += 1
-        customer_entry["revenue"] += invoice_revenue
+        customer_entry["revenue"] += net_invoice_revenue
 
         if invoice_total > largest_invoice["amount"]:
             largest_invoice["amount"] = invoice_total
@@ -4488,6 +4823,12 @@ def laporan_penjualan_report():
                 sale.pelanggan.nama if sale.pelanggan else "Pelanggan umum"
             )
             largest_invoice["date"] = _format_date_id(sale_date)
+        cost_total = float(sale.marketplace_cost_total or 0.0)
+        net_invoice_revenue = invoice_revenue - cost_total
+        totals["marketplace_costs"] += cost_total
+        totals["revenue"] -= cost_total
+        daily_map[sale_date]["revenue"] -= cost_total
+        monthly_map[month_key]["revenue"] -= cost_total
 
         net_subtotal = gross_subtotal_sum - discount_sum
         staff_name = sale.sales.username if sale.sales else "Sales"
@@ -4518,7 +4859,9 @@ def laporan_penjualan_report():
                 "note": "-",
                 "status": "Selesai",
                 "cost_total": cost_sum,
+                "marketplace_cost_total": cost_total,
                 "gross_profit": net_subtotal - cost_sum,
+                "net_revenue": net_invoice_revenue,
                 "print_link": url_for("main.penjualan"),
             }
         )
@@ -4560,11 +4903,18 @@ def laporan_penjualan_report():
 
     summary_cards = [
         {
-            "label": "Penjualan Bersih",
+            "label": "Pendapatan Bersih",
             "value": totals["revenue"],
             "icon": "fa-wallet",
             "accent": "text-primary",
-            "subtitle": "Setelah diskon",
+            "subtitle": "Setelah diskon & biaya marketplace",
+        },
+        {
+            "label": "Biaya Marketplace",
+            "value": totals["marketplace_costs"],
+            "icon": "fa-coins",
+            "accent": "text-danger",
+            "subtitle": "Komisi, cashback, bebas ongkir",
         },
         {
             "label": "Laba Kotor",
@@ -4572,13 +4922,6 @@ def laporan_penjualan_report():
             "icon": "fa-chart-line",
             "accent": "text-success",
             "subtitle": f"Margin {margin_percent:.1f}%",
-        },
-        {
-            "label": "Pajak Dipungut",
-            "value": totals["tax"],
-            "icon": "fa-file-invoice-dollar",
-            "accent": "text-warning",
-            "subtitle": "PPN penjualan",
         },
         {
             "label": "Transaksi",
@@ -4886,8 +5229,71 @@ def harga_level():
                 flash("Harga khusus dihapus.", "success")
         return redirect(url_for("main.harga_level"))
 
+    if action == "create_cost":
+        level_id = request.form.get("cost_level_id")
+        name = (request.form.get("cost_name") or "").strip()
+        cost_type = request.form.get("cost_type") or "percent"
+        value_raw = request.form.get("cost_value")
+        active_flag = request.form.get("cost_active") == "1"
+
+        try:
+            level_id_int = int(level_id)
+            value = float(value_raw)
+        except (TypeError, ValueError):
+            flash("Pastikan level dan nilai biaya valid.", "warning")
+            return redirect(url_for("main.harga_level"))
+
+        if value < 0:
+            flash("Nilai biaya tidak boleh negatif.", "warning")
+            return redirect(url_for("main.harga_level"))
+
+        level = PriceLevel.query.get(level_id_int)
+        if not level:
+            flash("Level harga tidak ditemukan.", "warning")
+            return redirect(url_for("main.harga_level"))
+
+        new_cost = PriceLevelCost(
+            level_id=level_id_int,
+            name=name or "Biaya baru",
+            type="percent" if cost_type not in ("nominal", "percent") else cost_type,
+            value=value,
+            is_active=active_flag,
+        )
+        db.session.add(new_cost)
+        db.session.commit()
+        flash("Biaya baru berhasil ditambahkan.", "success")
+        return redirect(url_for("main.harga_level"))
+
+    if action == "toggle_cost":
+        entry_id = request.form.get("cost_id")
+        try:
+            entry_int = int(entry_id)
+        except (TypeError, ValueError):
+            entry_int = None
+        if entry_int:
+            cost_entry = PriceLevelCost.query.get(entry_int)
+            if cost_entry:
+                cost_entry.is_active = not cost_entry.is_active
+                db.session.commit()
+                status = "diaktifkan" if cost_entry.is_active else "dinonaktifkan"
+                flash(f"Biaya {cost_entry.name} {status}.", "success")
+        return redirect(url_for("main.harga_level"))
+
+    if action == "delete_cost":
+        entry_id = request.form.get("cost_id")
+        try:
+            entry_int = int(entry_id)
+        except (TypeError, ValueError):
+            entry_int = None
+        if entry_int:
+            cost_entry = PriceLevelCost.query.get(entry_int)
+            if cost_entry:
+                db.session.delete(cost_entry)
+                db.session.commit()
+                flash(f"Biaya {cost_entry.name} dihapus.", "success")
+        return redirect(url_for("main.harga_level"))
+
     price_levels = PriceLevel.query.order_by(PriceLevel.name.asc()).all()
-    products = Produk.query.order_by(Produk.nama_produk.asc()).all()
     price_entries = (
         ProductPriceLevel.query.options(
             joinedload(ProductPriceLevel.produk), joinedload(ProductPriceLevel.level)
@@ -4918,15 +5324,24 @@ def harga_level():
                 "product_name": (
                     entry.produk.nama_produk if entry.produk else "Produk dihapus"
                 ),
-                "product_code": entry.produk.kode_produk if entry.produk else "-",
-                "price": entry.price,
-            }
-        )
+                    "product_code": entry.produk.kode_produk if entry.produk else "-",
+                    "price": entry.price,
+                }
+            )
+
+    cost_entries = (
+        PriceLevelCost.query.options(joinedload(PriceLevelCost.level))
+        .order_by(PriceLevelCost.level_id.asc(), PriceLevelCost.name.asc())
+        .all()
+    )
+    price_level_costs = {}
+    for cost in cost_entries:
+        price_level_costs.setdefault(cost.level_id, []).append(cost)
 
     return render_template(
         "harga_level.html",
         price_levels=price_levels,
-        products=products,
         level_summary=level_summary,
         price_table=price_table,
+        price_level_costs=price_level_costs,
     )

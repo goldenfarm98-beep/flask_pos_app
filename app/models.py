@@ -104,8 +104,19 @@ class PriceLevel(db.Model):
     name = db.Column(db.String(100), unique=True, nullable=False)
     description = db.Column(db.String(255), nullable=True)
 
+    costs = db.relationship(
+        "PriceLevelCost",
+        backref=db.backref("level", lazy=True),
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+
+    def active_costs(self):
+        return self.costs.filter_by(is_active=True)
+
     def __repr__(self):
         return f"<PriceLevel {self.name}>"
+
 
 
 class ProductPriceLevel(db.Model):
@@ -120,6 +131,27 @@ class ProductPriceLevel(db.Model):
     __table_args__ = (
         db.UniqueConstraint('product_id', 'level_id', name='uq_product_level_price'),
     )
+
+
+class PriceLevelCost(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    level_id = db.Column(
+        db.Integer, db.ForeignKey('price_level.id', ondelete='CASCADE'), nullable=False
+    )
+    name = db.Column(db.String(120), nullable=False)
+    type = db.Column(db.Enum('percent', 'nominal', name='price_level_cost_type'), nullable=False, default='percent')
+    value = db.Column(db.Float, nullable=False, default=0.0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def formatted_value(self):
+        if self.type == 'percent':
+            return f"{self.value:.2f}%"
+        return f"Rp {int(self.value):,}".replace(',', '.')
+
+    def __repr__(self):
+        return f"<PriceLevelCost {self.name} ({self.type}={self.value})>"
 
 
 class Pelanggan(db.Model):
@@ -181,14 +213,31 @@ class BarangPembelian(db.Model):
 
 class Penjualan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    no_faktur = db.Column(db.String(50), unique=True, nullable=False, default=lambda: f"F{int(datetime.utcnow().timestamp())}")
+    no_faktur = db.Column(
+        db.String(50),
+        unique=True,
+        nullable=False,
+        default=lambda: f"F{int(datetime.utcnow().timestamp())}",
+    )
     tanggal_penjualan = db.Column(db.Date, nullable=False, default=datetime.utcnow)
-    sales_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    pelanggan_id = db.Column(db.Integer, db.ForeignKey('pelanggan.id'), nullable=False)
+    sales_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    pelanggan_id = db.Column(db.Integer, db.ForeignKey("pelanggan.id"), nullable=False)
+    price_level_id = db.Column(
+        db.Integer, db.ForeignKey("price_level.id"), nullable=True
+    )
     total_harga = db.Column(db.Float, nullable=False)
+    marketplace_cost_total = db.Column(db.Float, nullable=False, default=0.0)
+    marketplace_cost_details = db.Column(db.Text, nullable=True)
 
-    sales = db.relationship('User', backref='penjualan')
-    pelanggan = db.relationship('Pelanggan', backref='penjualan')
+    sales = db.relationship("User", backref="penjualan")
+    pelanggan = db.relationship("Pelanggan", backref="penjualan")
+    price_level = db.relationship("PriceLevel", backref="penjualan")
+
+    @property
+    def net_revenue(self):
+        base = float(self.total_harga or 0.0)
+        cost = float(self.marketplace_cost_total or 0.0)
+        return max(base - cost, 0.0)
 
 
 class DetailPenjualan(db.Model):

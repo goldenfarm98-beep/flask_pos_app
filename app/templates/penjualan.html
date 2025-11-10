@@ -80,6 +80,27 @@
                                     </select>
                                     <small class="text-muted">Pilih opsi ini untuk override harga berdasarkan level tertentu.</small>
                                 </div>
+                                <div class="marketplace-cost-panel mt-3">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="text-uppercase small text-muted">Biaya marketplace</div>
+                                            <div class="font-weight-bold text-secondary h5 mb-0" data-marketplace-cost-total>Rp 0</div>
+                                        </div>
+                                        <div class="small text-muted text-right" data-marketplace-cost-status>
+                                            Pilih level harga untuk melihat biaya otomatis
+                                        </div>
+                                    </div>
+                                    <div class="marketplace-cost-breakdown small text-muted mt-2" data-marketplace-cost-detail>
+                                        Biaya level akan muncul di sini setelah memilih level harga.
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mt-3">
+                                        <small class="text-uppercase small text-muted">Pendapatan bersih</small>
+                                        <span class="font-weight-bold text-primary" data-marketplace-net>Rp 0</span>
+                                    </div>
+                                </div>
+                                <input type="hidden" name="price_level_id" id="sales_price_level_id">
+                                <input type="hidden" name="marketplace_cost_total" id="marketplace-cost-total" value="0">
+                                <input type="hidden" name="marketplace_cost_details" id="marketplace-cost-details" value="[]">
                             </div>
                             <div class="grand-display text-lg-right mt-4 mt-lg-0">
                                 <span class="grand-label text-uppercase">GRANDTOTAL</span>
@@ -643,6 +664,22 @@
             width: 100%;
         }
     }
+    .marketplace-cost-panel {
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: #ffffff;
+        padding: 1rem;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+    }
+    .marketplace-cost-breakdown .as-cost-line {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.35rem 0;
+        border-bottom: 1px dashed rgba(148, 163, 184, 0.3);
+    }
+    .marketplace-cost-breakdown .as-cost-line:last-child {
+        border-bottom: none;
+    }
 </style>
 
 <script>
@@ -727,6 +764,17 @@
             margin: document.querySelectorAll('[data-pnl="margin"]')
         };
         const pnlProgressBar = document.querySelector('[data-pnl-progress]');
+        const marketplaceCostEndpoint = "{{ url_for('main.get_price_level_costs') }}";
+        const marketplaceCostTotalNodes = document.querySelectorAll('[data-marketplace-cost-total]');
+        const marketplaceCostDetailNode = document.querySelector('[data-marketplace-cost-detail]');
+        const marketplaceCostStatusNode = document.querySelector('[data-marketplace-cost-status]');
+        const marketplaceCostNetNodes = document.querySelectorAll('[data-marketplace-net]');
+        const marketplaceCostTotalInput = document.getElementById('marketplace-cost-total');
+        const marketplaceCostDetailsInput = document.getElementById('marketplace-cost-details');
+        const salesPriceLevelInput = document.getElementById('sales_price_level_id');
+        let currentLevelCosts = [];
+        let lastRevenueForCosts = 0;
+        let costFetchController = null;
 
         function buildCustomerLabel(data) {
             if (!data) {
@@ -805,6 +853,10 @@
                 effective = customerPriceLevelId;
             }
             currentPriceLevelId = effective ? String(effective) : null;
+            if (salesPriceLevelInput) {
+                salesPriceLevelInput.value = currentPriceLevelId || '';
+            }
+            fetchPriceLevelCosts(currentPriceLevelId);
             if (triggerSync) {
                 syncProductInputToId(false);
             }
@@ -827,6 +879,125 @@
                 minimumFractionDigits: 0
             });
             return formatter.format(value || 0);
+        }
+
+        function computeMarketplaceCosts(baseRevenue) {
+            const revenue = Number(baseRevenue) || 0;
+            let total = 0;
+            const breakdown = [];
+            currentLevelCosts.forEach(cost => {
+                const rawValue = Number(cost.value) || 0;
+                let amount = 0;
+                if (cost.type === 'percent') {
+                    amount = (revenue * rawValue) / 100;
+                } else {
+                    amount = rawValue;
+                }
+                if (!Number.isFinite(amount)) {
+                    amount = 0;
+                }
+                total += amount;
+                breakdown.push({
+                    ...cost,
+                    amount
+                });
+            });
+            if (!Number.isFinite(total)) {
+                total = 0;
+            }
+            return { total, breakdown };
+        }
+
+        function renderMarketplaceCosts(baseRevenue = 0) {
+            lastRevenueForCosts = Number(baseRevenue) || 0;
+            const { total, breakdown } = computeMarketplaceCosts(lastRevenueForCosts);
+            const positiveBreakdown = breakdown.filter(entry => Number(entry.amount) > 0);
+            const formattedTotal = formatCurrency(Math.max(0, total));
+            const netValue = Math.max(0, lastRevenueForCosts - total);
+
+            marketplaceCostTotalNodes.forEach(node => { node.textContent = formattedTotal; });
+            if (marketplaceCostStatusNode) {
+                if (!currentPriceLevelId) {
+                    marketplaceCostStatusNode.textContent = 'Belum ada level harga dipilih';
+                } else if (!positiveBreakdown.length) {
+                    marketplaceCostStatusNode.textContent = 'Level dipilih, belum ada biaya aktif';
+                } else {
+                    marketplaceCostStatusNode.textContent = `${positiveBreakdown.length} biaya aktif`;
+                }
+            }
+
+            if (marketplaceCostDetailNode) {
+                if (!currentPriceLevelId) {
+                    marketplaceCostDetailNode.textContent = 'Biaya level akan muncul setelah memilih level harga.';
+                } else if (!positiveBreakdown.length) {
+                    marketplaceCostDetailNode.textContent = 'Tidak ada biaya otomatis aktif untuk level ini.';
+                } else {
+                    marketplaceCostDetailNode.innerHTML = positiveBreakdown.map(entry => `
+                        <div class="as-cost-line">
+                            <span>${entry.name}</span>
+                            <span>${formatCurrency(entry.amount)}</span>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            if (marketplaceCostTotalInput) {
+                marketplaceCostTotalInput.value = (Math.max(0, total)).toFixed(2);
+            }
+            if (marketplaceCostDetailsInput) {
+                const payload = positiveBreakdown.map(entry => ({
+                    id: entry.id,
+                    name: entry.name,
+                    type: entry.type,
+                    value: entry.value,
+                    amount: Number(entry.amount) || 0
+                }));
+                marketplaceCostDetailsInput.value = JSON.stringify(payload);
+            }
+            if (marketplaceCostNetNodes.length) {
+                const formattedNet = formatCurrency(netValue);
+                marketplaceCostNetNodes.forEach(node => {
+                    node.textContent = formattedNet;
+                });
+            }
+        }
+
+        function fetchPriceLevelCosts(levelId) {
+            if (costFetchController) {
+                costFetchController.abort();
+                costFetchController = null;
+            }
+            if (!levelId) {
+                currentLevelCosts = [];
+                renderMarketplaceCosts(lastRevenueForCosts);
+                return;
+            }
+            costFetchController = new AbortController();
+            const signal = costFetchController.signal;
+            fetch(`${marketplaceCostEndpoint}?level_id=${encodeURIComponent(levelId)}`, {
+                headers: { Accept: 'application/json' },
+                signal
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Gagal memuat biaya marketplace');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    currentLevelCosts = Array.isArray(data.costs) ? data.costs : [];
+                    renderMarketplaceCosts(lastRevenueForCosts);
+                })
+                .catch(error => {
+                    if (error.name === 'AbortError') {
+                        return;
+                    }
+                    currentLevelCosts = [];
+                    if (marketplaceCostDetailNode) {
+                        marketplaceCostDetailNode.textContent = 'Tidak dapat mengambil biaya marketplace saat ini.';
+                    }
+                    renderMarketplaceCosts(lastRevenueForCosts);
+                });
         }
 
         function parseNumber(value) {
@@ -951,6 +1122,7 @@
                 tax,
                 margin
             });
+            renderMarketplaceCosts(grand);
         }
 
         function refreshRowNumbers() {

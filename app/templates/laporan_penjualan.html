@@ -230,6 +230,14 @@
                                                     <div class="value text-info">{{ format_currency(tx.tax_total) }}</div>
                                                 </div>
                                                 <div>
+                                                    <small class="label">Biaya Marketplace</small>
+                                                    <div class="value text-danger">-{{ format_currency(tx.marketplace_cost_total) }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label">Pendapatan Bersih</small>
+                                                    <div class="value">{{ format_currency(tx.net_revenue) }}</div>
+                                                </div>
+                                                <div>
                                                     <small class="label">Gross Profit</small>
                                                     <div class="value text-success">{{ format_currency(tx.gross_profit) }}</div>
                                                 </div>

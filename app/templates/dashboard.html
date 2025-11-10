@@ -144,9 +144,9 @@
                 <div class="col-md-3">
                     <div class="card analytics-card border-0 shadow-sm mb-4">
                         <div class="card-body">
-                            <span class="metric-label text-uppercase">Total Penjualan</span>
+                            <span class="metric-label text-uppercase">Pendapatan Bersih</span>
                             <div class="metric-value text-primary mt-1">
-                                {{ 'Rp {:,.0f}'.format(summary.total_revenue).replace(',', '.') }}
+                                {{ 'Rp {:,.0f}'.format(summary.total_net_revenue).replace(',', '.') }}
                             </div>
                             <small class="text-muted">Transaksi: {{ summary.total_transactions }}</small>
                         </div>
@@ -155,22 +155,22 @@
                 <div class="col-md-3">
                     <div class="card analytics-card border-0 shadow-sm mb-4">
                         <div class="card-body">
-                            <span class="metric-label text-uppercase">Penjualan Bulan Ini</span>
-                            <div class="metric-value text-success mt-1">
-                                {{ 'Rp {:,.0f}'.format(summary.month_revenue).replace(',', '.') }}
+                            <span class="metric-label text-uppercase">Biaya Marketplace</span>
+                            <div class="metric-value text-danger mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.total_marketplace_cost).replace(',', '.') }}
                             </div>
-                            <small class="text-muted">Transaksi: {{ summary.month_transactions }}</small>
+                            <small class="text-muted">Komisi & cashback</small>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="card analytics-card border-0 shadow-sm mb-4">
                         <div class="card-body">
-                            <span class="metric-label text-uppercase">Penjualan Hari Ini</span>
-                            <div class="metric-value text-info mt-1">
-                                {{ 'Rp {:,.0f}'.format(summary.today_revenue).replace(',', '.') }}
+                            <span class="metric-label text-uppercase">Bulanan (net)</span>
+                            <div class="metric-value text-success mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.month_net_revenue).replace(',', '.') }}
                             </div>
-                            <small class="text-muted">Transaksi: {{ summary.today_transactions }}</small>
+                            <small class="text-muted">Transaksi: {{ summary.month_transactions }}</small>
                         </div>
                     </div>
                 </div>

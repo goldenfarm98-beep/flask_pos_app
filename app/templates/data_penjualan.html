@@ -169,6 +169,8 @@
                                 <th>Sales</th>
                                 <th class="text-center">Item</th>
                                 <th class="text-right">Total</th>
+                                <th class="text-right">Biaya MP</th>
+                                <th class="text-right">Net</th>
                                 <th class="text-center">Detail</th>
                             </tr>
                         </thead>
@@ -196,6 +198,12 @@
                                         <td class="align-middle text-right font-weight-semibold">
                                             {{ ('Rp {:,.0f}'.format(sale.total_harga)).replace(',', '.') }}
                                         </td>
+                                        <td class="align-middle text-right text-danger">
+                                            {{ ('Rp {:,.0f}'.format(sale.marketplace_cost_total)).replace(',', '.') }}
+                                        </td>
+                                        <td class="align-middle text-right font-weight-bold text-primary">
+                                            {{ ('Rp {:,.0f}'.format(sale.net_revenue)).replace(',', '.') }}
+                                        </td>
                                         <td class="align-middle text-center">
                                             <button class="btn btn-link btn-sm text-primary" data-toggle="collapse" data-target="#{{ collapse_id }}" aria-expanded="false" aria-controls="{{ collapse_id }}">
                                                 <i class="fas fa-chevron-down mr-1"></i>Lihat
@@ -203,7 +211,7 @@
                                         </td>
                                     </tr>
                                     <tr class="detail-row">
-                                        <td colspan="8" class="p-0 border-0">
+                                        <td colspan="10" class="p-0 border-0">
                                             <div id="{{ collapse_id }}" class="collapse" data-parent=".sales-data-table">
                                                 <div class="sale-detail">
                                                     <div class="detail-meta">
@@ -219,10 +227,18 @@
                                                             <span class="label">Pelanggan</span>
                                                             <span class="value">{{ sale.pelanggan.nama if sale.pelanggan else 'Umum' }}</span>
                                                         </div>
-                                                        <div>
-                                                            <span class="label">Grand total</span>
-                                                            <span class="value text-primary">{{ ('Rp {:,.0f}'.format(sale.total_harga)).replace(',', '.') }}</span>
-                                                        </div>
+                                                    <div>
+                                                        <span class="label">Grand total</span>
+                                                        <span class="value text-primary">{{ ('Rp {:,.0f}'.format(sale.total_harga)).replace(',', '.') }}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="label">Biaya marketplace</span>
+                                                        <span class="value text-danger">-{{ ('Rp {:,.0f}'.format(sale.marketplace_cost_total or 0)).replace(',', '.') }}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="label">Pendapatan bersih</span>
+                                                        <span class="value text-success">{{ ('Rp {:,.0f}'.format(sale.net_revenue)).replace(',', '.') }}</span>
+                                                    </div>
                                                     </div>
                                                     <div class="table-responsive">
                                                         <table class="table table-sm mb-0">
