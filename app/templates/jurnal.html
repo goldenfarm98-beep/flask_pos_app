@@ -137,7 +137,7 @@
     {% endif %}
 </section>
 
-<script type="application/json" id="account-data">{{ accounts|tojson }}</script>
+<script type="application/json" id="account-data">{{ accounts_for_js|tojson }}</script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const accountData = JSON.parse(document.getElementById('account-data').textContent || '[]');

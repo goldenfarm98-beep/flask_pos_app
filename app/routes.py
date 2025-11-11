@@ -20,7 +20,7 @@ import math
 
 import pandas as pd
 from flask import make_response
-from sqlalchemy import or_, func, inspect
+from sqlalchemy import or_, and_, func, inspect
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import joinedload
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -46,6 +46,8 @@ from app.models import (
     PriceChange,
     StockOpnameSession,
     StockOpnameItem,
+    AccountingSetting,
+    AccountingPeriod,
     Account,
     JournalEntry,
     JournalLine,
@@ -1771,6 +1773,173 @@ def akun():
     )
 
 
+@bp.route("/pengaturan-akuntansi", methods=["GET", "POST"])
+@login_required
+def accounting_settings():
+    _ensure_table(AccountingSetting)
+    accounts = Account.query.order_by(Account.code.asc()).all()
+    settings = _get_accounting_setting()
+    auto_filter = JournalEntry.memo.ilike("Auto COGS%")
+
+    if request.method == "POST":
+        inventory_account_id = _parse_int_param(request.form.get("inventory_account"))
+        cogs_account_id = _parse_int_param(request.form.get("cogs_account"))
+        errors = []
+
+        if inventory_account_id:
+            if not Account.query.get(inventory_account_id):
+                errors.append("Akun persediaan tidak ditemukan.")
+
+        if cogs_account_id:
+            if not Account.query.get(cogs_account_id):
+                errors.append("Akun COGS tidak ditemukan.")
+
+        if errors:
+            for message in errors:
+                flash(message, "warning")
+            return redirect(url_for("main.accounting_settings"))
+
+        if not settings:
+            settings = AccountingSetting()
+
+        settings.inventory_account_id = inventory_account_id
+        settings.cogs_account_id = cogs_account_id
+        settings.updated_by = session.get("user_id")
+        settings.updated_at = datetime.utcnow()
+
+        db.session.add(settings)
+        db.session.commit()
+        flash("Pengaturan COGS otomatis berhasil disimpan.", "success")
+        return redirect(url_for("main.accounting_settings"))
+
+    auto_count = JournalEntry.query.filter(auto_filter).count()
+    auto_total_amount = (
+        db.session.query(func.coalesce(func.sum(JournalLine.debit), 0))
+        .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+        .filter(auto_filter)
+        .scalar()
+        or 0.0
+    )
+    recent_entries = (
+        JournalEntry.query.options(joinedload(JournalEntry.lines).joinedload(JournalLine.account))
+        .filter(auto_filter)
+        .order_by(JournalEntry.date.desc(), JournalEntry.id.desc())
+        .limit(5)
+        .all()
+    )
+    recent_auto = [
+        {
+            "reference": entry.reference,
+            "date_label": _format_date_id(entry.date),
+            "memo": entry.memo or "Auto COGS",
+            "amount": sum(line.debit for line in entry.lines),
+        }
+        for entry in recent_entries
+    ]
+
+    return render_template(
+        "accounting_settings.html",
+        accounts=accounts,
+        settings=settings,
+        auto_total_amount=auto_total_amount,
+        auto_count=auto_count,
+        recent_auto=recent_auto,
+    )
+
+
+@bp.route("/tutup-buku", methods=["GET", "POST"])
+@login_required
+def close_books():
+    today = datetime.utcnow().date()
+    open_period = (
+        AccountingPeriod.query.filter_by(status="open")
+        .order_by(AccountingPeriod.start_date.desc())
+        .first()
+    )
+    if open_period:
+        default_start = open_period.start_date
+        default_end = open_period.end_date
+    else:
+        first_day = today.replace(day=1)
+        prev_month_end = first_day - timedelta(days=1)
+        default_start = prev_month_end.replace(day=1)
+        default_end = prev_month_end
+
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or default_end
+    summary = _build_period_metrics(start_date, end_date)
+
+    open_periods = (
+        AccountingPeriod.query.filter(AccountingPeriod.status == "open")
+        .order_by(AccountingPeriod.start_date.desc())
+        .all()
+    )
+    recent_closed = (
+        AccountingPeriod.query.filter(AccountingPeriod.status == "closed")
+        .order_by(AccountingPeriod.closed_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    warning_message = None
+    if summary and summary["difference"] != 0:
+        warning_message = (
+            f"Rekonsiliasi menunjukkan selisih Rp "
+            f"{('{:,.0f}'.format(abs(summary['difference']))).replace(',', '.')} "
+            f"antara nilai persediaan dan HPP."
+        )
+
+    if request.method == "POST":
+        label = (request.form.get("label") or "").strip()
+        description = (request.form.get("description") or "").strip()
+        form_start = _parse_date_param(request.form.get("start_date"))
+        form_end = _parse_date_param(request.form.get("end_date"))
+        if not form_start or not form_end:
+            flash("Tanggal awal dan akhir periode wajib diisi.", "warning")
+        else:
+            try:
+                _close_accounting_period(label, form_start, form_end, session.get("user_id"), description or None)
+                db.session.commit()
+                flash(f"Periode {label or form_start.strftime('%b %Y')} berhasil ditutup.", "success")
+                return redirect(
+                    url_for(
+                        "main.close_books",
+                        start_date=form_start.strftime("%Y-%m-%d"),
+                        end_date=form_end.strftime("%Y-%m-%d"),
+                    )
+                )
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), "warning")
+            except Exception as exc:
+                db.session.rollback()
+                logging.exception("Gagal menutup periode")
+                flash(f"Gagal menutup periode: {str(exc)}", "danger")
+        start_date = form_start or start_date
+        end_date = form_end or end_date
+        summary = _build_period_metrics(start_date, end_date)
+        if summary and summary["difference"] != 0:
+            warning_message = (
+                f"Rekonsiliasi menunjukkan selisih Rp "
+                f"{('{:,.0f}'.format(abs(summary['difference']))).replace(',', '.')} "
+                f"antara nilai persediaan dan HPP."
+            )
+
+    selected_range = {
+        "start_date": start_date.strftime("%Y-%m-%d") if start_date else "",
+        "end_date": end_date.strftime("%Y-%m-%d") if end_date else "",
+    }
+
+    return render_template(
+        "accounting_close.html",
+        open_periods=open_periods,
+        recent_closed=recent_closed,
+        summary=summary,
+        selected_range=selected_range,
+        warning_message=warning_message,
+    )
+
+
 @bp.route("/jurnal", methods=["GET", "POST"])
 @login_required
 def jurnal():
@@ -1924,6 +2093,14 @@ def jurnal():
         )
 
     accounts = Account.query.order_by(Account.code.asc()).all()
+    accounts_for_js = [
+        {
+            "id": account.id,
+            "code": account.code,
+            "name": account.name,
+        }
+        for account in accounts
+    ]
     recent_entries = (
         JournalEntry.query.options(
             joinedload(JournalEntry.lines).joinedload(JournalLine.account)
@@ -1944,6 +2121,7 @@ def jurnal():
     return render_template(
         "jurnal.html",
         accounts=accounts,
+        accounts_for_js=accounts_for_js,
         recent_entries=recent_entries,
         default_date=datetime.utcnow().date().strftime("%Y-%m-%d"),
         net_revenue_total=total_net_revenue,
@@ -2512,7 +2690,7 @@ def pembelian():
 
             parsed_date = None
             try:
-                parsed_date = datetime.strptime(tanggal_faktur, "%Y-%m-%d")
+                parsed_date = datetime.strptime(tanggal_faktur, "%Y-%m-%d").date()
             except ValueError:
                 return (
                     jsonify(
@@ -2537,6 +2715,18 @@ def pembelian():
                 return (
                     jsonify({"success": False, "message": "Supplier tidak ditemukan."}),
                     404,
+                )
+
+            locked_period_for_purchase = _get_locked_period_for_date(parsed_date)
+            if locked_period_for_purchase:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Periode {locked_period_for_purchase.label} sudah ditutup; tidak bisa menyimpan pembelian.",
+                        }
+                    ),
+                    400,
                 )
 
             if not items:
@@ -2960,6 +3150,8 @@ def penjualan():
         for produk in produk_records
     ]
 
+    settings = _get_accounting_setting()
+
     customer_lookup = {
         pelanggan.id: {
             "name": pelanggan.nama,
@@ -3099,6 +3291,12 @@ def penjualan():
             if not sales_id:
                 raise ValueError("Silakan login sebelum mencatat penjualan.")
 
+            locked_period = _get_locked_period_for_date(today)
+            if locked_period:
+                raise ValueError(
+                    f"Periode {locked_period.label} sudah ditutup; tidak bisa mencatat penjualan baru."
+                )
+
             produk_id_list = request.form.getlist("produk_id[]")
             jumlah_list = request.form.getlist("jumlah[]")
             harga_list = request.form.getlist("harga[]")
@@ -3201,6 +3399,10 @@ def penjualan():
             if not line_items:
                 raise ValueError("Tambahkan minimal satu produk dengan jumlah valid.")
 
+            hpp_total = _calculate_line_items_hpp(line_items)
+            if hpp_total <= 0:
+                hpp_total = 0.0
+
             price_level_id_raw = request.form.get("price_level_id")
             marketplace_cost_total_raw = request.form.get("marketplace_cost_total", "0")
             marketplace_cost_details_raw = request.form.get("marketplace_cost_details", "[]")
@@ -3245,6 +3447,19 @@ def penjualan():
                 current_stock = item["product"].stok_lama or 0
                 item["product"].stok_lama = max(0, current_stock - item["qty"])
                 db.session.add(detail)
+
+            if (
+                settings
+                and settings.inventory_account_id
+                and settings.cogs_account_id
+                and hpp_total > 0
+            ):
+                _record_auto_cogs_journal(
+                    penjualan,
+                    hpp_total,
+                    settings,
+                    user_id=sales_id,
+                )
 
             db.session.commit()
             flash(
@@ -3994,6 +4209,229 @@ def _product_cost_basis(product):
     return float(product.harga_lama or product.harga_beli or product.harga or 0.0)
 
 
+def _get_locked_period_for_date(date_value):
+    if not date_value:
+        return None
+    return (
+        AccountingPeriod.query.filter(
+            AccountingPeriod.is_locked == True,
+            AccountingPeriod.start_date <= date_value,
+            AccountingPeriod.end_date >= date_value,
+        )
+        .order_by(AccountingPeriod.start_date.desc())
+        .first()
+    )
+
+
+def _build_period_metrics(start_date, end_date):
+    if not start_date or not end_date:
+        return None
+    if start_date > end_date:
+        return None
+
+    sales_total = (
+        db.session.query(func.coalesce(func.sum(Penjualan.total_harga), 0.0))
+        .filter(Penjualan.tanggal_penjualan >= start_date)
+        .filter(Penjualan.tanggal_penjualan <= end_date)
+        .scalar()
+        or 0.0
+    )
+
+    purchase_total = (
+        db.session.query(func.coalesce(func.sum(BarangPembelian.hpp), 0.0))
+        .join(Pembelian, BarangPembelian.pembelian)
+        .filter(Pembelian.tanggal_faktur >= start_date)
+        .filter(Pembelian.tanggal_faktur <= end_date)
+        .scalar()
+        or 0.0
+    )
+
+    hpp_total = (
+        db.session.query(
+            func.coalesce(
+                func.sum(
+                    DetailPenjualan.jumlah
+                    * func.coalesce(Produk.harga_lama, Produk.harga_beli, 0.0)
+                ),
+                0.0,
+            )
+        )
+        .join(Produk, DetailPenjualan.produk)
+        .join(Penjualan, DetailPenjualan.penjualan)
+        .filter(Penjualan.tanggal_penjualan >= start_date)
+        .filter(Penjualan.tanggal_penjualan <= end_date)
+        .scalar()
+        or 0.0
+    )
+
+    inventory_value = (
+        db.session.query(
+            func.coalesce(
+                func.sum(
+                    Produk.stok_lama
+                    * func.coalesce(Produk.harga_lama, Produk.harga_beli, 0.0)
+                ),
+                0.0,
+            )
+        )
+        .scalar()
+        or 0.0
+    )
+
+    net_income = round(sales_total - hpp_total, 2)
+
+    return {
+        "sales_total": round(sales_total, 2),
+        "purchase_total": round(purchase_total, 2),
+        "hpp_total": round(hpp_total, 2),
+        "inventory_value": round(inventory_value, 2),
+        "net_income": net_income,
+        "difference": round(inventory_value - hpp_total, 2),
+    }
+
+
+def _close_accounting_period(label, start_date, end_date, user_id, description=None):
+    if not label:
+        raise ValueError("Label periode wajib diisi.")
+    if not start_date or not end_date:
+        raise ValueError("Tanggal awal dan akhir periode wajib diisi.")
+    if start_date > end_date:
+        raise ValueError("Tanggal awal tidak boleh melewati tanggal akhir.")
+
+    overlap_closed = AccountingPeriod.query.filter(
+        AccountingPeriod.start_date <= end_date,
+        AccountingPeriod.end_date >= start_date,
+        AccountingPeriod.is_locked == True,
+    ).first()
+    if overlap_closed:
+        raise ValueError(f"Periode {overlap_closed.label} sudah ditutup.")
+
+    period = AccountingPeriod.query.filter(
+        AccountingPeriod.start_date == start_date,
+        AccountingPeriod.end_date == end_date,
+        AccountingPeriod.status == "open",
+    ).first()
+
+    if not period:
+        period = AccountingPeriod(
+            label=label,
+            start_date=start_date,
+            end_date=end_date,
+            description=description,
+            created_by=user_id,
+        )
+        db.session.add(period)
+        db.session.flush()
+
+    period.label = label
+    period.status = "closed"
+    period.description = description or period.description
+    period.is_locked = True
+    period.closed_by = user_id
+    period.closed_at = datetime.utcnow()
+
+    sales = (
+        Penjualan.query.filter(Penjualan.tanggal_penjualan >= start_date)
+        .filter(Penjualan.tanggal_penjualan <= end_date)
+        .all()
+    )
+    for sale in sales:
+        sale.accounting_period_id = period.id
+        sale.is_locked = True
+
+    purchases = (
+        Pembelian.query.filter(Pembelian.tanggal_faktur >= start_date)
+        .filter(Pembelian.tanggal_faktur <= end_date)
+        .all()
+    )
+    for purchase in purchases:
+        purchase.accounting_period_id = period.id
+        purchase.is_locked = True
+
+    journals = (
+        JournalEntry.query.filter(JournalEntry.date >= start_date)
+        .filter(JournalEntry.date <= end_date)
+        .all()
+    )
+    for journal in journals:
+        journal.accounting_period_id = period.id
+        journal.is_locked = True
+
+    summary = _build_period_metrics(start_date, end_date)
+    if not summary:
+        summary = {
+            "sales_total": 0.0,
+            "hpp_total": 0.0,
+            "net_income": 0.0,
+        }
+    income_account = Account.query.filter_by(type="income", is_active=True).order_by(Account.code).first()
+    expense_account = Account.query.filter_by(type="expense", is_active=True).order_by(Account.code).first()
+    equity_account = Account.query.filter_by(type="equity", is_active=True).order_by(Account.code).first()
+
+    net_income = summary.get("net_income", 0.0)
+    closing_entry = None
+    if income_account and (expense_account or equity_account):
+        closing_entry = JournalEntry(
+            reference=_generate_journal_reference(),
+            date=end_date,
+            memo=f"Penutupan periode {label}",
+            created_by=user_id,
+            accounting_period_id=period.id,
+            is_locked=True,
+        )
+        db.session.add(closing_entry)
+        db.session.flush()
+
+        description = f"Rekap penutupan periode {label}"
+        if summary["sales_total"] > 0 and income_account:
+            db.session.add(
+                JournalLine(
+                    entry_id=closing_entry.id,
+                    account_id=income_account.id,
+                    debit=summary["sales_total"],
+                    credit=0.0,
+                    description=description,
+                )
+            )
+
+        if summary["hpp_total"] > 0 and expense_account:
+            db.session.add(
+                JournalLine(
+                    entry_id=closing_entry.id,
+                    account_id=expense_account.id,
+                    debit=0.0,
+                    credit=summary["hpp_total"],
+                    description=description,
+                )
+            )
+
+        if net_income != 0 and equity_account:
+            if net_income > 0:
+                db.session.add(
+                    JournalLine(
+                        entry_id=closing_entry.id,
+                        account_id=equity_account.id,
+                        debit=0.0,
+                        credit=net_income,
+                        description="Laba bersih periode ditutup",
+                    )
+                )
+            else:
+                db.session.add(
+                    JournalLine(
+                        entry_id=closing_entry.id,
+                        account_id=equity_account.id,
+                        debit=abs(net_income),
+                        credit=0.0,
+                        description="Rugi bersih periode ditutup",
+                    )
+                )
+    else:
+        logging.warning("Kredit penutupan tidak lengkap: pastikan ada akun income/expense/equity aktif.")
+
+    return period
+
+
 def _ensure_table(model):
     try:
         engine = db.session.get_bind()
@@ -4020,6 +4458,67 @@ def _generate_journal_reference():
         candidate = f"{base}-{counter}"
         counter += 1
     return candidate
+
+
+def _get_accounting_setting():
+    _ensure_table(AccountingSetting)
+    return AccountingSetting.query.first()
+
+
+def _calculate_line_items_hpp(line_items):
+    total = 0.0
+    for item in line_items:
+        product = item.get("product")
+        if not product:
+            continue
+        cost_basis = float(
+            product.harga_lama
+            or product.harga_beli
+            or product.harga
+            or 0.0
+        )
+        total += cost_basis * (item.get("qty") or 0)
+    return round(total, 2)
+
+
+def _record_auto_cogs_journal(penjualan, amount, settings, user_id=None):
+    if (
+        not settings
+        or not settings.inventory_account_id
+        or not settings.cogs_account_id
+        or amount <= 0
+    ):
+        return None
+
+    entry = JournalEntry(
+        reference=_generate_journal_reference(),
+        date=penjualan.tanggal_penjualan or datetime.utcnow().date(),
+        memo=f"Auto COGS – Penjualan {penjualan.no_faktur}",
+        created_by=user_id,
+    )
+    db.session.add(entry)
+    db.session.flush()
+
+    description = f"HPP otomatis untuk invoice {penjualan.no_faktur}"
+    db.session.add(
+        JournalLine(
+            entry_id=entry.id,
+            account_id=settings.cogs_account_id,
+            debit=amount,
+            credit=0.0,
+            description=description,
+        )
+    )
+    db.session.add(
+        JournalLine(
+            entry_id=entry.id,
+            account_id=settings.inventory_account_id,
+            debit=0.0,
+            credit=amount,
+            description=description,
+        )
+    )
+    return entry
 
 
 @bp.route("/update-harga", methods=["GET", "POST"])

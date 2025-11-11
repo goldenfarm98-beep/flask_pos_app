@@ -186,6 +186,17 @@ class Pembelian(db.Model):
     jenis_pembayaran = db.Column(db.String(20), nullable=False, default='Tunai')
     supplier = db.relationship('Supplier', backref=db.backref('pembelian', lazy=True))
     barang = db.relationship('BarangPembelian', backref='pembelian', cascade='all, delete-orphan')
+    accounting_period_id = db.Column(
+        db.Integer,
+        db.ForeignKey('accounting_period.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    is_locked = db.Column(db.Boolean, nullable=False, default=False)
+
+    accounting_period = db.relationship(
+        'AccountingPeriod',
+        backref=db.backref('purchases', lazy=True),
+    )
 
     def __repr__(self):
         return f"<Pembelian {self.no_faktur}>"
@@ -232,6 +243,16 @@ class Penjualan(db.Model):
     sales = db.relationship("User", backref="penjualan")
     pelanggan = db.relationship("Pelanggan", backref="penjualan")
     price_level = db.relationship("PriceLevel", backref="penjualan")
+    accounting_period_id = db.Column(
+        db.Integer,
+        db.ForeignKey('accounting_period.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    is_locked = db.Column(db.Boolean, nullable=False, default=False)
+    accounting_period = db.relationship(
+        'AccountingPeriod',
+        backref=db.backref('sales', lazy=True),
+    )
 
     @property
     def net_revenue(self):
@@ -311,15 +332,61 @@ class Account(db.Model):
         return f"<Account {self.code} - {self.name}>"
 
 
+class AccountingSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    inventory_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey('account.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    cogs_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey('account.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    updated_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    inventory_account = db.relationship(
+        'Account',
+        foreign_keys=[inventory_account_id],
+        backref=db.backref('inventory_settings', lazy=True),
+    )
+    cogs_account = db.relationship(
+        'Account',
+        foreign_keys=[cogs_account_id],
+        backref=db.backref('cogs_settings', lazy=True),
+    )
+    updater = db.relationship(
+        'User',
+        backref=db.backref('accounting_settings', lazy=True),
+    )
+
+    def __repr__(self):
+        inv = self.inventory_account.name if self.inventory_account else '-'
+        cogs = self.cogs_account.name if self.cogs_account else '-'
+        return f"<AccountingSetting Inventory={inv} COGS={cogs}>"
+
+
 class JournalEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     reference = db.Column(db.String(50), unique=True, nullable=False)
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
     memo = db.Column(db.String(255), nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    accounting_period_id = db.Column(
+        db.Integer,
+        db.ForeignKey('accounting_period.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    is_locked = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     user = db.relationship('User', backref=db.backref('journal_entries', lazy=True))
+    accounting_period = db.relationship(
+        'AccountingPeriod',
+        backref=db.backref('journal_entries', lazy=True),
+    )
 
 
 class JournalLine(db.Model):
@@ -332,3 +399,31 @@ class JournalLine(db.Model):
 
     entry = db.relationship('JournalEntry', backref=db.backref('lines', lazy=True, cascade='all, delete-orphan'))
     account = db.relationship('Account', backref=db.backref('journal_lines', lazy=True))
+
+
+class AccountingPeriod(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    label = db.Column(db.String(50), unique=True, nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='open')
+    description = db.Column(db.String(255), nullable=True)
+    is_locked = db.Column(db.Boolean, nullable=False, default=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    closed_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    closed_at = db.Column(db.DateTime, nullable=True)
+
+    creator = db.relationship(
+        'User',
+        foreign_keys=[created_by],
+        backref=db.backref('created_periods', lazy=True),
+    )
+    closer = db.relationship(
+        'User',
+        foreign_keys=[closed_by],
+        backref=db.backref('closed_periods', lazy=True),
+    )
+
+    def __repr__(self):
+        return f"<AccountingPeriod {self.label} ({self.status})>"

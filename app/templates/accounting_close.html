@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Tutup Buku{% endblock %}
+
+{% block content %}
+<section class="closing-period">
+    <div class="card shadow-sm border-0 mb-4 hero-card">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <p class="eyebrow text-uppercase mb-1">Tutup Buku</p>
+                    <h1 class="h3 mb-1">Kunci periode keuangan secara aman</h1>
+                    <p class="text-muted mb-0">Lengkapi data periode, verifikasi angka, dan sistem akan mengunci transaksi setelah menandai jurnal penutup.</p>
+                </div>
+                <div class="col-md-4 text-md-right mt-3 mt-md-0">
+                    <span class="badge badge-pill badge-primary">Wajib</span>
+                    <span class="badge badge-pill badge-light">Rekonsiliasi</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-5 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Langkah 1</p>
+                    <h3 class="h5 mb-4">Tentukan periode</h3>
+                    <form method="POST" action="{{ url_for('main.close_books') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label>Label periode</label>
+                            <input type="text" name="label" class="form-control" placeholder="Misal: Desember 2025" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Tanggal mulai</label>
+                                <input type="date" name="start_date" class="form-control" value="{{ selected_range.start_date }}" required>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label>Tanggal akhir</label>
+                                <input type="date" name="end_date" class="form-control" value="{{ selected_range.end_date }}" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Keterangan (opsional)</label>
+                            <textarea name="description" class="form-control" rows="2" placeholder="Catatan khusus..."></textarea>
+                        </div>
+                        <button class="btn btn-primary btn-block font-weight-bold">
+                            <i class="fas fa-lock mr-2"></i>Tutup buku dan buat jurnal
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Langkah 2</p>
+                    <h3 class="h5 mb-3">Ringkasan rekonsiliasi</h3>
+                    {% if summary %}
+                    <div class="row">
+                        <div class="col-sm-6 mb-3">
+                            <div class="metric-card h-100">
+                                <small class="text-muted">Pendapatan (Sales)</small>
+                                <div class="h4 font-weight-bold">Rp {{ ('{:,.0f}'.format(summary.sales_total)).replace(',', '.') }}</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 mb-3">
+                            <div class="metric-card h-100">
+                                <small class="text-muted">Total HPP</small>
+                                <div class="h4 font-weight-bold text-success">Rp {{ ('{:,.0f}'.format(summary.hpp_total)).replace(',', '.') }}</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 mb-3">
+                            <div class="metric-card h-100">
+                                <small class="text-muted">Stok (nilai akhir)</small>
+                                <div class="h4 font-weight-bold">Rp {{ ('{:,.0f}'.format(summary.inventory_value)).replace(',', '.') }}</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 mb-3">
+                            <div class="metric-card h-100">
+                                <small class="text-muted">Laba/Rugi bersih</small>
+                                <div class="h4 font-weight-bold">
+                                    Rp {{ ('{:,.0f}'.format(summary.net_income)).replace(',', '.') }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Pilih periode untuk melihat ringkasan rekonsiliasi.</p>
+                    {% endif %}
+                    {% if warning_message %}
+                    <div class="alert alert-warning mt-3 mb-0">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>{{ warning_message }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Langkah 3</p>
+                    <h3 class="h5 mb-3">Periode terbuka</h3>
+                    {% if open_periods %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless mb-0">
+                            <thead class="text-muted small text-uppercase">
+                                <tr>
+                                    <th>Label</th>
+                                    <th>Tanggal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for period in open_periods %}
+                                <tr>
+                                    <td class="font-weight-semibold">{{ period.label }}</td>
+                                    <td>{{ period.start_date.strftime('%d %b %Y') }} – {{ period.end_date.strftime('%d %b %Y') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-muted text-center py-4">
+                        <i class="fas fa-hourglass-half fa-2x mb-2"></i>
+                        <p class="mb-0">Tidak ada periode terbuka.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Riwayat penutupan</p>
+                    <h3 class="h5 mb-3">Periode terakhir</h3>
+                    {% if recent_closed %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless mb-0">
+                            <thead class="text-muted small text-uppercase">
+                                <tr>
+                                    <th>Label</th>
+                                    <th>Ditutup</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for period in recent_closed %}
+                                <tr>
+                                    <td class="font-weight-semibold">{{ period.label }}</td>
+                                    <td>{{ period.closed_at.strftime('%d %b %Y') if period.closed_at else '-' }}</td>
+                                    <td>
+                                        <span class="badge badge-pill badge-success">Closed</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-muted text-center py-4">
+                        <i class="fas fa-history fa-2x mb-2"></i>
+                        <p class="mb-0">Belum ada periode yang ditutup.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .closing-period .hero-card {
+        border-radius: 18px;
+        padding: 1.25rem;
+    }
+    .closing-period .metric-card {
+        border-radius: 16px;
+        padding: 1rem;
+        background: #f9fafb;
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+    }
+    .closing-period .eyebrow {
+        letter-spacing: 0.3em;
+        font-size: 0.7rem;
+        color: #94a3b8;
+    }
+    .closing-period .table-responsive {
+        max-height: 240px;
+    }
+    .closing-period .table td {
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}

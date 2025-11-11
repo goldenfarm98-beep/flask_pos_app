@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}COGS Otomatis{% endblock %}
+
+{% block content %}
+<section class="accounting-settings">
+    <div class="row mb-4">
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <p class="eyebrow text-uppercase mb-1">Konfigurasi</p>
+                            <h3 class="h4 mb-1">Akun persediaan & HPP otomatis</h3>
+                            <p class="text-muted small mb-0">Tetapkan akun yang menjadi tujuan saat sistem mencatat COGS agar jurnal otomatis tetap seimbang.</p>
+                        </div>
+                        <span class="badge badge-pill badge-light">Modern</span>
+                    </div>
+                    <form method="POST" action="{{ url_for('main.accounting_settings') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Akun persediaan</label>
+                            <select name="inventory_account" class="custom-select">
+                                <option value="">Pilih akun persediaan</option>
+                                {% for account in accounts %}
+                                    <option value="{{ account.id }}" {% if settings and settings.inventory_account_id == account.id %}selected{% endif %}>
+                                        {{ account.code }} — {{ account.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Akun yang dikredit saat barang keluar (penjualan).</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Akun COGS / HPP</label>
+                            <select name="cogs_account" class="custom-select">
+                                <option value="">Pilih akun beban langsung</option>
+                                {% for account in accounts %}
+                                    <option value="{{ account.id }}" {% if settings and settings.cogs_account_id == account.id %}selected{% endif %}>
+                                        {{ account.code }} — {{ account.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Akun yang akan didebit saat HPP dicatat otomatis.</small>
+                        </div>
+                        <button class="btn btn-primary btn-block font-weight-bold">
+                            <i class="fas fa-sync-alt mr-2"></i>Perbarui pengaturan
+                        </button>
+                    </form>
+                    {% if settings and settings.updated_at %}
+                    <p class="small text-muted mt-3 mb-0">
+                        Terakhir diperbarui: {{ settings.updated_at.strftime("%d %b %Y %H:%M") }} oleh {{ settings.updater.username if settings.updater else 'sistem' }}.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Status otomatisasi</p>
+                    <h3 class="h4 mb-3">Ringkasan jurnal</h3>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <div class="metric-card h-100">
+                                <small class="text-muted">Jurnal auto</small>
+                                <div class="h3 font-weight-bold">{{ auto_count }}</div>
+                                <small class="text-success">Terakhir 5 disiapkan otomatis</small>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <div class="metric-card h-100">
+                                <small class="text-muted">Nilai HPP tercatat</small>
+                                <div class="h3 font-weight-bold text-success">
+                                    Rp {{ ('{:,.0f}'.format(auto_total_amount)).replace(',', '.') }}
+                                </div>
+                                <small class="text-muted">Sejak pengaktifan modul</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-light border-dashed mt-3 mb-0" role="alert">
+                        {% if settings and settings.inventory_account and settings.cogs_account %}
+                            Modul siap berjalan karena kedua akun sudah ditentukan.
+                        {% else %}
+                            Lengkapi konfigurasi akun agar jurnal COGS otomatis dapat berjalan.
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <p class="eyebrow text-uppercase mb-1">Riwayat otomatisasi</p>
+                    <h3 class="h5 mb-0">Auto COGS terbaru</h3>
+                </div>
+                <span class="badge badge-pill badge-secondary">{{ auto_count }} entri</span>
+            </div>
+            {% if recent_auto %}
+            <div class="table-responsive">
+                <table class="table table-hover table-borderless mb-0">
+                    <thead class="text-muted small text-uppercase">
+                        <tr>
+                            <th>Referensi</th>
+                            <th>Tanggal</th>
+                            <th>Memo</th>
+                            <th class="text-right">Nominal HPP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in recent_auto %}
+                        <tr>
+                            <td class="font-weight-semibold">{{ entry.reference }}</td>
+                            <td>{{ entry.date_label }}</td>
+                            <td>{{ entry.memo }}</td>
+                            <td class="text-right font-weight-bold text-success">
+                                Rp {{ ('{:,.0f}'.format(entry.amount)).replace(',', '.') }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-history fa-2x mb-2"></i>
+                <p class="mb-0">Belum ada jurnal otomatis yang tercatat.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<style>
+    .accounting-settings .metric-card {
+        border-radius: 18px;
+        padding: 1rem;
+        background: #f8fafc;
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+    .accounting-settings .alert.border-dashed {
+        border-style: dashed;
+        border-width: 1px;
+    }
+    .accounting-settings .eyebrow {
+        letter-spacing: 0.3em;
+        font-size: 0.7rem;
+    }
+    .accounting-settings table td {
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
