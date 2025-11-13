@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Status Server{% endblock %}
+
+{% block content %}
+<section class="server-status">
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card shadow-sm border-0 hero-card server-status-hero">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Status Infrastruktur</p>
+                    <h1 class="h3 mb-2">Informasi performa aplikasi dan basis data</h1>
+                    <p class="text-muted mb-0">Pantau ukuran database, penggunaan disk, dan kesehatan resource utama agar pengalaman POS tetap optimal.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Database</p>
+                    {% if metrics.database.path %}
+                    <h2 class="h5 mb-1">{{ metrics.database.path|truncate(40) }}</h2>
+                    <p class="small text-muted mb-0">
+                        Ukuran: {{ metrics.database.size|default(0)|filesizeformat }}
+                    </p>
+                    {% else %}
+                    <p class="small text-muted mb-0">Tidak ditemukan database sqlite.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Disk</p>
+                    {% if metrics.disk.total %}
+                    <h2 class="h5 mb-1">Total {{ metrics.disk.total|filesizeformat }}</h2>
+                    <p class="small text-muted mb-0">
+                        Terpakai {{ metrics.disk.used|filesizeformat }} • Tersisa {{ metrics.disk.free|filesizeformat }}
+                    </p>
+                    {% else %}
+                    <p class="small text-muted mb-0">Tidak bisa membaca penggunaan disk.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Memori & CPU</p>
+                    {% if metrics.memory %}
+                    <h2 class="h5 mb-1">{{ metrics.memory.percent }}% digunakan</h2>
+                    <p class="small text-muted mb-0">
+                        RAM {{ metrics.memory.available|filesizeformat }} tersedia dari {{ metrics.memory.total|filesizeformat }} <br>
+                        CPU {{ metrics.cpu.count }} core • Load avg {{ metrics.cpu.load_avg[0] if metrics.cpu.load_avg else 'n/a' }}
+                    </p>
+                    {% else %}
+                    <p class="small text-muted mb-0">
+                        CPU {{ metrics.cpu.count }} core • Load avg {{ metrics.cpu.load_avg[0] if metrics.cpu.load_avg else 'n/a' }}
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Detail proses</p>
+                    <ul class="list-unstyled mb-0">
+                        <li><strong>Timestamp:</strong> {{ metrics.timestamp }}</li>
+                        <li><strong>Environment:</strong> {{ metrics.environment|capitalize }}</li>
+                        {% if metrics.process_memory %}
+                        <li><strong>Proses memory:</strong> {{ metrics.process_memory.rss|filesizeformat }} (RSS) {% if metrics.process_memory.uss %}• {{ metrics.process_memory.uss|filesizeformat }} (USS){% endif %}</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Catatan</p>
+                    <p class="small text-muted mb-0">Halaman ini membantu admin menemukan bottleneck (database terlalu besar, disk penuh, CPU/mem tinggi). Periksa log dan buang file besar jika nilainya terus naik.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .server-status-hero {
+        border-radius: 20px;
+        background: linear-gradient(140deg, #0b1120 0%, #1d4ed8 55%, #0b1224 100%);
+        color: #f8fafc;
+    }
+    .server-status-hero .card-body {
+        padding: 2rem;
+    }
+    .server-status-hero .text-muted {
+        color: rgba(248, 250, 252, 0.8);
+    }
+    .server-status .eyebrow {
+        letter-spacing: 0.3em;
+        font-size: 0.7rem;
+        color: #cbd5f5;
+    }
+</style>
+{% endblock %}

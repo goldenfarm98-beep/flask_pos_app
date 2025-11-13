@@ -7,9 +7,11 @@ from flask import (
     url_for,
     session,
     jsonify,
+    current_app,
 )
 from functools import wraps
 from urllib.parse import urlparse, urljoin
+import shutil
 from collections import defaultdict
 import secrets
 import json
@@ -17,6 +19,11 @@ from datetime import datetime, timedelta
 import logging
 from io import BytesIO
 import math
+import os
+from importlib import util
+from pathlib import Path
+_psutil_spec = util.find_spec("psutil")
+psutil = __import__("psutil") if _psutil_spec else None
 
 import pandas as pd
 from flask import make_response
@@ -1676,6 +1683,21 @@ def produk():
         for level in price_levels
     ]
 
+    pagination_args = {
+        key: value
+        for key, value in request.args.to_dict().items()
+        if key not in {"page", "ajax"}
+    }
+    if request.args.get("ajax") == "1":
+        return render_template(
+            "partials/product_table.html",
+            produks=produks,
+            pagination=pagination,
+            pagination_args=pagination_args,
+            price_updates=price_updates,
+            product_price_levels=product_price_levels,
+        )
+
     return render_template(
         "data_produk.html",
         produks=produks,
@@ -1695,7 +1717,7 @@ def produk():
         pagination=pagination,
         page=page,
         per_page=per_page,
-        pagination_args={k: v for k, v in request.args.to_dict().items() if k != "page"},
+        pagination_args=pagination_args,
     )
 
 
@@ -1938,6 +1960,13 @@ def close_books():
         selected_range=selected_range,
         warning_message=warning_message,
     )
+
+
+@bp.route("/status", methods=["GET"])
+@login_required
+def status():
+    metrics = _collect_system_metrics()
+    return render_template("server_status.html", metrics=metrics)
 
 
 @bp.route("/jurnal", methods=["GET", "POST"])
@@ -4519,6 +4548,72 @@ def _record_auto_cogs_journal(penjualan, amount, settings, user_id=None):
         )
     )
     return entry
+
+
+def _resolve_sqlite_path():
+    uri = current_app.config.get("SQLALCHEMY_DATABASE_URI") or ""
+    if not uri.startswith("sqlite:"):
+        return None
+    trimmed = uri.split("sqlite://")[1]
+    if trimmed.startswith("/"):
+        trimmed = trimmed[1:]
+    return os.path.abspath(trimmed)
+
+
+def _collect_system_metrics():
+    metrics = {
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "environment": current_app.config.get("FLASK_ENV", "production"),
+    }
+    db_path = _resolve_sqlite_path()
+    if db_path and os.path.exists(db_path):
+        metrics["database"] = {
+            "path": db_path,
+            "size": os.path.getsize(db_path),
+        }
+        base_dir = os.path.dirname(db_path) or os.getcwd()
+    else:
+        metrics["database"] = {"path": None, "size": None}
+        base_dir = current_app.instance_path
+
+    try:
+        disk = shutil.disk_usage(base_dir)
+        metrics["disk"] = {
+            "total": disk.total,
+            "used": disk.used,
+            "free": disk.free,
+        }
+    except Exception:
+        metrics["disk"] = {"total": None, "used": None, "free": None}
+
+    if psutil:
+        vm = psutil.virtual_memory()
+        metrics["memory"] = {
+            "total": vm.total,
+            "available": vm.available,
+            "percent": vm.percent,
+        }
+        metrics["cpu"] = {
+            "count": psutil.cpu_count(logical=True),
+            "percent": psutil.cpu_percent(interval=0.1),
+            "load_avg": os.getloadavg() if hasattr(os, "getloadavg") else None,
+        }
+        process = psutil.Process()
+        mem_info = process.memory_full_info()
+        metrics["process_memory"] = {
+            "rss": mem_info.rss,
+            "uss": getattr(mem_info, "uss", None),
+        }
+    else:
+        metrics["memory"] = None
+        metrics["cpu"] = {
+            "count": os.cpu_count(),
+            "percent": None,
+            "load_avg": os.getloadavg() if hasattr(os, "getloadavg") else None,
+        }
+        metrics["process_memory"] = None
+
+    return metrics
 
 
 @bp.route("/update-harga", methods=["GET", "POST"])

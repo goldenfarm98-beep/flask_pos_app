@@ -122,163 +122,9 @@
                     </div>
                 </form>
 
-                {% if produks %}
-                    <div class="table-responsive">
-                        <table class="table table-modern table-hover align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Produk</th>
-                                    <th>Kategori & Supplier</th>
-                                    <th>Identitas</th>
-                                    <th>Stok & Kedaluwarsa</th>
-                                    <th class="text-right">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for produk in produks %}
-                                    <tr>
-                                        <td>
-                                            <div class="font-weight-semibold">{{ produk.nama_produk }}</div>
-                                            <div class="small text-muted">
-                                                <span class="mr-2"><i class="fas fa-barcode mr-1"></i>{{ produk.kode_produk }}</span>
-                                                <span><i class="fas fa-ruler mr-1"></i>{{ produk.satuan.name if produk.satuan else 'Tidak ada' }}</span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div>
-                                                <span class="badge badge-pill badge-light text-muted">
-                                                    <i class="fas fa-tags mr-1"></i>{{ produk.kategori.name if produk.kategori else 'Tidak ada' }}
-                                                </span>
-                                            </div>
-                                            <div class="mt-2">
-                                                <span class="badge badge-pill badge-light text-muted">
-                                                    <i class="fas fa-truck mr-1"></i>{{ produk.supplier.name if produk.supplier else 'Tidak ada' }}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div class="d-flex flex-column">
-                                                <span class="small text-muted mb-1">SKU:
-                                                    {% if produk.sku %}
-                                                        <span class="font-weight-semibold">{{ produk.sku }}</span>
-                                                    {% else %}
-                                                        <span class="text-warning font-weight-semibold">Belum diatur</span>
-                                                    {% endif %}
-                                                </span>
-                                                <span class="small text-muted">Barcode:
-                                                    {% if produk.barcode %}
-                                                        <span class="font-weight-semibold">{{ produk.barcode }}</span>
-                                                    {% else %}
-                                                        <span class="text-info font-weight-semibold">Belum diatur</span>
-                                                    {% endif %}
-                                                </span>
-                                                {% set price_info = price_updates.get(produk.id) %}
-                                                <div class="mt-3">
-                                                    <span class="small text-muted text-uppercase">Harga jual</span>
-                                                    <div class="font-weight-semibold text-primary">
-                                                        {{ ('Rp {:,.0f}'.format(produk.harga or 0)).replace(',', '.') }}
-                                                    </div>
-                                                    {% if price_info %}
-                                                        <small class="text-muted">
-                                                            Update {{ price_info.updated_at.strftime('%d %b %Y %H:%M') }}
-                                                            {% if price_info.user %}oleh {{ price_info.user }}{% endif %}
-                                                        </small>
-                                                    {% else %}
-                                                        <small class="text-muted">Belum ada riwayat update</small>
-                                                    {% endif %}
-                                                </div>
-                                                {% set level_prices = product_price_levels.get(produk.id, []) %}
-                                                {% if level_prices %}
-                                                    <div class="mt-3">
-                                                        <span class="small text-muted text-uppercase d-block">Level harga</span>
-                                                        <div class="d-flex flex-wrap price-badge-stack">
-                                                            {% for item in level_prices %}
-                                                                <span class="badge badge-soft-primary mr-2 mb-2">
-                                                                    {{ item.level_name }}:
-                                                                    <span class="font-weight-semibold">{{ ('Rp {:,.0f}'.format(item.price or 0)).replace(',', '.') }}</span>
-                                                                </span>
-                                                            {% endfor %}
-                                                        </div>
-                                                    </div>
-                                                {% endif %}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div class="mb-2">
-                                        {% if produk.stok_minimal %}
-                                            <span class="badge badge-pill badge-primary">Stok minimal {{ produk.stok_minimal }}</span>
-                                        {% else %}
-                                            <span class="badge badge-pill badge-warning text-dark">Target stok belum diisi</span>
-                                        {% endif %}
-                                        <div class="mt-1">
-                                            <span class="badge badge-pill badge-success">
-                                                Stok tersedia {{ produk.stok_lama or 0 }} pcs
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div>
-                                                {% if produk.tanggal_expired %}
-                                                    <span class="badge badge-pill badge-danger">
-                                                        Exp: {{ produk.tanggal_expired.strftime('%d %b %Y') }}
-                                                    </span>
-                                                {% else %}
-                                                    <span class="badge badge-pill badge-light text-muted">Tidak ada tanggal</span>
-                                                {% endif %}
-                                            </div>
-                                        </td>
-                                        <td class="text-right">
-                                            <div class="btn-group" role="group" aria-label="Aksi produk">
-                                                <a href="{{ url_for('main.detail_produk', produk_id=produk.id) }}" class="btn btn-sm btn-outline-info">
-                                                    <i class="fas fa-info-circle"></i>
-                                                </a>
-                                                <a href="{{ url_for('main.produk', edit=produk.id) }}" class="btn btn-sm btn-outline-secondary">
-                                                    <i class="fas fa-edit"></i>
-                                                </a>
-                                                <form action="{{ url_for('main.delete_produk', produk_id=produk.id) }}" method="POST" class="d-inline">
-                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Hapus produk ini?')">
-                                                        <i class="fas fa-trash"></i>
-                                                    </button>
-                                                </form>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% if pagination.pages > 1 %}
-                    {% set base_args = pagination_args or {} %}
-                    {% set window_start = 1 if pagination.page - 2 < 1 else pagination.page - 2 %}
-                    {% set window_end = pagination.pages if pagination.page + 2 > pagination.pages else pagination.page + 2 %}
-                    <nav class="mt-3">
-                        <ul class="pagination pagination-sm justify-content-end mb-0">
-                            <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-                                <a class="page-link" href="{% if pagination.has_prev %}{{ url_for('main.produk', page=pagination.prev_num, **base_args) }}{% else %}#{% endif %}" aria-label="Previous">
-                                    <span aria-hidden="true">&laquo;</span>
-                                </a>
-                            </li>
-                            {% for number in range(window_start, window_end + 1) %}
-                                <li class="page-item {% if number == pagination.page %}active{% endif %}">
-                                    <a class="page-link" href="{{ url_for('main.produk', page=number, **base_args) }}">{{ number }}</a>
-                                </li>
-                            {% endfor %}
-                            <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-                                <a class="page-link" href="{% if pagination.has_next %}{{ url_for('main.produk', page=pagination.next_num, **base_args) }}{% else %}#{% endif %}" aria-label="Next">
-                                    <span aria-hidden="true">&raquo;</span>
-                                </a>
-                            </li>
-                        </ul>
-                    </nav>
-                    {% endif %}
-                {% else %}
-                    <div class="empty-state text-center py-5">
-                        <div class="empty-icon text-primary mb-3">
-                            <i class="fas fa-box-open fa-2x"></i>
-                        </div>
-                        <p class="mb-0 text-muted">Belum ada produk yang sesuai filter. Tambahkan produk baru atau ubah pencarian.</p>
-                    </div>
-                {% endif %}
+                <div id="productTableContainer">
+                    {% include 'partials/product_table.html' %}
+                </div>
             </div>
         </div>
 
@@ -918,4 +764,100 @@
         }
     });
 </script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const filterForm = document.querySelector('.filter-form');
+        const tableContainer = document.getElementById('productTableContainer');
+        if (!filterForm || !tableContainer) return;
+
+        const requestUrl = filterForm.getAttribute('action');
+
+        function setLoading(active) {
+            tableContainer.classList.toggle('is-loading', active);
+        }
+
+        function updateHistory(params) {
+            const url = new URL(requestUrl, window.location.origin);
+            Object.entries(params).forEach(([key, value]) => {
+                if (!value) {
+                    url.searchParams.delete(key);
+                    return;
+                }
+                if (key === 'ajax') {
+                    return;
+                }
+                url.searchParams.set(key, value);
+            });
+            window.history.replaceState({}, '', url);
+        }
+
+        function loadTable(params = {}) {
+            setLoading(true);
+            const payload = new URLSearchParams();
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null) {
+                    payload.set(key, value);
+                }
+            });
+            payload.set('ajax', '1');
+
+            fetch(`${requestUrl}?${payload.toString()}`)
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error('Gagal memuat data');
+                    }
+                    return response.text();
+                })
+                .then((html) => {
+                    tableContainer.innerHTML = html;
+                    setLoading(false);
+                    updateHistory(params);
+                })
+                .catch(() => {
+                    setLoading(false);
+                });
+        }
+
+        filterForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+            const formData = new FormData(filterForm);
+            const params = {};
+            formData.forEach((value, key) => {
+                params[key] = value;
+            });
+            params.page = 1;
+            loadTable(params);
+        });
+
+        tableContainer.addEventListener('click', function (event) {
+            const link = event.target.closest('.pagination a');
+            if (!link) {
+                return;
+            }
+            event.preventDefault();
+            const targetUrl = new URL(link.href, window.location.origin);
+            const params = {};
+            targetUrl.searchParams.forEach((value, key) => {
+                params[key] = value;
+            });
+            loadTable(params);
+        });
+    });
+</script>
+
+<style>
+    #productTableContainer {
+        position: relative;
+    }
+
+    #productTableContainer.is-loading::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(2px);
+        z-index: 10;
+    }
+</style>
 {% endblock %}
