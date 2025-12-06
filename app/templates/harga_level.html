@@ -4,15 +4,14 @@
 
 {% block content %}
 <section class="price-levels">
-    <div class="page-hero hero-card hero-gradient text-white mb-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
         <div>
-            <p class="eyebrow text-uppercase mb-2">Level Harga Pelanggan</p>
-            <h1 class="display-5 font-weight-bold mb-2">Kelola struktur harga khusus untuk pelanggan prioritas.</h1>
-            <p class="mb-0 text-white-75">Buat level harga (Retail, Grosir, VIP) lalu tentukan harga produk per level agar kasir otomatis menggunakan nilai yang tepat.</p>
+            <h1 class="h4 font-weight-bold mb-1">Level Harga</h1>
+            <p class="text-muted mb-0">{{ price_levels|length }} level aktif. Atur level dan harga produk di bawah.</p>
         </div>
-        <div class="hero-meta text-lg-right mt-4 mt-lg-0">
-            <span class="badge badge-pill badge-light text-uppercase px-3 py-2">{{ price_levels|length }} level aktif</span>
-            <p class="small text-white-75 mt-3 mb-0">Gunakan formulir di bawah untuk menambah level baru atau mengatur harga.</p>
+        <div class="btn-group mt-2 mt-md-0">
+            <a href="#price-level-form" class="btn btn-sm btn-primary"><i class="fas fa-tag mr-1"></i>Atur harga</a>
+            <a href="#price-level-form" class="btn btn-sm btn-outline-primary"><i class="fas fa-layer-group mr-1"></i>Tambah level</a>
         </div>
     </div>
 
@@ -67,6 +66,24 @@
         </div>
 
         <div class="col-xl-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Cari produk & status level harga</h2>
+                    <div class="form-group position-relative">
+                        <label class="sr-only" for="level-price-global-search">Cari produk</label>
+                        <input type="text"
+                               id="level-price-global-search"
+                               class="form-control form-control-lg"
+                               placeholder="Ketik nama, kode, SKU, atau barcode…"
+                               autocomplete="off">
+                        <small class="form-text text-muted" id="level-price-global-helper">
+                            Autocomplete menampilkan status level harga untuk setiap produk.
+                        </small>
+                        <div class="product-suggestion-panel mt-2" id="level-price-global-panel"></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
                     <h2 class="h5 font-weight-bold mb-3">Atur harga per level</h2>
@@ -225,45 +242,21 @@
                     <h3 class="h6 font-weight-bold mb-3">Daftar harga khusus</h3>
                     {% if price_table %}
                         {% for level in price_levels %}
-                            <div class="mb-4">
+                            {% set entries = price_table.get(level.id) %}
+                            {% set page_info = price_table_pages.get(level.id) if price_table_pages else None %}
+                            <div class="mb-4 level-price-block" data-level-price-container data-level-id="{{ level.id }}">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h4 class="h6 mb-0">{{ level.name }}</h4>
-                                    <small class="text-muted">{{ level.description or 'Tanpa deskripsi' }}</small>
-                                </div>
-                                {% set entries = price_table.get(level.id) %}
-                                {% if entries %}
-                                    <div class="table-responsive">
-                                        <table class="table table-sm table-hover mb-0">
-                                            <thead>
-                                                <tr>
-                                                    <th>Produk</th>
-                                                    <th>Kode</th>
-                                                    <th class="text-right">Harga Khusus</th>
-                                                    <th class="text-center">Aksi</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for entry in entries %}
-                                                    <tr>
-                                                        <td>{{ entry.product_name }}</td>
-                                                        <td>{{ entry.product_code }}</td>
-                                                        <td class="text-right">{{ ('Rp {:,.0f}'.format(entry.price)).replace(',', '.') }}</td>
-                                                        <td class="text-center">
-                                                            <form method="POST" class="d-inline">
-                                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                                <input type="hidden" name="action" value="delete_price">
-                                                                <input type="hidden" name="entry_id" value="{{ entry.id }}">
-                                                                <button type="submit" class="btn btn-link text-danger btn-sm">Hapus</button>
-                                                            </form>
-                                                        </td>
-                                                    </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
+                                    <div>
+                                        <h4 class="h6 mb-0">{{ level.name }}</h4>
+                                        <small class="text-muted">{{ level.description or 'Tanpa deskripsi' }}</small>
                                     </div>
-                                {% else %}
-                                    <p class="small text-muted">Belum ada harga khusus untuk level ini.</p>
-                                {% endif %}
+                                    {% if page_info and page_info.total %}
+                                        <span class="badge badge-light">{{ page_info.total }} item</span>
+                                    {% endif %}
+                                </div>
+                                <div class="level-price-content" data-level-id="{{ level.id }}">
+                                    {% include 'partials/level_price_table.html' with context %}
+                                </div>
                             </div>
                         {% endfor %}
                     {% else %}
@@ -276,19 +269,6 @@
 </section>
 
 <style>
-    .price-levels .page-hero.hero-card {
-        padding: 2.5rem 2.5rem;
-        border-radius: 24px;
-    }
-    @media (max-width: 576px) {
-        .price-levels .page-hero.hero-card {
-            padding: 1.75rem;
-        }
-    }
-    .price-levels .eyebrow {
-        letter-spacing: 0.3em;
-        font-size: 0.75rem;
-    }
     .price-levels .card {
         border-radius: 16px;
     }
@@ -343,6 +323,30 @@
     .product-suggestion-item span {
         font-size: 0.85rem;
         color: #475569;
+    }
+    .badge-soft-primary {
+        background-color: rgba(37, 99, 235, 0.12);
+        color: #1d4ed8;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.65rem;
+    }
+    .level-price-content.is-loading {
+        position: relative;
+        opacity: 0.6;
+        pointer-events: none;
+    }
+    .level-price-content.is-loading::after {
+        content: 'Memuat...';
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.7);
+        color: #64748b;
+        font-size: 0.9rem;
+        font-weight: 600;
     }
 </style>
 <script>
@@ -502,6 +506,194 @@
                 showSuggestions();
                 searchInput.focus();
             }
+        });
+    });
+</script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const globalSearchInput = document.getElementById("level-price-global-search");
+        const globalPanel = document.getElementById("level-price-global-panel");
+        const globalHelper = document.getElementById("level-price-global-helper");
+
+        const setHelper = (message, tone = "muted") => {
+            if (!globalHelper) return;
+            globalHelper.textContent = message;
+            globalHelper.classList.remove("text-muted", "text-danger", "text-success");
+            if (tone === "danger") {
+                globalHelper.classList.add("text-danger");
+            } else if (tone === "success") {
+                globalHelper.classList.add("text-success");
+            } else {
+                globalHelper.classList.add("text-muted");
+            }
+        };
+
+        if (globalSearchInput && globalPanel) {
+            let debounceTimer = null;
+            let abortCtrl = null;
+
+            const clearPanel = () => {
+                globalPanel.innerHTML = "";
+                globalPanel.classList.remove("is-visible");
+            };
+
+            const showPanel = () => globalPanel.classList.add("is-visible");
+
+            const formatPrice = (value) => {
+                try {
+                    return (
+                        "Rp " +
+                        (Number(value) || 0).toLocaleString("id-ID", {
+                            maximumFractionDigits: 0,
+                        })
+                    );
+                } catch (e) {
+                    return "Rp " + (value || 0);
+                }
+            };
+
+            const renderRows = (products) => {
+                globalPanel.innerHTML = "";
+                if (!products.length) {
+                    globalPanel.innerHTML =
+                        '<div class="px-2 py-3 text-muted small">Produk tidak ditemukan.</div>';
+                    showPanel();
+                    return;
+                }
+                products.slice(0, 12).forEach((prod) => {
+                    const row = document.createElement("div");
+                    row.className = "product-suggestion-item border-bottom";
+                    row.innerHTML = `
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <strong>${prod.nama_produk}</strong>
+                                <span>${prod.kode_produk || "-"} · ${prod.sku || "SKU ?"}</span><br>
+                                <span>${prod.barcode || "Barcode ?"}</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="badge badge-light">${prod.kategori || "Kategori ?"}</span>
+                            </div>
+                        </div>
+                        <div class="mt-2 d-flex flex-wrap" style="gap: 0.35rem;">
+                            ${
+                                Array.isArray(prod.price_levels) && prod.price_levels.length
+                                    ? prod.price_levels
+                                          .map(
+                                              (pl) =>
+                                                  `<span class="badge badge-soft-primary">${pl.level_name || "Level"}: ${formatPrice(pl.price)}</span>`
+                                          )
+                                          .join("")
+                                    : '<span class="badge badge-secondary">Belum ada level harga</span>'
+                            }
+                        </div>
+                    `;
+                    globalPanel.appendChild(row);
+                });
+                showPanel();
+            };
+
+            const fetchProducts = (term) => {
+                if (abortCtrl) {
+                    abortCtrl.abort();
+                }
+                abortCtrl = new AbortController();
+                fetch(
+                    `{{ url_for('main.get_products') }}?q=${encodeURIComponent(term)}`,
+                    {
+                        headers: { Accept: "application/json" },
+                        signal: abortCtrl.signal,
+                    }
+                )
+                    .then((res) => {
+                        if (!res.ok) throw new Error("fail");
+                        return res.json();
+                    })
+                    .then((data) => {
+                        const products = Array.isArray(data.products)
+                            ? data.products
+                            : [];
+                        renderRows(products);
+                        setHelper("Autocomplete siap. Klik harga untuk detail.", "muted");
+                    })
+                    .catch((err) => {
+                        if (err.name === "AbortError") return;
+                        setHelper("Gagal memuat produk.", "danger");
+                    });
+            };
+
+            globalSearchInput.addEventListener("input", function () {
+                const term = this.value.trim();
+                if (!term) {
+                    clearPanel();
+                    setHelper(
+                        "Autocomplete menampilkan status level harga untuk setiap produk.",
+                        "muted"
+                    );
+                    return;
+                }
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    fetchProducts(term);
+                }, 250);
+            });
+
+            document.addEventListener("click", function (event) {
+                if (
+                    !globalPanel.contains(event.target) &&
+                    event.target !== globalSearchInput
+                ) {
+                    globalPanel.classList.remove("is-visible");
+                }
+            });
+        }
+    });
+</script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const blocks = document.querySelectorAll("[data-level-price-container]");
+        if (!blocks.length) {
+            return;
+        }
+
+        const toggleLoading = (contentEl, active) => {
+            if (!contentEl) {
+                return;
+            }
+            contentEl.classList.toggle("is-loading", !!active);
+        };
+
+        blocks.forEach((block) => {
+            const contentEl = block.querySelector(".level-price-content");
+            block.addEventListener("click", function (event) {
+                const link = event.target.closest(".level-price-page-link");
+                if (!link) {
+                    return;
+                }
+                event.preventDefault();
+                const fragmentUrl = link.dataset.fragmentUrl || link.getAttribute("href");
+                if (!fragmentUrl || !contentEl) {
+                    return;
+                }
+                toggleLoading(contentEl, true);
+                fetch(fragmentUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+                    .then((response) => {
+                        if (!response.ok) {
+                            throw new Error("Gagal memuat data.");
+                        }
+                        return response.text();
+                    })
+                    .then((html) => {
+                        contentEl.innerHTML = html;
+                    })
+                    .catch(() => {
+                        // Silent fail to avoid mengganggu user
+                    })
+                    .finally(() => {
+                        toggleLoading(contentEl, false);
+                    });
+            });
         });
     });
 </script>

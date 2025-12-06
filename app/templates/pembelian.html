@@ -6,37 +6,17 @@
 {% set supplier_count = supplier_payload|length %}
 {% set product_count = product_payload|length %}
 
-<section class="page-hero hero-card hero-gradient text-white mb-4">
-    <div class="row align-items-center">
-        <div class="col-lg-8">
-            <h1 class="display-5 font-weight-bold mb-3">Catat pembelian dan restock barang dengan mudah.</h1>
-            <p class="lead mb-4">
-                Simpan faktur pemasok, hitung diskon/pajak per item, dan pantau total biaya secara real time.
-                Gudang Anda terhubung dengan <strong>{{ '{:,}'.format(supplier_count).replace(',', '.') }}</strong> supplier dan
-                <strong>{{ '{:,}'.format(product_count).replace(',', '.') }}</strong> produk.
-            </p>
-            <div class="d-flex flex-wrap">
-                <a href="#purchase-form" class="btn btn-light btn-lg text-primary font-weight-bold mr-3 mb-2">
-                    <i class="fas fa-file-invoice mr-2"></i>Faktur Baru
-                </a>
-                <a href="{{ url_for('main.supplier') }}" class="btn btn-outline-light btn-lg mr-3 mb-2">
-                    <i class="fas fa-truck mr-2"></i>Kelola Supplier
-                </a>
-                <a href="{{ url_for('main.produk') }}" class="btn btn-outline-light btn-lg mb-2">
-                    <i class="fas fa-box-open mr-2"></i>Kelola Produk
-                </a>
-            </div>
-        </div>
-        <div class="col-lg-4 mt-4 mt-lg-0">
-            <div class="hero-meta text-lg-right">
-                <span class="badge badge-pill badge-light text-uppercase px-3 py-2">Langkah cepat</span>
-                <p class="small text-white-75 mt-3 mb-0">
-                    1) Isi data faktur, 2) Pilih supplier, 3) Tambahkan detail barang, 4) Simpan dan siap gunakan di penjualan.
-                </p>
-            </div>
-        </div>
+<div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+    <div class="mb-2">
+        <h1 class="h4 font-weight-bold mb-1">Pembelian & Restock</h1>
+        <p class="text-muted mb-0">Supplier: {{ supplier_count }} • Produk: {{ product_count }}. Tambah faktur baru di bawah.</p>
     </div>
-</section>
+    <div class="btn-group">
+        <a href="#purchase-form" class="btn btn-sm btn-primary"><i class="fas fa-file-invoice mr-1"></i>Faktur Baru</a>
+        <a href="{{ url_for('main.supplier') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-truck mr-1"></i>Supplier</a>
+        <a href="{{ url_for('main.produk') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-box-open mr-1"></i>Produk</a>
+    </div>
+</div>
 
 {% if purchase_stat_cards %}
 <div class="row stat-grid mb-4">

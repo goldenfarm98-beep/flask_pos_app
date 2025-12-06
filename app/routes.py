@@ -6,6 +6,7 @@ from flask import (
     flash,
     url_for,
     session,
+    g,
     jsonify,
     current_app,
 )
@@ -27,9 +28,10 @@ psutil = __import__("psutil") if _psutil_spec else None
 
 import pandas as pd
 from flask import make_response
-from sqlalchemy import or_, and_, func, inspect
+from sqlalchemy import or_, and_, func, inspect, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import joinedload
+from sqlalchemy.engine.url import make_url
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from app import csrf
@@ -77,6 +79,16 @@ INDONESIAN_MONTHS = [
     "Desember",
 ]
 
+ROLE_ADMIN = "admin"
+ROLE_KASIR = "kasir"
+ROLE_SALES = "sales"
+ROLE_GUDANG = "gudang"
+ALL_ROLES = {ROLE_ADMIN, ROLE_KASIR, ROLE_SALES, ROLE_GUDANG}
+ALL_ROLE_CHOICES = (ROLE_ADMIN, ROLE_KASIR, ROLE_SALES, ROLE_GUDANG)
+INVENTORY_ROLES = (ROLE_ADMIN, ROLE_GUDANG)
+SALES_ROLES = (ROLE_ADMIN, ROLE_KASIR, ROLE_SALES)
+ADMIN_ONLY = (ROLE_ADMIN,)
+
 
 def _is_safe_redirect_target(target: str) -> bool:
     if not target:
@@ -86,29 +98,99 @@ def _is_safe_redirect_target(target: str) -> bool:
     return test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc
 
 
+def _accepts_json():
+    return (
+        request.path.startswith("/api/")
+        or request.is_json
+        or (request.accept_mimetypes and request.accept_mimetypes.accept_json)
+    )
+
+
+def _auth_required_response():
+    if _accepts_json():
+        return jsonify({"error": "Authentication required"}), 401
+
+    flash("Silakan login untuk mengakses halaman tersebut.", "warning")
+    if request.method == "GET":
+        next_target = request.full_path or request.path
+    else:
+        next_target = request.referrer or request.path
+    if not _is_safe_redirect_target(next_target):
+        next_target = url_for("main.dashboard")
+    return redirect(url_for("main.login", next=next_target))
+
+
+def _forbidden_response(allowed_roles):
+    if _accepts_json():
+        return (
+            jsonify(
+                {
+                    "error": "Forbidden",
+                    "allowed_roles": sorted(r for r in allowed_roles),
+                }
+            ),
+            403,
+        )
+
+    flash("Anda tidak memiliki akses ke halaman tersebut.", "danger")
+    return redirect(url_for("main.dashboard"))
+
+
+def get_current_user():
+    if hasattr(g, "_current_user"):
+        return g._current_user
+
+    user = None
+    user_id = session.get("user_id")
+    if user_id:
+        user = User.query.get(user_id)
+        if user:
+            session["username"] = user.username
+            session["role"] = user.role
+            session["email"] = user.email
+
+    if not user:
+        session.pop("user_id", None)
+        session.pop("username", None)
+        session.pop("role", None)
+        session.pop("email", None)
+
+    g._current_user = user
+    return user
+
+
 def login_required(view_func):
     @wraps(view_func)
     def wrapped_view(*args, **kwargs):
-        if "user_id" not in session:
-            accepts_json = (
-                request.path.startswith("/api/")
-                or request.is_json
-                or (request.accept_mimetypes and request.accept_mimetypes.accept_json)
-            )
-            if accepts_json:
-                return jsonify({"error": "Authentication required"}), 401
-
-            flash("Silakan login untuk mengakses halaman tersebut.", "warning")
-            if request.method == "GET":
-                next_target = request.full_path or request.path
-            else:
-                next_target = request.referrer or request.path
-            if not _is_safe_redirect_target(next_target):
-                next_target = url_for("main.dashboard")
-            return redirect(url_for("main.login", next=next_target))
+        if not get_current_user():
+            return _auth_required_response()
         return view_func(*args, **kwargs)
 
     return wrapped_view
+
+
+def roles_required(*allowed_roles, allow_admin=True):
+    allowed_set = {role.lower() for role in allowed_roles if role}
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapped_view(*args, **kwargs):
+            user = get_current_user()
+            if not user:
+                return _auth_required_response()
+
+            user_role = (user.role or "").lower()
+            if allow_admin and user_role == ROLE_ADMIN:
+                return view_func(*args, **kwargs)
+
+            if allowed_set and user_role in allowed_set:
+                return view_func(*args, **kwargs)
+
+            return _forbidden_response(allowed_set or ALL_ROLES)
+
+        return wrapped_view
+
+    return decorator
 
 
 def _safe_next_url(default_endpoint="main.dashboard", candidate=None):
@@ -490,6 +572,7 @@ def register():
 
 @bp.route("/dashboard")
 @login_required
+@roles_required(*ALL_ROLE_CHOICES)
 def dashboard():
     username = session.get("username")
     today = datetime.utcnow().date()
@@ -608,6 +691,8 @@ def login():
         if user and check_password_hash(user.password, password):
             session["user_id"] = user.id
             session["username"] = user.username
+            session["role"] = user.role
+            session["email"] = user.email
             flash("Login successful!", "success")
             return redirect(_safe_next_url(candidate=next_value))
         else:
@@ -877,6 +962,7 @@ def _build_supplier_page_context(
 
 @bp.route("/supplier", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def supplier():
     search_query = request.args.get("search", "").strip()
     page = request.args.get("page", 1, type=int)
@@ -943,6 +1029,7 @@ def supplier():
 
 @bp.route("/supplier/edit/<int:supplier_id>", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def edit_supplier(supplier_id):
     search_query = request.args.get("search", "").strip()
     page = request.args.get("page", 1, type=int)
@@ -1010,6 +1097,7 @@ def edit_supplier(supplier_id):
 
 @bp.route("/supplier/delete/<int:supplier_id>", methods=["POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def delete_supplier(supplier_id):
     supplier = Supplier.query.get_or_404(supplier_id)
     linked_products = Produk.query.filter_by(supplier_id=supplier.id).count()
@@ -1028,6 +1116,7 @@ def delete_supplier(supplier_id):
 
 @bp.route("/supplier/<int:supplier_id>", methods=["GET"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def supplier_detail(supplier_id):
     supplier = Supplier.query.get_or_404(supplier_id)
     return render_template("supplier_detail.html", supplier=supplier)
@@ -1035,6 +1124,7 @@ def supplier_detail(supplier_id):
 
 @bp.route("/supplier/export", methods=["GET"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def export_suppliers():
     suppliers = Supplier.query.all()
 
@@ -1073,6 +1163,7 @@ def export_suppliers():
 
 @bp.route("/supplier/import", methods=["POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def import_suppliers():
     if "file" not in request.files:
         flash("No file uploaded!", "danger")
@@ -1160,19 +1251,29 @@ def import_suppliers():
 # Route to fetch supplier data
 @bp.route("/api/suppliers", methods=["GET"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def get_suppliers():
     try:
-        suppliers = Supplier.query.all()
+        kategori_id = request.args.get("kategori_id", type=int)
+        query = Supplier.query
+        if kategori_id:
+            query = (
+                query.join(Produk, Produk.supplier_id == Supplier.id)
+                .filter(Produk.kategori_id == kategori_id)
+                .distinct()
+            )
+        suppliers = query.all()
         suppliers_data = [
             {"id": supplier.id, "name": supplier.name} for supplier in suppliers
         ]
-        return jsonify(suppliers_data), 200
+        return jsonify({"suppliers": suppliers_data}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @bp.route("/satuan", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def satuan():
     if request.method == "POST":
         # Ambil data dari formulir
@@ -1192,6 +1293,7 @@ def satuan():
 
 @bp.route("/satuan/edit/<int:satuan_id>", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def edit_satuan(satuan_id):
     satuan = Satuan.query.get_or_404(satuan_id)
 
@@ -1209,6 +1311,7 @@ def edit_satuan(satuan_id):
 
 @bp.route("/satuan/delete/<int:satuan_id>", methods=["POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def delete_satuan(satuan_id):
     satuan = Satuan.query.get_or_404(satuan_id)
     if Produk.query.filter_by(satuan_id=satuan.id).count():
@@ -1225,6 +1328,7 @@ def delete_satuan(satuan_id):
 
 @bp.route("/kategori", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def kategori():
     if request.method == "POST":
         # Ambil data dari formulir
@@ -1244,6 +1348,7 @@ def kategori():
 
 @bp.route("/kategori/edit/<int:kategori_id>", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def edit_kategori(kategori_id):
     kategori = Kategori.query.get_or_404(kategori_id)
 
@@ -1263,6 +1368,7 @@ def edit_kategori(kategori_id):
 
 @bp.route("/kategori/delete/<int:kategori_id>", methods=["POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def delete_kategori(kategori_id):
     kategori = Kategori.query.get_or_404(kategori_id)
     if Produk.query.filter_by(kategori_id=kategori.id).count():
@@ -1279,6 +1385,7 @@ def delete_kategori(kategori_id):
 
 @bp.route("/produk", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def produk():
     satuans = Satuan.query.all()
     kategoris = Kategori.query.all()
@@ -1325,6 +1432,44 @@ def produk():
         except (TypeError, ValueError):
             return None
 
+    def _shape_price_levels_for_prefill(entries):
+        shaped = []
+        for entry in entries or []:
+            try:
+                level_id = int(entry.get("level_id"))
+            except (TypeError, ValueError):
+                continue
+            level = price_level_lookup.get(level_id)
+            shaped.append(
+                {
+                    "level_id": level_id,
+                    "level_name": level.name if level else "",
+                    "price": entry.get("price", 0),
+                }
+            )
+        return shaped
+
+    def _store_prefill(form_data, normalized_price_entries=None, focus_field=None):
+        snapshot = {
+            "kode_produk": (form_data.get("kode_produk") or "").strip(),
+            "sku": (form_data.get("sku") or "").strip(),
+            "barcode": (form_data.get("barcode") or "").strip(),
+            "nama_produk": (form_data.get("nama_produk") or "").strip(),
+            "satuan": (form_data.get("satuan") or "").strip(),
+            "kategori": (form_data.get("kategori") or "").strip(),
+            "supplier": (form_data.get("supplier") or "").strip(),
+            "berat": (form_data.get("berat") or "").strip(),
+            "stok_minimal": (form_data.get("stok_minimal") or "").strip(),
+            "tanggal_expired": (form_data.get("tanggal_expired") or "").strip(),
+            "price_levels": _shape_price_levels_for_prefill(
+                normalized_price_entries or []
+            ),
+        }
+        session["produk_form_prefill"] = {
+            "snapshot": snapshot,
+            "focus_field": focus_field,
+        }
+
     if request.method == "POST":
         if not produk_to_edit:
             produk_id_form = request.form.get("produk_id")
@@ -1354,6 +1499,11 @@ def produk():
             try:
                 parsed_payload = json.loads(raw_price_payload)
             except (TypeError, ValueError):
+                _store_prefill(
+                    request.form,
+                    normalized_price_entries=[],
+                    focus_field="kode_produk",
+                )
                 flash(
                     "Format level harga tidak valid. Muat ulang halaman lalu coba lagi.",
                     "danger",
@@ -1362,10 +1512,20 @@ def produk():
             if isinstance(parsed_payload, list):
                 price_level_payload = parsed_payload
             else:
+                _store_prefill(
+                    request.form,
+                    normalized_price_entries=[],
+                    focus_field="kode_produk",
+                )
                 flash("Format level harga tidak dikenali.", "danger")
                 return redirect(redirect_target)
 
         if not price_levels:
+            _store_prefill(
+                request.form,
+                normalized_price_entries=[],
+                focus_field="kode_produk",
+            )
             flash(
                 "Belum ada level harga. Buat level terlebih dahulu di menu Level Harga.",
                 "warning",
@@ -1377,6 +1537,11 @@ def produk():
         )
 
         if not normalized_price_entries:
+            _store_prefill(
+                request.form,
+                normalized_price_entries=[],
+                focus_field="price_level_value",
+            )
             flash(
                 "Tambahkan minimal satu level harga dengan nilai rupiah yang valid.",
                 "warning",
@@ -1395,6 +1560,11 @@ def produk():
         if retail_level and not any(
             entry["level_id"] == retail_level.id for entry in normalized_price_entries
         ):
+            _store_prefill(
+                request.form,
+                normalized_price_entries=normalized_price_entries,
+                focus_field="price_level_value",
+            )
             flash(
                 "Isi harga untuk level Retail agar dapat menjadi harga default kasir.",
                 "warning",
@@ -1408,6 +1578,22 @@ def produk():
             or not kategori_id
             or not supplier_id
         ):
+            missing_field = None
+            for field_name, value in [
+                ("kode_produk", kode_produk),
+                ("nama_produk", nama_produk),
+                ("satuan", satuan_id),
+                ("kategori", kategori_id),
+                ("supplier", supplier_id),
+            ]:
+                if not value:
+                    missing_field = field_name
+                    break
+            _store_prefill(
+                request.form,
+                normalized_price_entries=normalized_price_entries,
+                focus_field=missing_field or "kode_produk",
+            )
             flash("Pastikan semua field wajib diisi.", "warning")
             return redirect(url_for("main.produk"))
 
@@ -1417,6 +1603,11 @@ def produk():
                     Produk.kode_produk == kode_produk, Produk.id != produk_to_edit.id
                 ).first()
                 if existing:
+                    _store_prefill(
+                        request.form,
+                        normalized_price_entries=normalized_price_entries,
+                        focus_field="kode_produk",
+                    )
                     flash(f"Kode produk {kode_produk} sudah digunakan.", "warning")
                     return redirect(url_for("main.produk", edit=produk_to_edit.id))
 
@@ -1437,10 +1628,16 @@ def produk():
                     normalized_entries=normalized_price_entries,
                 )
                 db.session.commit()
+                session.pop("produk_form_prefill", None)
                 flash("Produk updated successfully!", "success")
             else:
                 existing = Produk.query.filter_by(kode_produk=kode_produk).first()
                 if existing:
+                    _store_prefill(
+                        request.form,
+                        normalized_price_entries=normalized_price_entries,
+                        focus_field="kode_produk",
+                    )
                     flash(f"Kode produk {kode_produk} sudah digunakan.", "warning")
                     return redirect(url_for("main.produk"))
 
@@ -1465,14 +1662,25 @@ def produk():
                     normalized_entries=normalized_price_entries,
                 )
                 db.session.commit()
+                session.pop("produk_form_prefill", None)
                 flash("Produk added successfully!", "success")
 
         except IntegrityError as exc:
             db.session.rollback()
+            _store_prefill(
+                request.form,
+                normalized_price_entries=normalized_price_entries,
+                focus_field="kode_produk",
+            )
             flash(f"Gagal menyimpan produk: {str(exc.orig)}", "danger")
         except Exception as exc:
             db.session.rollback()
             logging.exception("Gagal menyimpan produk")
+            _store_prefill(
+                request.form,
+                normalized_price_entries=normalized_price_entries,
+                focus_field="kode_produk",
+            )
             flash(f"Error: {str(exc)}", "danger")
 
         return redirect("/produk")
@@ -1480,7 +1688,14 @@ def produk():
     # Logika pencarian dan filter
     query = Produk.query
     if search_query:
-        query = query.filter(Produk.nama_produk.ilike(f"%{search_query}%"))
+        query = query.filter(
+            or_(
+                Produk.nama_produk.ilike(f"%{search_query}%"),
+                Produk.kode_produk.ilike(f"%{search_query}%"),
+                Produk.sku.ilike(f"%{search_query}%"),
+                Produk.barcode.ilike(f"%{search_query}%"),
+            )
+        )
     if kategori_filter:
         query = query.filter(Produk.kategori_id == kategori_filter)
     if supplier_filter:
@@ -1559,8 +1774,14 @@ def produk():
         or_(Produk.barcode.is_(None), Produk.barcode == "")
     ).count()
 
+    prefill_state = session.pop("produk_form_prefill", None)
+    prefill_data = (prefill_state or {}).get("snapshot")
+    focus_field = (prefill_state or {}).get("focus_field")
+
     edit_price_levels = []
-    if produk_to_edit:
+    if prefill_data and prefill_data.get("price_levels"):
+        edit_price_levels = prefill_data.get("price_levels") or []
+    elif produk_to_edit:
         edit_price_levels = [
             {
                 "level_id": entry.level_id,
@@ -1718,11 +1939,65 @@ def produk():
         page=page,
         per_page=per_page,
         pagination_args=pagination_args,
+        prefill_data=prefill_data,
+        focus_field=focus_field,
     )
+
+
+@bp.route("/produk/<int:produk_id>/json", methods=["GET"])
+@login_required
+@roles_required(*ALL_ROLE_CHOICES)
+def produk_data(produk_id):
+    produk = (
+        Produk.query.options(
+            joinedload(Produk.satuan),
+            joinedload(Produk.kategori),
+            joinedload(Produk.supplier),
+            joinedload(Produk.level_prices).joinedload(ProductPriceLevel.level),
+        )
+        .get_or_404(produk_id)
+    )
+
+    def _format_price_entries(entries):
+        sorted_entries = sorted(
+            entries,
+            key=lambda record: (
+                (record.level.name or "").lower() if record.level else ""
+            ),
+        )
+        result = []
+        for entry in sorted_entries:
+            result.append(
+                {
+                    "level_id": entry.level_id,
+                    "level_name": (entry.level.name if entry.level else ""),
+                    "price": float(entry.price or 0),
+                }
+            )
+        return result
+
+    payload = {
+        "id": produk.id,
+        "kode_produk": produk.kode_produk,
+        "sku": produk.sku,
+        "barcode": produk.barcode,
+        "nama_produk": produk.nama_produk,
+        "satuan_id": produk.satuan_id,
+        "kategori_id": produk.kategori_id,
+        "supplier_id": produk.supplier_id,
+        "berat": float(produk.berat) if produk.berat is not None else None,
+        "stok_minimal": produk.stok_minimal,
+        "tanggal_expired": produk.tanggal_expired.strftime("%Y-%m-%d")
+        if produk.tanggal_expired
+        else None,
+        "price_levels": _format_price_entries(produk.level_prices),
+    }
+    return jsonify(payload)
 
 
 @bp.route("/akun", methods=["GET", "POST"])
 @login_required
+@roles_required(*ADMIN_ONLY)
 def akun():
     _ensure_table(Account)
     if request.method == "POST":
@@ -1797,6 +2072,7 @@ def akun():
 
 @bp.route("/pengaturan-akuntansi", methods=["GET", "POST"])
 @login_required
+@roles_required(*ADMIN_ONLY)
 def accounting_settings():
     _ensure_table(AccountingSetting)
     accounts = Account.query.order_by(Account.code.asc()).all()
@@ -1871,6 +2147,7 @@ def accounting_settings():
 
 @bp.route("/tutup-buku", methods=["GET", "POST"])
 @login_required
+@roles_required(*ADMIN_ONLY)
 def close_books():
     today = datetime.utcnow().date()
     open_period = (
@@ -1964,6 +2241,7 @@ def close_books():
 
 @bp.route("/status", methods=["GET"])
 @login_required
+@roles_required(*ADMIN_ONLY)
 def status():
     metrics = _collect_system_metrics()
     return render_template("server_status.html", metrics=metrics)
@@ -1971,6 +2249,7 @@ def status():
 
 @bp.route("/jurnal", methods=["GET", "POST"])
 @login_required
+@roles_required(*ADMIN_ONLY)
 def jurnal():
     _ensure_table(Account)
     _ensure_table(JournalEntry)
@@ -2160,6 +2439,7 @@ def jurnal():
 
 @bp.route("/produk/edit/<int:produk_id>", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def edit_produk(produk_id):
     produk = Produk.query.get_or_404(produk_id)
 
@@ -2196,6 +2476,7 @@ def edit_produk(produk_id):
 
 @bp.route("/produk/delete/<int:produk_id>", methods=["POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def delete_produk(produk_id):
     produk = Produk.query.get_or_404(produk_id)
     try:
@@ -2217,6 +2498,7 @@ def delete_produk(produk_id):
 
 @bp.route("/produk/detail/<int:produk_id>", methods=["GET"])
 @login_required
+@roles_required(*ALL_ROLE_CHOICES)
 def detail_produk(produk_id):
     produk = Produk.query.get_or_404(produk_id)
     return render_template("detail_produk.html", produk=produk)
@@ -2224,6 +2506,7 @@ def detail_produk(produk_id):
 
 @bp.route("/produk/export", methods=["GET"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def export_produk():
     produks = Produk.query.all()
 
@@ -2263,6 +2546,7 @@ def export_produk():
 
 @bp.route("/produk/import", methods=["POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def import_produk():
     if "file" not in request.files:
         flash("Tidak ada file yang diunggah!", "danger")
@@ -2472,6 +2756,7 @@ def _build_customer_page_context(
 
 @bp.route("/pelanggan", methods=["GET", "POST"])
 @login_required
+@roles_required(*SALES_ROLES)
 def pelanggan():
     search_query = request.args.get("search", "").strip()
     page = request.args.get("page", 1, type=int)
@@ -2525,6 +2810,7 @@ def pelanggan():
 
 @bp.route("/pelanggan/edit/<int:pelanggan_id>", methods=["GET", "POST"])
 @login_required
+@roles_required(*SALES_ROLES)
 def edit_pelanggan(pelanggan_id):
     search_query = request.args.get("search", "").strip()
     page = request.args.get("page", 1, type=int)
@@ -2576,6 +2862,7 @@ def edit_pelanggan(pelanggan_id):
 
 @bp.route("/pelanggan/delete/<int:pelanggan_id>", methods=["POST"])
 @login_required
+@roles_required(*SALES_ROLES)
 def delete_pelanggan(pelanggan_id):
     pelanggan = Pelanggan.query.get_or_404(pelanggan_id)
     if Penjualan.query.filter_by(pelanggan_id=pelanggan.id).count():
@@ -2593,6 +2880,7 @@ def delete_pelanggan(pelanggan_id):
 
 @bp.route("/api/get_product", methods=["GET"])
 @login_required
+@roles_required(*ALL_ROLE_CHOICES)
 def get_product():
     product_code = request.args.get("product_code")
     product = Produk.query.filter_by(kode_produk=product_code).first()
@@ -2610,39 +2898,70 @@ def get_product():
 
 @bp.route("/api/products", methods=["GET"])
 @login_required
+@roles_required(*ALL_ROLE_CHOICES)
 def get_products():
     search_query = request.args.get("q", "").strip()
-    products = Produk.query
+    products = Produk.query.options(
+        joinedload(Produk.kategori), joinedload(Produk.satuan)
+    )
 
-    # Filter berdasarkan nama produk dan kode produk jika ada query pencarian
     if search_query:
         products = products.filter(
             or_(
                 Produk.nama_produk.ilike(f"%{search_query}%"),
                 Produk.kode_produk.ilike(f"%{search_query}%"),
+                Produk.sku.ilike(f"%{search_query}%"),
+                Produk.barcode.ilike(f"%{search_query}%"),
             )
         )
 
-    products = products.limit(100).all()  # Batasi jumlah hasil untuk performa
+    products = products.limit(50).all()  # Batasi jumlah hasil untuk performa
+    product_ids = [prod.id for prod in products]
 
-    # Format data untuk ditampilkan
-    product_list = [
-        {
-            "id": product.id,
-            "kode_produk": product.kode_produk,
-            "nama_produk": product.nama_produk,
-            "kategori": (
-                product.kategori.name if product.kategori else "Tidak dikategorikan"
-            ),
-        }
-        for product in products
-    ]
+    level_entries = []
+    if product_ids:
+        level_entries = (
+            ProductPriceLevel.query.options(joinedload(ProductPriceLevel.level))
+            .filter(ProductPriceLevel.product_id.in_(product_ids))
+            .all()
+        )
+
+    price_map = {}
+    for entry in level_entries:
+        price_map.setdefault(entry.product_id, []).append(
+            {
+                "level_id": entry.level_id,
+                "level_name": entry.level.name if entry.level else "",
+                "price": entry.price,
+            }
+        )
+
+    product_list = []
+    for product in products:
+        product_list.append(
+            {
+                "id": product.id,
+                "kode_produk": product.kode_produk,
+                "nama_produk": product.nama_produk,
+                "sku": product.sku,
+                "barcode": product.barcode,
+                "kategori": (
+                    product.kategori.name if product.kategori else "Tidak dikategorikan"
+                ),
+                "satuan": product.satuan.name if product.satuan else "",
+                "price_levels": sorted(
+                    price_map.get(product.id, []),
+                    key=lambda item: (item.get("level_name") or "").lower(),
+                ),
+            }
+        )
 
     return {"products": product_list}
 
 
 @bp.route("/api/price_level_costs", methods=["GET"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def get_price_level_costs():
     level_id = request.args.get("level_id")
     try:
@@ -2669,6 +2988,7 @@ def get_price_level_costs():
 
 @bp.route("/pembelian", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def pembelian():
     if request.method == "POST":
         try:
@@ -3085,6 +3405,7 @@ def pembelian():
 
 @bp.route("/check_no_faktur", methods=["POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def check_no_faktur():
     try:
         # Pastikan request dalam format JSON
@@ -3144,6 +3465,7 @@ def check_no_faktur():
 
 @bp.route("/penjualan", methods=["GET", "POST"])
 @login_required
+@roles_required(*SALES_ROLES)
 def penjualan():
     form = SalesForm()
 
@@ -3523,6 +3845,7 @@ def penjualan():
 
 @bp.route("/data_penjualan")
 @login_required
+@roles_required(*SALES_ROLES)
 def data_penjualan():
     filter_payload = _build_sales_filters(request.args)
     filters = filter_payload["filters"]
@@ -3846,6 +4169,7 @@ def data_penjualan():
 
 @bp.route("/laporan/laba-rugi")
 @login_required
+@roles_required(*ADMIN_ONLY)
 def laporan_laba_rugi():
     today = datetime.utcnow().date()
     default_start = today.replace(day=1)
@@ -4047,6 +4371,7 @@ def laporan_laba_rugi():
 
 @bp.route("/laporan/pembelian")
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def laporan_pembelian():
     today = datetime.utcnow().date()
     default_start = today.replace(day=1)
@@ -4565,16 +4890,43 @@ def _collect_system_metrics():
         "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
         "environment": current_app.config.get("FLASK_ENV", "production"),
     }
+
+    db_info = {
+        "engine": None,
+        "name": None,
+        "host": None,
+        "path": None,
+        "size": None,
+    }
+    base_dir = current_app.instance_path
+
+    db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI") or ""
+    url_obj = None
+    try:
+        url_obj = make_url(db_uri)
+        db_info.update(
+            {
+                "engine": url_obj.get_backend_name(),
+                "name": url_obj.database,
+                "host": url_obj.host,
+            }
+        )
+    except Exception:
+        url_obj = None
+
     db_path = _resolve_sqlite_path()
-    if db_path and os.path.exists(db_path):
-        metrics["database"] = {
-            "path": db_path,
-            "size": os.path.getsize(db_path),
-        }
-        base_dir = os.path.dirname(db_path) or os.getcwd()
-    else:
-        metrics["database"] = {"path": None, "size": None}
-        base_dir = current_app.instance_path
+    if url_obj and url_obj.get_backend_name().startswith("sqlite"):
+        if db_path and os.path.exists(db_path):
+            db_info["path"] = db_path
+            db_info["size"] = os.path.getsize(db_path)
+            base_dir = os.path.dirname(db_path) or base_dir
+    elif url_obj:
+        db_info["size"] = _fetch_remote_db_size(url_obj)
+
+    metrics["database"] = db_info
+
+    if not os.path.exists(base_dir):
+        base_dir = os.getcwd()
 
     try:
         disk = shutil.disk_usage(base_dir)
@@ -4616,8 +4968,28 @@ def _collect_system_metrics():
     return metrics
 
 
+def _fetch_remote_db_size(url_obj):
+    backend = url_obj.get_backend_name() if url_obj else None
+    if backend == "postgresql":
+        query = text("SELECT pg_database_size(current_database())")
+    elif backend == "mysql":
+        query = text(
+            "SELECT SUM(data_length + index_length) "
+            "FROM information_schema.tables WHERE table_schema = DATABASE()"
+        )
+    else:
+        return None
+
+    try:
+        result = db.session.execute(query).scalar()
+        return int(result) if result is not None else None
+    except Exception:
+        return None
+
+
 @bp.route("/update-harga", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def update_harga():
     if request.method == "POST":
         if not request.is_json:
@@ -4798,6 +5170,7 @@ def update_harga():
 
 @bp.route("/stok-opname", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def stok_opname():
     if request.method == "POST":
         if not request.is_json:
@@ -4980,6 +5353,7 @@ def stok_opname():
 
 @bp.route("/laporan/stok-opname")
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def laporan_stok_opname():
     start_date = _parse_date_param(request.args.get("start_date"))
     end_date = _parse_date_param(request.args.get("end_date"))
@@ -5129,6 +5503,7 @@ def laporan_stok_opname():
 
 @bp.route("/laporan/stok-barang")
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def laporan_stok_barang():
     search_query = (request.args.get("search") or "").strip()
     kategori_filter = request.args.get("kategori")
@@ -5278,6 +5653,7 @@ def laporan_stok_barang():
 
 @bp.route("/laporan/penjualan")
 @login_required
+@roles_required(*SALES_ROLES)
 def laporan_penjualan_report():
     today = datetime.utcnow().date()
     default_start = today.replace(day=1)
@@ -5579,6 +5955,7 @@ def laporan_penjualan_report():
 
 @bp.route("/api/get_product1", methods=["GET"])
 @login_required
+@roles_required(*ALL_ROLE_CHOICES)
 def get_product1():
     product_id = request.args.get("product_id")
     product = Produk.query.get(product_id)
@@ -5598,25 +5975,40 @@ def get_product1():
 
 @bp.route("/sales_staff", methods=["GET", "POST"])
 @login_required
+@roles_required(*ADMIN_ONLY)
 def sales_staff():
     role_choices = [
-        {"value": "sales", "label": "Sales"},
-        {"value": "kasir", "label": "Kasir"},
+        {"value": ROLE_ADMIN, "label": "Admin"},
+        {"value": ROLE_KASIR, "label": "Kasir"},
+        {"value": ROLE_SALES, "label": "Sales"},
+        {"value": ROLE_GUDANG, "label": "Gudang"},
     ]
     role_labels = {choice["value"]: choice["label"] for choice in role_choices}
 
     form_errors = {}
-    form_values = {
-        "username": (
-            request.form.get("username", "").strip() if request.method == "POST" else ""
-        ),
-        "email": (
-            request.form.get("email", "").strip() if request.method == "POST" else ""
-        ),
-        "role": (
-            request.form.get("role", "sales") if request.method == "POST" else "sales"
-        ),
-    }
+    edit_user = None
+    if request.method == "GET":
+        edit_id = request.args.get("edit", type=int)
+        if edit_id:
+            edit_user = User.query.get(edit_id)
+
+    def _default_form_values():
+        return {"username": "", "email": "", "role": ROLE_SALES}
+
+    if request.method == "POST":
+        form_values = {
+            "username": (request.form.get("username", "") or "").strip(),
+            "email": (request.form.get("email", "") or "").strip(),
+            "role": (request.form.get("role", ROLE_SALES) or ROLE_SALES).lower(),
+        }
+    elif edit_user:
+        form_values = {
+            "username": edit_user.username or "",
+            "email": edit_user.email or "",
+            "role": (edit_user.role or ROLE_SALES).lower(),
+        }
+    else:
+        form_values = _default_form_values()
 
     if request.method == "POST":
         username = form_values["username"]
@@ -5625,34 +6017,76 @@ def sales_staff():
         role = (form_values["role"] or "sales").lower()
         if role not in role_labels:
             role = "sales"
+        edit_id = request.form.get("user_id")
+        is_edit = bool(edit_id)
+        target_user = None
+
+        if is_edit:
+            try:
+                target_user = User.query.get(int(edit_id))
+            except (TypeError, ValueError):
+                target_user = None
+            if not target_user:
+                flash("Pengguna yang akan diubah tidak ditemukan.", "warning")
+                return redirect(url_for("main.sales_staff"))
+            edit_user = target_user
 
         if not username:
             form_errors["username"] = "Nama login wajib diisi."
-        elif User.query.filter_by(username=username).first():
-            form_errors["username"] = "Nama login sudah digunakan."
+        else:
+            existing_username = (
+                User.query.filter(func.lower(User.username) == username.lower())
+                .filter(User.id != (target_user.id if target_user else 0))
+                .first()
+            )
+            if existing_username:
+                form_errors["username"] = "Nama login sudah digunakan."
 
         if not email:
             form_errors["email"] = "Email wajib diisi."
-        elif User.query.filter_by(email=email).first():
-            form_errors["email"] = "Email sudah terdaftar."
+        else:
+            existing_email = (
+                User.query.filter(func.lower(User.email) == email.lower())
+                .filter(User.id != (target_user.id if target_user else 0))
+                .first()
+            )
+            if existing_email:
+                form_errors["email"] = "Email sudah terdaftar."
 
-        if not password or len(password) < 6:
-            form_errors["password"] = "Password minimal 6 karakter."
+        if is_edit:
+            # Password opsional saat edit
+            if password and len(password) < 6:
+                form_errors["password"] = "Password minimal 6 karakter."
+        else:
+            if not password or len(password) < 6:
+                form_errors["password"] = "Password minimal 6 karakter."
 
         if not form_errors:
-            hashed_password = generate_password_hash(
-                password, method="pbkdf2:sha256", salt_length=8
-            )
-            new_user = User(
-                username=username, email=email, password=hashed_password, role=role
-            )
-            db.session.add(new_user)
-            db.session.commit()
-            flash(
-                f"Pengguna {role_labels.get(role, role)} baru berhasil ditambahkan.",
-                "success",
-            )
-            return redirect(url_for("main.sales_staff"))
+            if is_edit and target_user:
+                target_user.username = username
+                target_user.email = email
+                target_user.role = role
+                if password:
+                    target_user.password = generate_password_hash(
+                        password, method="pbkdf2:sha256", salt_length=8
+                    )
+                db.session.commit()
+                flash("Pengguna berhasil diperbarui.", "success")
+                return redirect(url_for("main.sales_staff"))
+            else:
+                hashed_password = generate_password_hash(
+                    password, method="pbkdf2:sha256", salt_length=8
+                )
+                new_user = User(
+                    username=username, email=email, password=hashed_password, role=role
+                )
+                db.session.add(new_user)
+                db.session.commit()
+                flash(
+                    f"Pengguna {role_labels.get(role, role)} baru berhasil ditambahkan.",
+                    "success",
+                )
+                return redirect(url_for("main.sales_staff"))
 
     staff_query = (
         db.session.query(
@@ -5693,7 +6127,14 @@ def sales_staff():
             "value": total_staff,
             "icon": "fa-users",
             "accent": "text-primary",
-            "description": "Sales & kasir aktif.",
+            "description": "Admin, sales, kasir, gudang aktif.",
+        },
+        {
+            "label": "Admin",
+            "value": role_breakdown.get(ROLE_ADMIN, 0),
+            "icon": "fa-user-shield",
+            "accent": "text-danger",
+            "description": "Pengelola sistem & konfigurasi.",
         },
         {
             "label": "Sales",
@@ -5708,6 +6149,13 @@ def sales_staff():
             "icon": "fa-cash-register",
             "accent": "text-warning",
             "description": "Operator kasir aktif.",
+        },
+        {
+            "label": "Gudang",
+            "value": role_breakdown.get(ROLE_GUDANG, 0),
+            "icon": "fa-warehouse",
+            "accent": "text-info",
+            "description": "Pengelola stok & penerimaan barang.",
         },
         {
             "label": "Transaksi tercatat",
@@ -5731,7 +6179,8 @@ def sales_staff():
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
-                "role": role_labels.get(user.role, user.role.title()),
+                "role": role_labels.get(user.role, (user.role or "").title()),
+                "role_value": user.role or "",
                 "orders": orders,
                 "revenue": revenue,
                 "customers": customer_count,
@@ -5745,13 +6194,91 @@ def sales_staff():
         role_choices=role_choices,
         form_errors=form_errors,
         form_values=form_values,
+        edit_user=edit_user,
         recent_sales=recent_sales,
         role_labels=role_labels,
     )
 
 
+def _build_level_price_tables(price_levels, price_entries, req_args, per_page=8):
+    price_table = {}
+    price_table_pages = {}
+
+    args_dict = req_args.to_dict() if hasattr(req_args, "to_dict") else dict(req_args)
+
+    def _build_level_page_url(level_id, page_num, fragment=False):
+        params = dict(args_dict)
+        params[f"page_level_{level_id}"] = page_num
+        if fragment:
+            params["ajax"] = "1"
+            return url_for("main.harga_level_level_fragment", level_id=level_id, **params)
+        return url_for("main.harga_level", **params)
+
+    for level in price_levels:
+        level_entries = [
+            {
+                "id": entry.id,
+                "product_name": (
+                    entry.produk.nama_produk if entry.produk else "Produk dihapus"
+                ),
+                "product_code": entry.produk.kode_produk if entry.produk else "-",
+                "price": entry.price,
+            }
+            for entry in price_entries
+            if entry.level_id == level.id
+        ]
+
+        total_entries = len(level_entries)
+        total_pages = max(1, math.ceil(total_entries / per_page)) if total_entries else 1
+        page_param = f"page_level_{level.id}"
+        page = req_args.get(page_param, 1, type=int) if hasattr(req_args, "get") else 1
+        if not isinstance(page, int):
+            page = 1
+        if page < 1:
+            page = 1
+        if page > total_pages:
+            page = total_pages
+
+        start = (page - 1) * per_page
+        end = start + per_page
+        price_table[level.id] = level_entries[start:end]
+
+        page_links = [
+            {
+                "num": num,
+                "url": _build_level_page_url(level.id, num, fragment=False),
+                "fragment_url": _build_level_page_url(level.id, num, fragment=True),
+            }
+            for num in range(1, total_pages + 1)
+        ]
+
+        price_table_pages[level.id] = {
+            "page": page,
+            "pages": total_pages,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+            "prev_url": _build_level_page_url(level.id, page - 1, fragment=False)
+            if page > 1
+            else None,
+            "next_url": _build_level_page_url(level.id, page + 1, fragment=False)
+            if page < total_pages
+            else None,
+            "prev_fragment_url": _build_level_page_url(level.id, page - 1, fragment=True)
+            if page > 1
+            else None,
+            "next_fragment_url": _build_level_page_url(level.id, page + 1, fragment=True)
+            if page < total_pages
+            else None,
+            "links": page_links,
+            "total": total_entries,
+        }
+
+    return price_table, price_table_pages
+
+
 @bp.route("/harga_level", methods=["GET", "POST"])
 @login_required
+@roles_required(*INVENTORY_ROLES)
 def harga_level():
     action = request.form.get("action") if request.method == "POST" else None
     if action == "create_level":
@@ -5910,18 +6437,9 @@ def harga_level():
             }
         )
 
-    price_table = {}
-    for entry in price_entries:
-        price_table.setdefault(entry.level_id, []).append(
-            {
-                "id": entry.id,
-                "product_name": (
-                    entry.produk.nama_produk if entry.produk else "Produk dihapus"
-                ),
-                    "product_code": entry.produk.kode_produk if entry.produk else "-",
-                    "price": entry.price,
-                }
-            )
+    price_table, price_table_pages = _build_level_price_tables(
+        price_levels, price_entries, request.args, per_page=8
+    )
 
     cost_entries = (
         PriceLevelCost.query.options(joinedload(PriceLevelCost.level))
@@ -5937,5 +6455,42 @@ def harga_level():
         price_levels=price_levels,
         level_summary=level_summary,
         price_table=price_table,
+        price_table_pages=price_table_pages,
         price_level_costs=price_level_costs,
     )
+
+
+@bp.route("/harga_level/level/<int:level_id>")
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def harga_level_level_fragment(level_id):
+    price_levels = PriceLevel.query.order_by(PriceLevel.name.asc()).all()
+    price_entries = (
+        ProductPriceLevel.query.options(
+            joinedload(ProductPriceLevel.produk), joinedload(ProductPriceLevel.level)
+        )
+        .order_by(ProductPriceLevel.level_id.asc(), ProductPriceLevel.product_id.asc())
+        .all()
+    )
+
+    level_lookup = {level.id: level for level in price_levels}
+    level = level_lookup.get(level_id)
+    if not level:
+        return jsonify({"error": "Level tidak ditemukan"}), 404
+
+    price_table, price_table_pages = _build_level_price_tables(
+        price_levels, price_entries, request.args, per_page=8
+    )
+
+    entries = price_table.get(level_id, [])
+    page_info = price_table_pages.get(level_id, {})
+
+    if request.args.get("ajax") == "1":
+        return render_template(
+            "partials/level_price_table.html",
+            entries=entries,
+            page_info=page_info,
+            level=level,
+        )
+
+    return redirect(url_for("main.harga_level", **request.args.to_dict()))

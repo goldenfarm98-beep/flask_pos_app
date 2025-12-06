@@ -54,6 +54,48 @@
         .nav-link .icon {
             margin-right: 0.45rem;
         }
+        @media (min-width: 992px) {
+            .nav-main {
+                flex-wrap: nowrap;
+                gap: 0.25rem;
+            }
+            .nav-main .nav-link {
+                white-space: nowrap;
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }
+        }
+        .avatar-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+        .user-dropdown .dropdown-toggle {
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            white-space: nowrap;
+        }
+        .user-menu {
+            min-width: 16rem;
+        }
+        .user-menu .avatar-circle {
+            background: #1d4ed8;
+            color: #fff;
+        }
+        .user-dropdown .user-name {
+            max-width: 140px;
+            display: inline-block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .hero-gradient {
             background: linear-gradient(140deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
             color: #f8fafc;
@@ -76,7 +118,6 @@
         {% set current = request.endpoint or '' %}
         {% if session.get('user_id') %}
             {% set primary_links = [
-                {'label': 'Beranda', 'endpoint': 'main.index', 'icon': 'fa-home', 'active_prefix': 'main.index'},
                 {'label': 'Dashboard', 'endpoint': 'main.dashboard', 'icon': 'fa-chart-line', 'active_prefix': 'main.dashboard'}
             ] %}
             {% set grouped_links = [
@@ -128,7 +169,6 @@
             ] %}
         {% else %}
             {% set primary_links = [
-                {'label': 'Beranda', 'endpoint': 'main.index', 'icon': 'fa-home', 'active_prefix': 'main.index'},
                 {'label': 'Tentang', 'endpoint': 'main.about', 'icon': 'fa-info-circle', 'active_prefix': 'main.about'}
             ] %}
             {% set grouped_links = [] %}
@@ -144,7 +184,7 @@
                 </button>
 
                 <div class="collapse navbar-collapse" id="navbarMain">
-                    <ul class="navbar-nav mr-auto align-items-lg-center">
+                    <ul class="navbar-nav nav-main mr-auto align-items-lg-center">
                         {% for item in primary_links %}
                             {% set is_active = current.startswith(item.active_prefix) %}
                             <li class="nav-item {% if is_active %}active{% endif %}">
@@ -174,12 +214,42 @@
                     </ul>
                     <div class="navbar-nav">
                         {% if session.get('user_id') %}
-                            <span class="nav-item nav-link text-white-50">
-                                <i class="fas fa-user-circle mr-2"></i>{{ session.get('username') }}
-                            </span>
-                            <a class="btn btn-sm btn-light font-weight-bold" href="{{ url_for('main.logout') }}">
-                                <i class="fas fa-sign-out-alt mr-2"></i>Keluar
-                            </a>
+                            {% set display_name = session.get('username', 'User') %}
+                            {% set display_name_short = display_name if display_name|length <= 16 else display_name[:13] ~ '...' %}
+                            {% set display_email = session.get('email', '') %}
+                            {% set initials = (display_name[:1] or 'U')|upper %}
+                            <li class="nav-item dropdown user-dropdown">
+                                <a class="nav-link d-flex align-items-center" href="#" id="userDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <span class="avatar-circle mr-2">{{ initials }}</span>
+                                    <span class="d-none d-md-inline font-weight-semibold text-white user-name">{{ display_name_short }}</span>
+                                    <i class="fas fa-chevron-down ml-1 small text-white-50 d-none d-md-inline"></i>
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-right shadow-lg user-menu" aria-labelledby="userDropdown">
+                                    <div class="media align-items-center mb-3">
+                                        <div class="avatar-circle mr-3">{{ initials }}</div>
+                                        <div class="media-body">
+                                            <div class="font-weight-bold text-dark">{{ display_name }}</div>
+                                            {% if display_email %}
+                                                <div class="small text-muted">{{ display_email }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item" href="{{ url_for('main.profile') }}">
+                                        <i class="fas fa-user-cog mr-2 text-primary"></i>Profil & Password
+                                    </a>
+                                    <a class="dropdown-item" href="{{ url_for('main.dashboard') }}">
+                                        <i class="fas fa-tachometer-alt mr-2 text-primary"></i>Dashboard
+                                    </a>
+                                    <a class="dropdown-item" href="{{ url_for('main.data_penjualan') }}">
+                                        <i class="fas fa-history mr-2 text-primary"></i>Riwayat Penjualan
+                                    </a>
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item text-danger font-weight-bold" href="{{ url_for('main.logout') }}">
+                                        <i class="fas fa-sign-out-alt mr-2"></i>Keluar
+                                    </a>
+                                </div>
+                            </li>
                         {% else %}
                             <a class="btn btn-sm btn-outline-light mr-2" href="{{ url_for('main.login') }}">
                                 <i class="fas fa-sign-in-alt mr-2"></i>Masuk

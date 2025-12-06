@@ -3,59 +3,20 @@
 {% block title %}Beranda{% endblock %}
 
 {% block content %}
-<section class="hero-card hero-gradient text-white p-4 p-md-5 mb-4">
-    <div class="row align-items-center">
-        <div class="col-lg-7">
-            <h1 class="display-4 font-weight-bold mb-3">Ringkas, cerdas, dan siap bantu operasional toko Anda.</h1>
-            <p class="lead mb-4">Pantau stok, pelanggan, hingga transaksi hanya dalam beberapa klik. Aplikasi POS ini hadir untuk mempercepat keputusan dan menjaga bisnis tetap rapi.</p>
-            <div class="d-flex flex-wrap">
-                <a href="{{ url_for('main.penjualan') }}" class="btn btn-light btn-lg text-primary font-weight-bold mr-3 mb-2">
-                    <i class="fas fa-play-circle mr-2"></i>Mulai Penjualan
-                </a>
-                <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline-light btn-lg mb-2">
-                    <i class="fas fa-chart-line mr-2"></i>Lihat Dashboard
-                </a>
-            </div>
-        </div>
-        <div class="col-lg-5 mt-4 mt-lg-0">
-            <div class="hero-stats rounded shadow-lg bg-white text-dark p-4">
-                <div class="d-flex align-items-center justify-content-between mb-3">
-                    <span class="badge badge-primary badge-pill px-3 py-2 text-uppercase">Snapshot</span>
-                    <small class="text-muted">Diperbarui otomatis</small>
-                </div>
-                <ul class="list-unstyled mb-0">
-                    <li class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <span class="text-muted d-block small">Produk aktif</span>
-                            <strong class="h4 mb-0">{{ '{:,}'.format(stats['produk']).replace(',', '.') }}</strong>
-                        </div>
-                        <div class="icon-bubble bg-primary text-white">
-                            <i class="fas fa-boxes"></i>
-                        </div>
-                    </li>
-                    <li class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <span class="text-muted d-block small">Penjualan tercatat</span>
-                            <strong class="h4 mb-0">{{ '{:,}'.format(stats['penjualan']).replace(',', '.') }}</strong>
-                        </div>
-                        <div class="icon-bubble bg-success text-white">
-                            <i class="fas fa-receipt"></i>
-                        </div>
-                    </li>
-                    <li class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="text-muted d-block small">Relasi pelanggan</span>
-                            <strong class="h4 mb-0">{{ '{:,}'.format(stats['pelanggan']).replace(',', '.') }}</strong>
-                        </div>
-                        <div class="icon-bubble bg-warning text-white">
-                            <i class="fas fa-users"></i>
-                        </div>
-                    </li>
-                </ul>
-            </div>
-        </div>
+<div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+    <div class="mb-2">
+        <h1 class="h4 font-weight-bold mb-1">Beranda POS</h1>
+        <p class="text-muted mb-0">Pantau stok, pelanggan, dan transaksi dengan cepat. Semua untuk kebutuhan internal.</p>
     </div>
-</section>
+    <div class="btn-group">
+        <a href="{{ url_for('main.penjualan') }}" class="btn btn-sm btn-primary">
+            <i class="fas fa-play-circle mr-1"></i>Mulai penjualan
+        </a>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-chart-line mr-1"></i>Dashboard
+        </a>
+    </div>
+</div>
 
 {% set cards = [
     {'label': 'Total Produk', 'value': stats['produk'], 'icon': 'fa-box-open', 'accent': 'text-primary', 'description': 'Item siap dijual'},
@@ -185,39 +146,19 @@
     </div>
 </div>
 
-<section class="insight-strip p-4 p-md-5 mt-3 text-center text-md-left">
-    <div class="row align-items-center">
-        <div class="col-md-8 mb-3 mb-md-0">
-            <h2 class="h4 font-weight-bold mb-2">Tips cepat: rencanakan stok sebelum ramai!</h2>
+<section class="insight-strip mt-3">
+    <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between p-3 p-md-4 bg-white rounded shadow-sm">
+        <div class="mb-3 mb-md-0">
+            <h2 class="h5 font-weight-bold mb-1">Tips cepat: rencanakan stok sebelum ramai!</h2>
             <p class="mb-0 text-muted">Gunakan laporan penjualan untuk memprediksi barang favorit pelanggan dan jadwalkan pembelian tepat waktu agar etalase selalu penuh.</p>
         </div>
-        <div class="col-md-4 text-md-right">
-            <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary btn-lg">
-                <i class="fas fa-lightbulb mr-2"></i>Lihat insight
-            </a>
-        </div>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary btn-sm">
+            <i class="fas fa-lightbulb mr-2"></i>Lihat insight
+        </a>
     </div>
 </section>
 
 <style>
-    .hero-card {
-        border-radius: 20px;
-    }
-    .hero-card .btn {
-        border-radius: 999px;
-    }
-    .hero-stats {
-        border-radius: 18px;
-    }
-    .icon-bubble {
-        width: 48px;
-        height: 48px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 14px;
-        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.15);
-    }
     .stat-card {
         border-radius: 18px;
     }
@@ -257,13 +198,6 @@
     }
     .insight-strip {
         border-radius: 18px;
-        background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(16, 185, 129, 0.1));
-        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
-    }
-    @media (max-width: 576px) {
-        .hero-card {
-            border-radius: 16px;
-        }
     }
 </style>
 {% endblock %}

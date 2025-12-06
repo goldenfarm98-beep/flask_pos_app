@@ -3,6 +3,8 @@
 {% block title %}Status Server{% endblock %}
 
 {% block content %}
+{% set db = metrics.database %}
+{% set cpu = metrics.cpu %}
 <section class="server-status">
     <div class="row mb-4">
         <div class="col">
@@ -21,13 +23,22 @@
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body">
                     <p class="eyebrow text-uppercase mb-1">Database</p>
-                    {% if metrics.database.path %}
-                    <h2 class="h5 mb-1">{{ metrics.database.path|truncate(40) }}</h2>
+                    {% if db.engine %}
+                    <h2 class="h5 mb-1 text-uppercase">{{ db.engine }}</h2>
+                    <p class="small text-muted mb-1">
+                        {% if db.name %}{{ db.name }}{% elif db.path %}{{ db.path|truncate(40) }}{% else %}Nama database tidak diketahui{% endif %}
+                        {% if db.host %} • Host {{ db.host }}{% endif %}
+                    </p>
                     <p class="small text-muted mb-0">
-                        Ukuran: {{ metrics.database.size|default(0)|filesizeformat }}
+                        {% if db.size is not none %}
+                            Ukuran: {{ db.size|filesizeformat }}
+                        {% else %}
+                            Ukuran belum tersedia
+                        {% endif %}
+                        {% if db.path %}<br>Lokasi: {{ db.path|truncate(50) }}{% endif %}
                     </p>
                     {% else %}
-                    <p class="small text-muted mb-0">Tidak ditemukan database sqlite.</p>
+                    <p class="small text-muted mb-0">Tidak bisa membaca konfigurasi database.</p>
                     {% endif %}
                 </div>
             </div>
@@ -52,14 +63,14 @@
                 <div class="card-body">
                     <p class="eyebrow text-uppercase mb-1">Memori & CPU</p>
                     {% if metrics.memory %}
-                    <h2 class="h5 mb-1">{{ metrics.memory.percent }}% digunakan</h2>
+                    <h2 class="h5 mb-1">{{ metrics.memory.percent }}% RAM digunakan</h2>
                     <p class="small text-muted mb-0">
                         RAM {{ metrics.memory.available|filesizeformat }} tersedia dari {{ metrics.memory.total|filesizeformat }} <br>
-                        CPU {{ metrics.cpu.count }} core • Load avg {{ metrics.cpu.load_avg[0] if metrics.cpu.load_avg else 'n/a' }}
+                        CPU {{ cpu.count }} core • Beban {{ cpu.percent if cpu.percent is not none else 'n/a' }}% • Load avg {{ cpu.load_avg[0] if cpu.load_avg else 'n/a' }}
                     </p>
                     {% else %}
                     <p class="small text-muted mb-0">
-                        CPU {{ metrics.cpu.count }} core • Load avg {{ metrics.cpu.load_avg[0] if metrics.cpu.load_avg else 'n/a' }}
+                        CPU {{ cpu.count }} core • Beban {{ cpu.percent if cpu.percent is not none else 'n/a' }}% • Load avg {{ cpu.load_avg[0] if cpu.load_avg else 'n/a' }}
                     </p>
                     {% endif %}
                 </div>
@@ -93,22 +104,22 @@
     </div>
 </section>
 
-<style>
-    .server-status-hero {
-        border-radius: 20px;
-        background: linear-gradient(140deg, #0b1120 0%, #1d4ed8 55%, #0b1224 100%);
-        color: #f8fafc;
-    }
-    .server-status-hero .card-body {
-        padding: 2rem;
-    }
-    .server-status-hero .text-muted {
-        color: rgba(248, 250, 252, 0.8);
-    }
-    .server-status .eyebrow {
-        letter-spacing: 0.3em;
-        font-size: 0.7rem;
-        color: #cbd5f5;
-    }
-</style>
+    <style>
+        .server-status-hero {
+            border-radius: 20px;
+            background: linear-gradient(135deg, #e0f2fe 0%, #c7d2fe 50%, #c7f9cc 100%);
+            color: #0f172a;
+        }
+        .server-status-hero .card-body {
+            padding: 2rem;
+        }
+        .server-status-hero .text-muted {
+            color: rgba(15, 23, 42, 0.75);
+        }
+        .server-status .eyebrow {
+            letter-spacing: 0.3em;
+            font-size: 0.7rem;
+            color: #4b5563;
+        }
+    </style>
 {% endblock %}

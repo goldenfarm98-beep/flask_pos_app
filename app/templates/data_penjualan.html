@@ -4,25 +4,15 @@
 
 {% block content %}
 <section class="sales-management">
-    <div class="page-hero hero-card hero-gradient text-white mb-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
         <div>
-            <p class="eyebrow text-uppercase mb-2">Manajemen data sales</p>
-            <h1 class="display-5 font-weight-bold mb-2">Rekap setiap penjualan dalam satu panel kerja.</h1>
-            <p class="mb-0 text-white-75">
-                Gunakan filter dinamis untuk menelusuri faktur, membandingkan performa sales, dan melihat detail tiap
-                item yang dijual. Tampilan ini terkoneksi langsung dengan form penjualan kasir.
-            </p>
+            <h1 class="h4 font-weight-bold mb-1">Data Penjualan</h1>
+            <p class="text-muted mb-0">Total faktur: {{ pagination.total_records }} • Halaman {{ pagination.page }}/{{ pagination.total_pages }} ({{ per_page }} per halaman).</p>
         </div>
-        <div class="hero-meta text-lg-right mt-4 mt-lg-0">
-            <span class="badge badge-pill badge-light text-uppercase px-3 py-2">{{ pagination.total_records }} faktur</span>
-            <p class="small text-white-75 mt-3 mb-2">
-                Halaman {{ pagination.page }} dari {{ pagination.total_pages }} · Menampilkan {{ per_page }} data per halaman.
-            </p>
-            {% if filter_active %}
-                <span class="badge badge-warning text-dark font-weight-semibold">Filter aktif</span>
-            {% else %}
-                <span class="badge badge-success font-weight-semibold">Semua data</span>
-            {% endif %}
+        <div class="btn-group mt-2 mt-md-0">
+            <a href="#filter-panel" class="btn btn-sm btn-primary"><i class="fas fa-filter mr-1"></i>Filter</a>
+            <a href="{{ url_for('main.data_penjualan') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-sync-alt mr-1"></i>Reset</a>
+            <a href="{{ url_for('main.penjualan') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-cash-register mr-1"></i>Tambah penjualan</a>
         </div>
     </div>
 
@@ -424,19 +414,6 @@
 </section>
 
 <style>
-    .sales-management .page-hero.hero-card {
-        padding: 2.5rem 2.5rem;
-        border-radius: 24px;
-    }
-    @media (max-width: 576px) {
-        .sales-management .page-hero.hero-card {
-            padding: 1.75rem;
-        }
-    }
-    .sales-management .eyebrow {
-        letter-spacing: 0.3em;
-        font-size: 0.75rem;
-    }
     .stat-card {
         border-radius: 18px;
         transition: transform 0.2s ease, box-shadow 0.2s ease;

@@ -4,19 +4,17 @@
 
 {% block content %}
 <section class="sales-console">
-    <div class="sales-banner shadow-sm mb-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
         <div>
-            <p class="eyebrow text-uppercase mb-2">Penjualan Barang</p>
-            <h1 class="display-5 mb-1">Menu ini digunakan untuk melakukan transaksi penjualan barang.</h1>
-            <p class="mb-0 text-white-75">Gunakan kolom input di atas untuk memilih produk lalu pantau daftar barang di
-                tabel bawahnya.</p>
+            <h1 class="h4 font-weight-bold mb-1">Penjualan Barang</h1>
+            <p class="text-muted mb-0">Gunakan kolom input untuk memilih produk, lalu pantau daftar barang di tabel di bawah.</p>
         </div>
-        <div class="shortcut-hints text-right">
-            <span>F1 Baru</span>
-            <span>F2 Tambah</span>
-            <span>F3 Batal</span>
-            <span>F4 Bayar</span>
-            <span>Esc Kembali</span>
+        <div class="btn-group btn-group-sm">
+            <span class="btn btn-outline-secondary">F1 Baru</span>
+            <span class="btn btn-outline-secondary">F2 Tambah</span>
+            <span class="btn btn-outline-secondary">F3 Batal</span>
+            <span class="btn btn-outline-secondary">F4 Bayar</span>
+            <span class="btn btn-outline-secondary">Esc Kembali</span>
         </div>
     </div>
 
@@ -368,30 +366,6 @@
         color: #0f172a;
     }
 
-    .sales-banner {
-        background: linear-gradient(120deg, #2563eb, #9333ea);
-        border-radius: 24px;
-        padding: 2rem;
-        color: #fff;
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-    }
-
-    @media (min-width: 768px) {
-        .sales-banner {
-            flex-direction: row;
-            justify-content: space-between;
-            align-items: center;
-        }
-    }
-
-    .sales-banner .eyebrow {
-        letter-spacing: 0.25em;
-        font-size: 0.75rem;
-        opacity: 0.75;
-    }
-
     .text-white-75 {
         color: rgba(255, 255, 255, 0.75) !important;
     }
@@ -400,13 +374,14 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border: 1px solid rgba(255, 255, 255, 0.4);
+        border: 1px solid rgba(148, 163, 184, 0.6);
         border-radius: 999px;
-        padding: 0.35rem 0.9rem;
+        padding: 0.35rem 0.75rem;
         font-weight: 600;
-        margin-left: 0.4rem;
+        margin-left: 0.35rem;
         font-size: 0.85rem;
-        color: #fff;
+        color: #475569;
+        background: #f8fafc;
     }
 
     .sales-meta,
@@ -652,10 +627,6 @@
     }
 
     @media (max-width: 576px) {
-        .sales-banner {
-            padding: 1.5rem;
-        }
-
         .quick-entry-grid {
             grid-template-columns: repeat(1, minmax(0, 1fr));
         }

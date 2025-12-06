@@ -3,38 +3,23 @@
 {% block title %}Data Produk{% endblock %}
 
 {% block content %}
+{% set form_prefill = prefill_data if prefill_data else None %}
 {% set produk_stat = stat_cards|first if stat_cards else None %}
 
-<section class="page-hero hero-card hero-gradient text-white mb-4">
-    <div class="row align-items-center">
-        <div class="col-lg-8">
-            <h1 class="display-5 font-weight-bold mb-3">Kelola katalog produk dengan tampilan modern.</h1>
-            <p class="lead mb-4">
-                Pastikan setiap item tercatat rapi, lengkap dengan kategori, pemasok, hingga masa kadaluarsa.
-                {% if produk_stat %}
-                    Saat ini tercatat <strong>{{ '{:,}'.format(produk_stat.value).replace(',', '.') }}</strong> produk aktif di sistem.
-                {% endif %}
-            </p>
-            <div class="d-flex flex-wrap">
-                <a href="#produk-form-card" class="btn btn-light btn-lg text-primary font-weight-bold mr-3 mb-2">
-                    <i class="fas fa-plus-circle mr-2"></i>Produk Baru
-                </a>
-                <a href="{{ url_for('main.export_produk') }}" class="btn btn-outline-light btn-lg mr-3 mb-2">
-                    <i class="fas fa-file-download mr-2"></i>Export Excel
-                </a>
-                <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline-light btn-lg mb-2">
-                    <i class="fas fa-th-large mr-2"></i>Kembali ke Dashboard
-                </a>
-            </div>
-        </div>
-        <div class="col-lg-4 mt-4 mt-lg-0">
-            <div class="hero-meta text-lg-right">
-                <span class="badge badge-pill badge-light text-uppercase px-3 py-2">Fitur Utama</span>
-                <p class="small text-white-75 mt-3 mb-0">Form input berada di sisi kanan layar dan bersifat responsif untuk layar kecil. Gunakan panel wawasan untuk memastikan data selalu lengkap.</p>
-            </div>
-        </div>
+<div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+    <div class="mb-2">
+        <h1 class="h4 font-weight-bold mb-1">Data Produk</h1>
+        <p class="text-muted mb-0">
+            {% if produk_stat %}Produk aktif: {{ '{:,}'.format(produk_stat.value).replace(',', '.') }}.{% endif %}
+            Tambah produk atau export data dengan cepat.
+        </p>
     </div>
-</section>
+    <div class="btn-group">
+        <a href="#produk-form-card" class="btn btn-sm btn-primary"><i class="fas fa-plus-circle mr-1"></i>Produk baru</a>
+        <a href="{{ url_for('main.export_produk') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-file-download mr-1"></i>Export</a>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-th-large mr-1"></i>Dashboard</a>
+    </div>
+</div>
 
 {% if stat_cards %}
 <div class="row stat-grid mb-4">
@@ -76,11 +61,14 @@
                     <div class="row align-items-center">
                         <div class="col-12 col-lg-5 mb-3">
                             <label for="filterSearch" class="sr-only">Cari Produk</label>
-                            <div class="input-group shadow-sm filter-input">
-                                <div class="input-group-prepend">
-                                    <span class="input-group-text bg-white border-right-0"><i class="fas fa-search text-muted"></i></span>
+                            <div class="filter-search-wrapper position-relative">
+                                <div class="input-group shadow-sm filter-input">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text bg-white border-right-0"><i class="fas fa-search text-muted"></i></span>
+                                    </div>
+                                    <input type="text" id="filterSearch" name="search" class="form-control border-left-0" placeholder="Cari nama, kode, atau SKU" value="{{ request.args.get('search', '') }}" autocomplete="off">
                                 </div>
-                                <input type="text" id="filterSearch" name="search" class="form-control border-left-0" placeholder="Cari nama, kode, atau SKU" value="{{ request.args.get('search', '') }}">
+                                <div class="filter-suggestion-panel shadow-sm" id="filterSearchSuggestions"></div>
                             </div>
                         </div>
                         <div class="col-6 col-lg-3 mb-3">
@@ -111,13 +99,12 @@
                                 </select>
                             </div>
                         </div>
-                        <div class="col-12 col-lg-1 mb-3 d-flex justify-content-center">
-                            <button type="submit" class="btn btn-primary btn-icon mr-2" data-toggle="tooltip" title="Cari produk">
-                                <i class="fas fa-arrow-right"></i>
-                            </button>
-                            <a href="{{ url_for('main.produk') }}" class="btn btn-light btn-icon" data-toggle="tooltip" title="Reset filter">
-                                <i class="fas fa-sync-alt"></i>
-                            </a>
+                        <div class="col-12 col-lg-1 mb-3 d-flex align-items-center justify-content-lg-end">
+                            <div class="btn-group btn-group-sm filter-actions w-100" role="group">
+                                <button type="submit" class="btn btn-primary btn-icon btn-search-only" data-toggle="tooltip" title="Cari produk">
+                                    <i class="fas fa-arrow-right"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -188,23 +175,26 @@
         <div class="sticky-column">
         <div class="card shadow-lg form-card mb-4">
             <div class="card-body">
-                <span class="badge badge-pill badge-primary text-uppercase px-3 py-2">
+                <span class="badge badge-pill badge-primary text-uppercase px-3 py-2" id="productFormBadge" data-default-text="Produk Baru" data-edit-text="Perbarui Produk">
                     {% if edit_produk %}Perbarui Produk{% else %}Produk Baru{% endif %}
                 </span>
                 <h2 class="h5 font-weight-bold mt-3 mb-2">
-                    {% if edit_produk %}
-                        Ubah detail <span class="text-primary">{{ edit_produk.nama_produk }}</span>
-                    {% else %}
-                        Tambah produk ke katalog
-                    {% endif %}
+                    <span id="productFormHeading" data-default-text="Tambah produk ke katalog" data-edit-text="Ubah detail">
+                        {% if edit_produk %}
+                            Ubah detail
+                        {% else %}
+                            Tambah produk ke katalog
+                        {% endif %}
+                    </span>
+                    <span id="productFormHeadingName" class="text-primary {% if not edit_produk %}d-none{% endif %}">
+                        {% if edit_produk %}{{ edit_produk.nama_produk }}{% endif %}
+                    </span>
                 </h2>
                 <p class="small text-muted">Lengkapi informasi utama untuk mempercepat proses penjualan dan analitik stok.</p>
 
-                {% if edit_produk %}
-                    <div class="alert alert-info small" role="alert">
-                        Anda sedang mengedit produk. Simpan perubahan atau <a href="{{ url_for('main.produk') }}" class="alert-link">batalkan untuk kembali menambah produk baru</a>.
-                    </div>
-                {% endif %}
+                <div id="productFormEditAlert" class="alert alert-info small {% if not edit_produk %}d-none{% endif %}" role="alert">
+                    Anda sedang mengedit produk. Simpan perubahan atau <a href="{{ url_for('main.produk') }}" class="alert-link">batalkan untuk kembali menambah produk baru</a>.
+                </div>
 
                 <div class="alert alert-light border small d-flex align-items-start" role="alert">
                     <i class="fas fa-layer-group text-primary mr-2 mt-1"></i>
@@ -216,25 +206,25 @@
                     </div>
                 </div>
 
-                <form method="POST">
+                <form method="POST" id="productForm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="produk_id" value="{% if edit_produk %}{{ edit_produk.id }}{% endif %}">
 
                     <div class="form-group">
                         <label for="kode_produk">Kode Produk</label>
-                        <input type="text" class="form-control" id="kode_produk" name="kode_produk" placeholder="Contoh: BRG-001" value="{{ edit_produk.kode_produk if edit_produk else '' }}" required>
+                        <input type="text" class="form-control" id="kode_produk" name="kode_produk" placeholder="Contoh: BRG-001" value="{% if form_prefill and form_prefill.kode_produk is not none %}{{ form_prefill.kode_produk }}{% elif edit_produk %}{{ edit_produk.kode_produk }}{% else %}{% endif %}" required>
                     </div>
                     <div class="form-group">
                         <label for="sku">SKU</label>
-                        <input type="text" class="form-control" id="sku" name="sku" placeholder="Opsional: SKU internal" value="{{ edit_produk.sku if edit_produk else '' }}">
+                        <input type="text" class="form-control" id="sku" name="sku" placeholder="Opsional: SKU internal" value="{% if form_prefill and form_prefill.sku is not none %}{{ form_prefill.sku }}{% elif edit_produk %}{{ edit_produk.sku }}{% else %}{% endif %}">
                     </div>
                     <div class="form-group">
                         <label for="barcode">Barcode</label>
-                        <input type="text" class="form-control" id="barcode" name="barcode" placeholder="Kode barcode" value="{{ edit_produk.barcode if edit_produk else '' }}">
+                        <input type="text" class="form-control" id="barcode" name="barcode" placeholder="Kode barcode" value="{% if form_prefill and form_prefill.barcode is not none %}{{ form_prefill.barcode }}{% elif edit_produk %}{{ edit_produk.barcode }}{% else %}{% endif %}">
                     </div>
                     <div class="form-group">
                         <label for="nama_produk">Nama Produk</label>
-                        <input type="text" class="form-control" id="nama_produk" name="nama_produk" placeholder="Nama produk" value="{{ edit_produk.nama_produk if edit_produk else '' }}" required>
+                        <input type="text" class="form-control" id="nama_produk" name="nama_produk" placeholder="Nama produk" value="{% if form_prefill and form_prefill.nama_produk is not none %}{{ form_prefill.nama_produk }}{% elif edit_produk %}{{ edit_produk.nama_produk }}{% else %}{% endif %}" required>
                     </div>
 
                     <div class="form-row">
@@ -243,7 +233,7 @@
                             <select class="form-control" id="satuan" name="satuan" required>
                                 {% if satuans %}
                                     {% for satuan in satuans %}
-                                        <option value="{{ satuan.id }}" {% if edit_produk and satuan.id == edit_produk.satuan_id %}selected{% endif %}>{{ satuan.name }}</option>
+                                        <option value="{{ satuan.id }}" {% if (form_prefill and form_prefill.satuan|int == satuan.id) or (not form_prefill and edit_produk and satuan.id == edit_produk.satuan_id) %}selected{% endif %}>{{ satuan.name }}</option>
                                     {% endfor %}
                                 {% else %}
                                     <option value="" disabled selected>Belum ada data satuan</option>
@@ -256,7 +246,7 @@
                             <select class="form-control" id="kategori" name="kategori" required>
                                 {% if kategoris %}
                                     {% for kategori in kategoris %}
-                                        <option value="{{ kategori.id }}" {% if edit_produk and kategori.id == edit_produk.kategori_id %}selected{% endif %}>{{ kategori.name }}</option>
+                                        <option value="{{ kategori.id }}" {% if (form_prefill and form_prefill.kategori|int == kategori.id) or (not form_prefill and edit_produk and kategori.id == edit_produk.kategori_id) %}selected{% endif %}>{{ kategori.name }}</option>
                                     {% endfor %}
                                 {% else %}
                                     <option value="" disabled selected>Belum ada data kategori</option>
@@ -270,7 +260,7 @@
                         <label for="supplier">Supplier</label>
                         <select class="form-control" id="supplier" name="supplier">
                             {% for supplier in suppliers %}
-                                <option value="{{ supplier.id }}" {% if edit_produk and supplier.id == edit_produk.supplier_id %}selected{% endif %}>{{ supplier.name }}</option>
+                                <option value="{{ supplier.id }}" {% if (form_prefill and form_prefill.supplier|int == supplier.id) or (not form_prefill and edit_produk and supplier.id == edit_produk.supplier_id) %}selected{% endif %}>{{ supplier.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -278,17 +268,17 @@
                     <div class="form-row">
                         <div class="form-group col-sm-6">
                             <label for="berat">Berat (kg)</label>
-                            <input type="number" step="0.01" class="form-control" id="berat" name="berat" placeholder="cth. 0.25" value="{{ edit_produk.berat if edit_produk and edit_produk.berat is not none else '' }}">
+                            <input type="number" step="0.01" class="form-control" id="berat" name="berat" placeholder="cth. 0.25" value="{% if form_prefill and form_prefill.berat is not none %}{{ form_prefill.berat }}{% elif edit_produk and edit_produk.berat is not none %}{{ edit_produk.berat }}{% else %}{% endif %}">
                         </div>
                         <div class="form-group col-sm-6">
                             <label for="stok_minimal">Stok Minimal</label>
-                            <input type="number" class="form-control" id="stok_minimal" name="stok_minimal" placeholder="cth. 10" value="{{ edit_produk.stok_minimal if edit_produk and edit_produk.stok_minimal is not none else '' }}">
+                            <input type="number" class="form-control" id="stok_minimal" name="stok_minimal" placeholder="cth. 10" value="{% if form_prefill and form_prefill.stok_minimal is not none %}{{ form_prefill.stok_minimal }}{% elif edit_produk and edit_produk.stok_minimal is not none %}{{ edit_produk.stok_minimal }}{% else %}{% endif %}">
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="tanggal_expired">Tanggal Kedaluwarsa</label>
-                        <input type="date" class="form-control" id="tanggal_expired" name="tanggal_expired" value="{% if edit_produk and edit_produk.tanggal_expired %}{{ edit_produk.tanggal_expired.strftime('%Y-%m-%d') }}{% endif %}">
+                        <input type="date" class="form-control" id="tanggal_expired" name="tanggal_expired" value="{% if form_prefill and form_prefill.tanggal_expired %}{{ form_prefill.tanggal_expired }}{% elif edit_produk and edit_produk.tanggal_expired %}{{ edit_produk.tanggal_expired.strftime('%Y-%m-%d') }}{% endif %}">
                         <small class="form-text text-muted">Opsional: penting untuk produk makanan, kosmetik, dan obat.</small>
                     </div>
 
@@ -342,7 +332,7 @@
                         <input type="hidden" name="price_level_payload" id="price_level_payload_input" value="[]">
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-block">
+                    <button type="submit" class="btn btn-primary btn-block" id="productFormSubmit" data-default-label="Simpan Produk" data-edit-label="Simpan Perubahan">
                         {% if edit_produk %}Simpan Perubahan{% else %}Simpan Produk{% endif %}
                     </button>
                     {% if edit_produk %}
@@ -350,6 +340,9 @@
                     {% else %}
                         <button type="reset" class="btn btn-outline-secondary btn-block mt-2">Reset form</button>
                     {% endif %}
+                    <button type="button" class="btn btn-light btn-block mt-2 d-none" id="productCancelEditButton" data-reset-url="{{ url_for('main.produk') }}">
+                        Batalkan edit
+                    </button>
 
                     <p class="small text-muted text-center mt-3 mb-0">
                         Gunakan kode produk unik untuk memudahkan pelacakan di laporan penjualan.
@@ -484,6 +477,78 @@
         border-radius: 0 12px 12px 0;
         font-size: 0.95rem;
     }
+    .filter-search-wrapper {
+        position: relative;
+    }
+    .filter-suggestion-panel {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(100% + 6px);
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        max-height: 260px;
+        overflow-y: auto;
+        z-index: 20;
+        padding: 6px;
+        display: none;
+    }
+    .filter-suggestion-panel.is-visible {
+        display: block;
+    }
+    .filter-suggestion-item {
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: transparent;
+        padding: 0.6rem 0.65rem;
+        border-radius: 10px;
+        transition: background 0.2s ease;
+        font-size: 0.92rem;
+        color: #0f172a;
+    }
+    .filter-suggestion-item + .filter-suggestion-item {
+        margin-top: 4px;
+    }
+    .filter-suggestion-item:hover,
+    .filter-suggestion-item:focus-visible {
+        background: rgba(59, 130, 246, 0.08);
+    }
+    .filter-suggestion-item strong {
+        display: block;
+        font-weight: 600;
+    }
+    .filter-suggestion-item span {
+        font-size: 0.82rem;
+        color: #475569;
+    }
+    .filter-actions .btn {
+        height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .filter-actions {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
+    }
+    .filter-actions .btn {
+        border-radius: 0;
+        box-shadow: none;
+        width: 56px;
+    }
+    .filter-actions .btn:first-child {
+        border-top-left-radius: 12px;
+        border-bottom-left-radius: 12px;
+    }
+    .filter-actions .btn:last-child {
+        border-top-right-radius: 12px;
+        border-bottom-right-radius: 12px;
+    }
     .btn-icon {
         display: inline-flex;
         align-items: center;
@@ -494,6 +559,13 @@
         font-size: 1rem;
         box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .filter-actions .btn-icon {
+        border-radius: 10px;
+    }
+    .filter-actions .btn-icon + .btn-icon {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
     }
     .btn-icon:hover {
         transform: translateY(-2px);
@@ -544,10 +616,15 @@
 <script>
     const PRICE_LEVEL_SEED = {{ edit_price_levels|default([], true)|tojson }};
     const PRICE_LEVEL_OPTIONS = {{ price_levels_context|default([], true)|tojson }};
+    const PRODUCT_FORM_FOCUS = {{ focus_field|default('', true)|tojson }};
 
     (function initPriceLevelManager() {
         const payloadInput = document.getElementById('price_level_payload_input');
         if (!payloadInput) {
+            window.productPriceLevelManager = {
+                setRows: () => {},
+                getRows: () => [],
+            };
             return;
         }
 
@@ -562,6 +639,7 @@
                 ? seed
                       .map((entry) => ({
                           level_id: Number(entry.level_id),
+                          level_name: entry.level_name,
                           price: Number(entry.price) || 0,
                       }))
                       .filter((entry) => entry.level_id && entry.price >= 0)
@@ -569,6 +647,10 @@
 
         if (!tableBody || !addButton || !levelSelect || !priceInput) {
             payloadInput.value = JSON.stringify(normalizeSeed(PRICE_LEVEL_SEED));
+            window.productPriceLevelManager = {
+                setRows: () => {},
+                getRows: () => [],
+            };
             return;
         }
 
@@ -626,12 +708,7 @@
             feedback.classList.add(tone === 'warning' ? 'text-warning' : 'text-danger');
         };
 
-        let rows = Array.isArray(PRICE_LEVEL_SEED) ? PRICE_LEVEL_SEED.slice() : [];
-        rows = rows.map((entry) => ({
-            level_id: Number(entry.level_id),
-            level_name: entry.level_name || getLevelName(entry.level_id),
-            price: Number(entry.price) || 0,
-        }));
+        let rows = normalizeSeed(PRICE_LEVEL_SEED);
 
         const updatePayload = () => {
             payloadInput.value = JSON.stringify(
@@ -653,6 +730,7 @@
                 return;
             }
             rows
+                .slice()
                 .sort((a, b) =>
                     (a.level_name || '').localeCompare(b.level_name || '')
                 )
@@ -674,6 +752,29 @@
                 });
             updatePayload();
         };
+
+        const manager = {
+            setRows(newRows) {
+                rows = normalizeSeed(newRows);
+                if (levelSelect) {
+                    levelSelect.value = '';
+                }
+                if (priceInput) {
+                    priceInput.value = '';
+                }
+                setFeedback('');
+                renderRows();
+            },
+            getRows() {
+                return rows.map((entry) => ({
+                    level_id: entry.level_id,
+                    level_name: entry.level_name,
+                    price: entry.price,
+                }));
+            },
+        };
+
+        window.productPriceLevelManager = manager;
 
         addButton.addEventListener('click', function () {
             setFeedback('');
@@ -730,7 +831,9 @@
 
         renderRows();
     })();
+</script>
 
+<script>
     if (window.jQuery && typeof window.jQuery.fn.tooltip === 'function') {
         $('[data-toggle="tooltip"]').tooltip();
     }
@@ -843,6 +946,350 @@
             });
             loadTable(params);
         });
+
+        const productForm = document.getElementById('productForm');
+        const productIdField = productForm
+            ? productForm.querySelector('input[name="produk_id"]')
+            : null;
+        const formBadge = document.getElementById('productFormBadge');
+        const formHeading = document.getElementById('productFormHeading');
+        const formHeadingName = document.getElementById('productFormHeadingName');
+        const editAlert = document.getElementById('productFormEditAlert');
+        const cancelButton = document.getElementById('productCancelEditButton');
+        const submitButton = document.getElementById('productFormSubmit');
+        const priceLevelManager = window.productPriceLevelManager;
+        const formCard = document.getElementById('produk-form-card');
+        const resetUrl =
+            cancelButton?.dataset.resetUrl || '{{ url_for("main.produk") }}';
+        const focusFieldName = PRODUCT_FORM_FOCUS;
+
+        if (focusFieldName && productForm) {
+            const target = productForm.querySelector(`[name="${focusFieldName}"]`);
+            if (target && typeof target.focus === 'function') {
+                target.focus();
+            }
+        }
+
+        const enterFlowFields = [
+            'kode_produk',
+            'sku',
+            'barcode',
+            'nama_produk',
+            'satuan',
+            'kategori',
+            'supplier',
+            'berat',
+            'stok_minimal',
+            'tanggal_expired',
+            'price_level_selector',
+            'price_level_value',
+        ];
+
+        if (productForm) {
+            productForm.addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter') {
+                    return;
+                }
+                const target = event.target;
+                if (!target || target.tagName.toLowerCase() === 'textarea') {
+                    return;
+                }
+                const targetType = (target.getAttribute('type') || '').toLowerCase();
+                if (targetType === 'submit' || targetType === 'button') {
+                    return;
+                }
+                const name = target.getAttribute('name');
+                const currentIndex = enterFlowFields.indexOf(name);
+                if (currentIndex === -1) {
+                    return;
+                }
+                event.preventDefault();
+                const nextName = enterFlowFields[currentIndex + 1];
+                if (nextName) {
+                    const nextField = productForm.querySelector(`[name="${nextName}"]`);
+                    if (nextField && typeof nextField.focus === 'function') {
+                        nextField.focus();
+                        return;
+                    }
+                }
+                if (submitButton && typeof submitButton.focus === 'function') {
+                    submitButton.focus();
+                }
+            });
+        }
+
+        const applyFormLabels = (isEdit, productName) => {
+            if (formBadge) {
+                formBadge.textContent = isEdit
+                    ? formBadge.dataset.editText || 'Perbarui Produk'
+                    : formBadge.dataset.defaultText || 'Produk Baru';
+            }
+            if (formHeading) {
+                formHeading.textContent = isEdit
+                    ? formHeading.dataset.editText || 'Ubah detail'
+                    : formHeading.dataset.defaultText || 'Tambah produk ke katalog';
+            }
+            if (formHeadingName) {
+                formHeadingName.textContent = productName || '';
+                formHeadingName.classList.toggle('d-none', !productName);
+            }
+            if (editAlert) {
+                editAlert.classList.toggle('d-none', !isEdit);
+            }
+            if (submitButton) {
+                submitButton.textContent = isEdit
+                    ? submitButton.dataset.editLabel || submitButton.textContent
+                    : submitButton.dataset.defaultLabel || submitButton.textContent;
+            }
+            if (cancelButton) {
+                cancelButton.classList.toggle('d-none', !isEdit);
+            }
+        };
+
+        const fillForm = (payload) => {
+            if (!productForm) {
+                return;
+            }
+            if (productIdField) {
+                productIdField.value = payload.id;
+            }
+            const baseValues = {
+                kode_produk: payload.kode_produk || '',
+                sku: payload.sku || '',
+                barcode: payload.barcode || '',
+                nama_produk: payload.nama_produk || '',
+                satuan: payload.satuan_id || '',
+                kategori: payload.kategori_id || '',
+                supplier: payload.supplier_id || '',
+                berat:
+                    payload.berat !== null && payload.berat !== undefined
+                        ? payload.berat
+                        : '',
+                stok_minimal:
+                    payload.stok_minimal !== null && payload.stok_minimal !== undefined
+                        ? payload.stok_minimal
+                        : '',
+                tanggal_expired: payload.tanggal_expired || '',
+            };
+            Object.entries(baseValues).forEach(([name, value]) => {
+                const field = productForm.querySelector(`[name="${name}"]`);
+                if (field) {
+                    field.value = value;
+                }
+            });
+
+            priceLevelManager?.setRows(payload.price_levels || []);
+            applyFormLabels(true, payload.nama_produk || '');
+            if (formCard) {
+                formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        };
+
+        const handleEditClick = (event) => {
+            const trigger = event.target.closest('[data-product-edit-url]');
+            if (!trigger) {
+                return;
+            }
+            event.preventDefault();
+            const url = trigger.dataset.productEditUrl;
+            if (!url) {
+                return;
+            }
+            fetch(url, {
+                headers: {
+                    Accept: 'application/json',
+                },
+            })
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error('Gagal memuat detail produk.');
+                    }
+                    return response.json();
+                })
+                .then((payload) => {
+                    fillForm(payload);
+                })
+                .catch((error) => {
+                    console.error(error);
+                    alert('Gagal memuat detail produk. Silakan coba lagi.');
+                });
+        };
+
+        tableContainer.addEventListener('click', handleEditClick);
+
+        cancelButton?.addEventListener('click', function () {
+            window.location.href = resetUrl;
+        });
+
+        const supplierSelect = document.getElementById('filterSupplier');
+        const categorySelect = document.getElementById('filterKategori');
+        const supplierDefaultOption =
+            supplierSelect && supplierSelect.querySelector('option[value=""]');
+
+        const renderSuppliers = (items) => {
+            if (!supplierSelect) return;
+            const currentValue = supplierSelect.value;
+            supplierSelect.innerHTML = '';
+            const defaultNode = document.createElement('option');
+            defaultNode.value = '';
+            defaultNode.textContent = 'Semua supplier';
+            supplierSelect.appendChild(defaultNode);
+            if (Array.isArray(items)) {
+                items.forEach((item) => {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    opt.textContent = item.name;
+                    supplierSelect.appendChild(opt);
+                });
+            }
+            // reset value unless still available
+            if (
+                currentValue &&
+                supplierSelect.querySelector(`option[value="${currentValue}"]`)
+            ) {
+                supplierSelect.value = currentValue;
+            } else {
+                supplierSelect.value = '';
+            }
+        };
+
+        const fetchSuppliers = (kategoriId) => {
+            if (!supplierSelect) return;
+            supplierSelect.disabled = true;
+            fetch(
+                `{{ url_for('main.get_suppliers') }}${kategoriId ? '?kategori_id=' + kategoriId : ''}`,
+                { headers: { Accept: 'application/json' } }
+            )
+                .then((res) => {
+                    if (!res.ok) throw new Error('fail');
+                    return res.json();
+                })
+                .then((data) => {
+                    renderSuppliers(data.suppliers || []);
+                })
+                .catch(() => {
+                    // fallback to default when error
+                    renderSuppliers([]);
+                })
+                .finally(() => {
+                    supplierSelect.disabled = false;
+                });
+        };
+
+        if (categorySelect) {
+            categorySelect.addEventListener('change', function () {
+                const selected = this.value;
+                fetchSuppliers(selected);
+            });
+            if (categorySelect.value) {
+                fetchSuppliers(categorySelect.value);
+            }
+        }
+
+        const searchInput = document.getElementById('filterSearch');
+        const suggestionPanel = document.getElementById('filterSearchSuggestions');
+        if (searchInput && suggestionPanel) {
+            let debounceTimer = null;
+            let abortCtrl = null;
+
+            const hideSuggestions = () => {
+                suggestionPanel.classList.remove('is-visible');
+                suggestionPanel.innerHTML = '';
+            };
+
+            const showSuggestions = () => {
+                if (suggestionPanel.innerHTML.trim()) {
+                    suggestionPanel.classList.add('is-visible');
+                }
+            };
+
+            const renderSuggestions = (items) => {
+                if (!Array.isArray(items) || !items.length) {
+                    suggestionPanel.innerHTML =
+                        '<div class="text-muted small px-2 py-2">Tidak ada produk yang cocok.</div>';
+                    showSuggestions();
+                    return;
+                }
+                suggestionPanel.innerHTML = '';
+                items.slice(0, 10).forEach((item) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'filter-suggestion-item';
+                    btn.innerHTML = `
+                        <strong>${item.nama_produk}</strong>
+                        <span>${item.kode_produk || '-'} · ${item.sku || 'SKU ?'} · ${item.barcode || 'Barcode ?'}</span>
+                        <span>${item.kategori || 'Kategori ?'}</span>
+                    `;
+                    btn.addEventListener('click', function () {
+                        searchInput.value = item.kode_produk || item.nama_produk || '';
+                        hideSuggestions();
+                        const params = {
+                            search: searchInput.value,
+                            kategori: categorySelect ? categorySelect.value : '',
+                            supplier: supplierSelect ? supplierSelect.value : '',
+                            page: 1,
+                        };
+                        loadTable(params);
+                    });
+                    suggestionPanel.appendChild(btn);
+                });
+                showSuggestions();
+            };
+
+            const fetchProducts = (term) => {
+                if (abortCtrl) {
+                    abortCtrl.abort();
+                }
+                abortCtrl = new AbortController();
+                fetch(
+                    `{{ url_for('main.get_products') }}?q=${encodeURIComponent(term)}`,
+                    {
+                        headers: { Accept: 'application/json' },
+                        signal: abortCtrl.signal,
+                    }
+                )
+                    .then((res) => {
+                        if (!res.ok) {
+                            throw new Error('fail');
+                        }
+                        return res.json();
+                    })
+                    .then((data) => {
+                        renderSuggestions(data.products || []);
+                    })
+                    .catch((err) => {
+                        if (err.name === 'AbortError') return;
+                        suggestionPanel.innerHTML =
+                            '<div class="text-danger small px-2 py-2">Gagal memuat saran.</div>';
+                        showSuggestions();
+                    });
+            };
+
+            searchInput.addEventListener('input', function () {
+                const term = this.value.trim();
+                if (!term) {
+                    hideSuggestions();
+                    return;
+                }
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    fetchProducts(term);
+                }, 250);
+            });
+
+            searchInput.addEventListener('focus', function () {
+                showSuggestions();
+            });
+
+            document.addEventListener('click', function (event) {
+                if (
+                    event.target !== searchInput &&
+                    !suggestionPanel.contains(event.target)
+                ) {
+                    hideSuggestions();
+                }
+            });
+        }
     });
 </script>
 

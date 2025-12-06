@@ -107,7 +107,9 @@
                                                 <a href="{{ url_for('main.detail_produk', produk_id=produk.id) }}" class="btn btn-sm btn-outline-info">
                                                     <i class="fas fa-info-circle"></i>
                                                 </a>
-                                                <a href="{{ url_for('main.produk', edit=produk.id) }}" class="btn btn-sm btn-outline-secondary">
+                                                <a href="{{ url_for('main.produk', edit=produk.id) }}"
+                                                   class="btn btn-sm btn-outline-secondary product-edit-trigger"
+                                                   data-product-edit-url="{{ url_for('main.produk_data', produk_id=produk.id) }}">
                                                     <i class="fas fa-edit"></i>
                                                 </a>
                                                 <form action="{{ url_for('main.delete_produk', produk_id=produk.id) }}" method="POST" class="d-inline">

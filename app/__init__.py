@@ -27,6 +27,8 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = resolve_database_uri()
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SECRET_KEY"] = resolve_secret_key()
+    # CSRF token dibiarkan tidak kedaluwarsa agar interaksi form panjang tidak gagal
+    app.config["WTF_CSRF_TIME_LIMIT"] = None
 
     db.init_app(app)
     migrate.init_app(app, db)
