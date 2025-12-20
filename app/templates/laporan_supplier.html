@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan Data Supplier{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+    <div>
+        <h1 class="h4 font-weight-bold mb-1">Laporan Data Supplier</h1>
+        <p class="text-muted mb-0">Total supplier: {{ total }}. Gunakan pencarian langsung untuk memfilter tabel.</p>
+    </div>
+    <a href="{{ url_for('main.supplier') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left mr-1"></i>Kelola Supplier
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="row align-items-center mb-3">
+            <div class="col-md-6">
+                <div class="input-group input-group-sm">
+                    <div class="input-group-prepend">
+                        <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                    </div>
+                    <input type="text" id="supplierReportSearch" class="form-control" placeholder="Cari nama, kontak, telp, email, rekening" value="{{ search_query }}">
+                </div>
+            </div>
+            <div class="col-md-6 text-md-right mt-2 mt-md-0">
+                <span class="badge badge-primary">Menampilkan {{ suppliers|length }} baris</span>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-modern mb-0" id="supplierReportTable">
+                <thead>
+                    <tr>
+                        <th>Nama</th>
+                        <th>Kontak</th>
+                        <th>Telepon</th>
+                        <th>Email</th>
+                        <th>Nama Bank</th>
+                        <th>No Rekening</th>
+                        <th>Nama Rekening</th>
+                        <th>Alamat</th>
+                        <th>Website</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for supplier in suppliers %}
+                    <tr data-filter-text="{{ (supplier.name or '') | lower }}">
+                        <td class="font-weight-semibold">{{ supplier.name }}</td>
+                        <td>{{ supplier.contact_person or '-' }}</td>
+                        <td>
+                            {% if supplier.phone %}
+                                {% set normalized = (supplier.phone or '').replace(' ', '').replace('-', '') %}
+                                {% if normalized.startswith('+62') %}
+                                    {% set display_phone = '0' ~ normalized[3:] %}
+                                {% elif normalized.startswith('62') %}
+                                    {% set display_phone = '0' ~ normalized[2:] %}
+                                {% elif normalized.startswith('0') %}
+                                    {% set display_phone = normalized %}
+                                {% else %}
+                                    {% set display_phone = '0' ~ normalized %}
+                                {% endif %}
+                                <a href="https://wa.me/62{{ display_phone[1:] }}" target="_blank" rel="noreferrer" class="text-dark">
+                                    {{ display_phone }}
+                                </a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ supplier.email or '-' }}</td>
+                        <td>{{ supplier.bank_name or '-' }}</td>
+                        <td>{{ supplier.bank_account or '-' }}</td>
+                        <td>{{ supplier.account_name or '-' }}</td>
+                        <td>{{ supplier.address or '-' }}</td>
+                        <td>
+                            {% if supplier.website %}
+                                <a href="{{ supplier.website }}" target="_blank" rel="noreferrer">{{ supplier.website }}</a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">Belum ada supplier yang bisa ditampilkan.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const searchInput = document.getElementById('supplierReportSearch');
+        const rows = Array.from(document.querySelectorAll('#supplierReportTable tbody tr'));
+
+        function applyFilter(term) {
+            const q = (term || '').trim().toLowerCase();
+            rows.forEach(row => {
+                const text = row.dataset.filterText || '';
+                row.style.display = text.includes(q) ? '' : 'none';
+            });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', function () {
+                applyFilter(this.value);
+            });
+            applyFilter(searchInput.value);
+        }
+    });
+</script>
+{% endblock %}
