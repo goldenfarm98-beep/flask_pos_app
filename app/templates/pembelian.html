@@ -28,8 +28,8 @@
                         <span class="stat-icon {{ card.accent }}">
                             <i class="fas {{ card.icon }}"></i>
                         </span>
-                        <span class="badge badge-light text-uppercase font-weight-semibold">{{ card.label }}</span>
-                    </div>
+                    <span class="badge badge-pill badge-soft-primary text-uppercase font-weight-semibold px-3">{{ card.label }}</span>
+                </div>
                     <div class="stat-value mb-1">
                         {% if card.type == 'currency' %}
                             {{ ('Rp {:,.0f}'.format(card.value)).replace(',', '.') }}

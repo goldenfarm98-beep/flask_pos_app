@@ -32,6 +32,7 @@ class Supplier(db.Model):
     name = db.Column(db.String(100), nullable=False)
     address = db.Column(db.String(200), nullable=False)
     phone = db.Column(db.String(50), nullable=False)
+    bank_name = db.Column(db.String(100), nullable=True)
     bank_account = db.Column(db.String(100), nullable=False)
     account_name = db.Column(db.String(100), nullable=False)
     contact_person = db.Column(db.String(100), nullable=False)

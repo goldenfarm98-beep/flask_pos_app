@@ -21,6 +21,7 @@ import logging
 from io import BytesIO
 import math
 import os
+import re
 from importlib import util
 from pathlib import Path
 _psutil_spec = util.find_spec("psutil")
@@ -422,6 +423,255 @@ def _format_date_id(date_value):
     except IndexError:
         month_label = date_value.strftime("%b")
     return f"{date_value.day:02d} {month_label} {date_value.year}"
+
+
+def _clean_import_str(value):
+    if pd.isna(value):
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def _clean_import_int(value):
+    if pd.isna(value) or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_import_float(value):
+    if pd.isna(value) or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_import_date(value):
+    if pd.isna(value) or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    try:
+        return pd.to_datetime(value).date()
+    except Exception:
+        return None
+
+
+def _perform_produk_import(df, progress_cb=None):
+    required_columns = [
+        "Kode Produk",
+        "SKU",
+        "Nama Produk",
+        "Satuan ID",
+        "Kategori ID",
+        "Supplier ID",
+        "Berat",
+        "Stok Minimal",
+        "Tanggal Expired",
+    ]
+    if not all(column in df.columns for column in required_columns):
+        raise ValueError(
+            "Format file tidak valid! Pastikan semua kolom yang diperlukan ada."
+        )
+
+    created_count = 0
+    updated_count = 0
+    skipped_notes = []
+
+    total_rows = len(df.index) or 1
+
+    kode_set = set()
+    satuan_ids = set()
+    kategori_ids = set()
+    supplier_ids = set()
+
+    for _, row in df.iterrows():
+        kode_val = _clean_import_str(row.get("Kode Produk"))
+        if kode_val:
+            kode_set.add(kode_val)
+        satuan_val = _clean_import_int(row.get("Satuan ID"))
+        kategori_val = _clean_import_int(row.get("Kategori ID"))
+        supplier_val = _clean_import_int(row.get("Supplier ID"))
+        if satuan_val:
+            satuan_ids.add(satuan_val)
+        if kategori_val:
+            kategori_ids.add(kategori_val)
+        if supplier_val:
+            supplier_ids.add(supplier_val)
+
+    existing_products = (
+        Produk.query.filter(Produk.kode_produk.in_(list(kode_set))).all()
+        if kode_set
+        else []
+    )
+    product_by_code = {p.kode_produk: p for p in existing_products}
+    sku_lookup = {p.sku: p.id for p in existing_products if p.sku}
+
+    satuan_map = (
+        {s.id: s for s in Satuan.query.filter(Satuan.id.in_(list(satuan_ids))).all()}
+        if satuan_ids
+        else {}
+    )
+    kategori_map = (
+        {
+            k.id: k
+            for k in Kategori.query.filter(Kategori.id.in_(list(kategori_ids))).all()
+        }
+        if kategori_ids
+        else {}
+    )
+    supplier_map = (
+        {
+            s.id: s
+            for s in Supplier.query.filter(Supplier.id.in_(list(supplier_ids))).all()
+        }
+        if supplier_ids
+        else {}
+    )
+
+    def report_progress(value, message):
+        if progress_cb:
+            progress_cb(value, message)
+
+    report_progress(5, "Memeriksa kolom dan menyiapkan data...")
+
+    for idx, row in df.iterrows():
+        row_number = idx + 2  # +2 karena header di baris pertama
+        kode_produk = _clean_import_str(row.get("Kode Produk"))
+        if not kode_produk:
+            skipped_notes.append(f"Baris {row_number}: Kode Produk kosong.")
+            continue
+
+        sku = _clean_import_str(row.get("SKU"))
+        nama_produk = _clean_import_str(row.get("Nama Produk"))
+        satuan_id = _clean_import_int(row.get("Satuan ID"))
+        kategori_id = _clean_import_int(row.get("Kategori ID"))
+        supplier_id = _clean_import_int(row.get("Supplier ID"))
+        berat = _clean_import_float(row.get("Berat"))
+        stok_minimal = _clean_import_int(row.get("Stok Minimal"))
+        tanggal_expired = _clean_import_date(row.get("Tanggal Expired"))
+
+        progress_value = 10 + int(((idx + 1) / total_rows) * 80)
+        report_progress(progress_value, f"Memproses baris {row_number}")
+
+        existing_produk = product_by_code.get(kode_produk)
+        if existing_produk:
+            changes = []
+
+            if sku and sku != existing_produk.sku:
+                owner_id = sku_lookup.get(sku)
+                if owner_id and owner_id != existing_produk.id:
+                    skipped_notes.append(
+                        f"Baris {row_number}: SKU {sku} sudah dipakai produk lain."
+                    )
+                else:
+                    existing_produk.sku = sku
+                    changes.append("SKU")
+                    sku_lookup[sku] = existing_produk.id
+
+            if nama_produk and nama_produk != existing_produk.nama_produk:
+                existing_produk.nama_produk = nama_produk
+                changes.append("Nama Produk")
+
+            if satuan_id:
+                satuan = satuan_map.get(satuan_id)
+                if satuan:
+                    existing_produk.satuan_id = satuan_id
+                    changes.append("Satuan")
+                else:
+                    skipped_notes.append(
+                        f"Baris {row_number}: Satuan ID {satuan_id} tidak ditemukan."
+                    )
+
+            if kategori_id:
+                kategori = kategori_map.get(kategori_id)
+                if kategori:
+                    existing_produk.kategori_id = kategori_id
+                    changes.append("Kategori")
+                else:
+                    skipped_notes.append(
+                        f"Baris {row_number}: Kategori ID {kategori_id} tidak ditemukan."
+                    )
+
+            if supplier_id:
+                supplier = supplier_map.get(supplier_id)
+                if supplier:
+                    existing_produk.supplier_id = supplier_id
+                    changes.append("Supplier")
+                else:
+                    skipped_notes.append(
+                        f"Baris {row_number}: Supplier ID {supplier_id} tidak ditemukan."
+                    )
+
+            if berat is not None:
+                existing_produk.berat = berat
+                changes.append("Berat")
+
+            if stok_minimal is not None:
+                existing_produk.stok_minimal = stok_minimal
+                changes.append("Stok Minimal")
+
+            if tanggal_expired is not None:
+                existing_produk.tanggal_expired = tanggal_expired
+                changes.append("Tanggal Expired")
+
+            if changes:
+                updated_count += 1
+
+            continue
+
+        if not nama_produk:
+            skipped_notes.append(
+                f"Baris {row_number}: Nama Produk kosong untuk kode {kode_produk}."
+            )
+            continue
+
+        satuan = satuan_map.get(satuan_id) if satuan_id else None
+        kategori = kategori_map.get(kategori_id) if kategori_id else None
+        supplier = supplier_map.get(supplier_id) if supplier_id else None
+
+        if not satuan or not kategori or not supplier:
+            skipped_notes.append(
+                f"Baris {row_number}: Satuan/Kategori/Supplier tidak valid untuk {kode_produk}."
+            )
+            continue
+
+        if sku:
+            if sku in sku_lookup:
+                skipped_notes.append(
+                    f"Baris {row_number}: SKU {sku} sudah dipakai produk lain."
+                )
+                sku = None
+            else:
+                sku_lookup[sku] = -1
+
+        produk = Produk(
+            kode_produk=kode_produk,
+            sku=sku,
+            nama_produk=nama_produk,
+            satuan_id=satuan.id,
+            kategori_id=kategori.id,
+            supplier_id=supplier.id,
+            berat=berat if berat is not None else 0.0,
+            stok_minimal=stok_minimal if stok_minimal is not None else 0,
+            tanggal_expired=tanggal_expired,
+        )
+        db.session.add(produk)
+        created_count += 1
+
+    report_progress(92, "Menulis data ke database...")
+    db.session.commit()
+    report_progress(100, "Import selesai")
+
+    return {
+        "created": created_count,
+        "updated": updated_count,
+        "skipped_notes": skipped_notes,
+    }
 
 
 @bp.route("/")
@@ -974,6 +1224,7 @@ def supplier():
         name = request.form["name"].strip()
         address = request.form["address"].strip()
         phone = request.form["phone"].strip()
+        bank_name = request.form.get("bank_name", "").strip()
         bank_account = request.form["bank_account"].strip()
         account_name = request.form["account_name"].strip()
         contact_person = request.form["contact_person"].strip()
@@ -985,6 +1236,7 @@ def supplier():
             "Nama Supplier": name,
             "Alamat": address,
             "Nomor Telepon": phone,
+            "Nama Bank": bank_name,
             "No. Rekening Bank": bank_account,
             "Nama Rekening": account_name,
             "Kontak Person": contact_person,
@@ -1007,6 +1259,7 @@ def supplier():
             name=name,
             address=address,
             phone=phone,
+            bank_name=bank_name or None,
             bank_account=bank_account,
             account_name=account_name,
             contact_person=contact_person,
@@ -1041,6 +1294,7 @@ def edit_supplier(supplier_id):
         supplier.name = request.form["name"].strip()
         supplier.address = request.form["address"].strip()
         supplier.phone = request.form["phone"].strip()
+        supplier.bank_name = request.form.get("bank_name", "").strip() or None
         supplier.bank_account = request.form["bank_account"].strip()
         supplier.account_name = request.form["account_name"].strip()
         supplier.contact_person = request.form["contact_person"].strip()
@@ -1052,6 +1306,7 @@ def edit_supplier(supplier_id):
             "Nama Supplier": supplier.name,
             "Alamat": supplier.address,
             "Nomor Telepon": supplier.phone,
+            "Nama Bank": supplier.bank_name,
             "No. Rekening Bank": supplier.bank_account,
             "Nama Rekening": supplier.account_name,
             "Kontak Person": supplier.contact_person,
@@ -1128,12 +1383,25 @@ def supplier_detail(supplier_id):
 def export_suppliers():
     suppliers = Supplier.query.all()
 
+    def _normalize_phone(value):
+        if not value:
+            return ""
+        v = str(value).replace(" ", "").replace("-", "")
+        if v.startswith("+62"):
+            v = "0" + v[3:]
+        elif v.startswith("62"):
+            v = "0" + v[2:]
+        elif not v.startswith("0"):
+            v = "0" + v
+        return v
+
     # Data untuk Excel
     data = [
         {
             "Nama Supplier": supplier.name,
             "Alamat": supplier.address,
-            "No Telp": supplier.phone,
+            "No Telp": _normalize_phone(supplier.phone),
+            "Nama Bank": supplier.bank_name or "",
             "No Rekening Bank": supplier.bank_account,
             "Nama Rekening": supplier.account_name,
             "Kontak Person": supplier.contact_person,
@@ -1159,6 +1427,34 @@ def export_suppliers():
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     return response
+
+
+@bp.route("/laporan/supplier", methods=["GET"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def laporan_supplier():
+    search_query = (request.args.get("search") or "").strip()
+    base_query = Supplier.query.order_by(Supplier.name.asc())
+    if search_query:
+        like = f"%{search_query}%"
+        base_query = base_query.filter(
+            or_(
+                Supplier.name.ilike(like),
+                Supplier.contact_person.ilike(like),
+                Supplier.phone.ilike(like),
+                Supplier.email.ilike(like),
+                Supplier.bank_account.ilike(like),
+                Supplier.bank_name.ilike(like),
+            )
+        )
+    suppliers = base_query.all()
+    total = Supplier.query.count()
+    return render_template(
+        "laporan_supplier.html",
+        suppliers=suppliers,
+        total=total,
+        search_query=search_query,
+    )
 
 
 @bp.route("/supplier/import", methods=["POST"])
@@ -1187,6 +1483,7 @@ def import_suppliers():
         "Nama Supplier",
         "Alamat",
         "No Telp",
+        "Nama Bank",
         "No Rekening Bank",
         "Nama Rekening",
         "Kontak Person",
@@ -1203,38 +1500,92 @@ def import_suppliers():
             return ""
         return str(value).strip()
 
+    def _normalize_phone(value):
+        value = (value or "").strip()
+        if not value:
+            return ""
+        digits = re.sub(r"\\D", "", value)
+        if digits.startswith("62"):
+            digits = digits[2:]
+        if not digits.startswith("0"):
+            digits = "0" + digits
+        return digits
+
+    def _normalize_bank_account(value):
+        value = (value or "").strip()
+        if not value:
+            return ""
+        digits = re.sub(r"\\D", "", value)
+        return digits.lstrip("0") or digits
+
+    created_count = 0
+    updated_count = 0
+    skipped = 0
+    existing_bank_map = {}
+    for s in Supplier.query.all():
+        key = _normalize_bank_account(s.bank_account)
+        if key:
+            existing_bank_map.setdefault(key, s)
+
     for _, row in df.iterrows():
         name = _clean_cell(row["Nama Supplier"])
         address = _clean_cell(row["Alamat"])
-        phone = _clean_cell(row["No Telp"])
+        phone_raw = _clean_cell(row["No Telp"])
+        phone = _normalize_phone(phone_raw)
+        bank_name = _clean_cell(row["Nama Bank"])
         bank_account = _clean_cell(row["No Rekening Bank"])
+        bank_account_key = _normalize_bank_account(bank_account)
         account_name = _clean_cell(row["Nama Rekening"])
         contact_person = _clean_cell(row["Kontak Person"])
         email_value = _clean_cell(row["Email"])
         website_value = _clean_cell(row["Website"]) or None
         email = email_value or None
+        phone_key = _normalize_phone(phone_raw)
 
-        if not all([name, address, phone, bank_account, account_name, contact_person]):
+        if not all([name, address, phone_key, bank_name, bank_account, account_name, contact_person]):
             flash(
                 f'Data supplier "{name or "-"}" tidak lengkap dan dilewati.', "warning"
             )
             continue
 
-        # Periksa apakah email sudah ada
+        existing = None
+        candidate_queries = []
+        if bank_account_key and bank_account_key in existing_bank_map:
+            existing = existing_bank_map[bank_account_key]
+        if not existing and bank_account:
+            candidate_queries.append(Supplier.query.filter_by(bank_account=bank_account))
         if email:
-            existing_supplier = Supplier.query.filter_by(email=email).first()
-            if existing_supplier:
-                flash(
-                    f"Supplier with email {email} already exists. Skipping...",
-                    "warning",
-                )
-                continue
+            candidate_queries.append(Supplier.query.filter_by(email=email))
+        if phone_key:
+            candidate_queries.append(Supplier.query.filter(Supplier.phone.in_([phone_key, phone_raw])))
+        if name:
+            candidate_queries.append(Supplier.query.filter(func.lower(Supplier.name) == name.lower()))
 
-        # Jika tidak ada, tambahkan data baru
+        for q in candidate_queries:
+            if existing:
+                break
+            existing = q.first()
+
+        if existing:
+            existing.name = name or existing.name
+            existing.address = address or existing.address
+            existing.phone = phone_key or existing.phone
+            existing.bank_name = bank_name or existing.bank_name
+            existing.bank_account = bank_account or existing.bank_account
+            existing.account_name = account_name or existing.account_name
+            existing.contact_person = contact_person or existing.contact_person
+            existing.email = email or existing.email
+            existing.website = website_value or existing.website
+            updated_count += 1
+            if bank_account_key:
+                existing_bank_map[bank_account_key] = existing
+            continue
+
         supplier = Supplier(
             name=name,
             address=address,
-            phone=phone,
+            phone=phone_key,
+            bank_name=bank_name,
             bank_account=bank_account,
             account_name=account_name,
             contact_person=contact_person,
@@ -1242,9 +1593,18 @@ def import_suppliers():
             website=website_value,
         )
         db.session.add(supplier)
+        if bank_account_key:
+            existing_bank_map[bank_account_key] = supplier
+        created_count += 1
 
     db.session.commit()
-    flash("Suppliers imported successfully!", "success")
+    message_parts = []
+    if created_count:
+        message_parts.append(f"{created_count} supplier baru")
+    if updated_count:
+        message_parts.append(f"{updated_count} supplier diupdate")
+    summary = ", ".join(message_parts) if message_parts else "Tidak ada perubahan"
+    flash(f"Import supplier selesai: {summary}.", "success")
     return redirect("/supplier")
 
 
@@ -1255,6 +1615,10 @@ def import_suppliers():
 def get_suppliers():
     try:
         kategori_id = request.args.get("kategori_id", type=int)
+        search_term = (request.args.get("q") or "").strip().lower()
+        limit = request.args.get("limit", type=int) or 10
+        limit = max(1, min(limit, 30))
+
         query = Supplier.query
         if kategori_id:
             query = (
@@ -1262,9 +1626,30 @@ def get_suppliers():
                 .filter(Produk.kategori_id == kategori_id)
                 .distinct()
             )
-        suppliers = query.all()
+        if search_term:
+            like = f"%{search_term}%"
+            query = query.filter(
+                or_(
+                    func.lower(Supplier.name).like(like),
+                    func.lower(Supplier.contact_person).like(like),
+                    func.lower(Supplier.phone).like(like),
+                    func.lower(Supplier.email).like(like),
+                )
+            )
+        suppliers = query.order_by(Supplier.name.asc()).limit(limit).all()
         suppliers_data = [
-            {"id": supplier.id, "name": supplier.name} for supplier in suppliers
+            {
+                "id": supplier.id,
+                "name": supplier.name,
+                "contact_person": supplier.contact_person,
+                "phone": supplier.phone,
+                "email": supplier.email,
+                "address": supplier.address,
+                "website": supplier.website,
+                "bank_name": supplier.bank_name,
+                "bank_account": supplier.bank_account,
+            }
+            for supplier in suppliers
         ]
         return jsonify({"suppliers": suppliers_data}), 200
     except Exception as e:
@@ -2558,78 +2943,49 @@ def import_produk():
         flash("File tidak dipilih!", "danger")
         return redirect("/produk")
 
-    # Baca file Excel menggunakan pandas
+    file_bytes = file.read()
+
+    def build_summary_message(summary):
+        status_parts = []
+        if summary.get("created"):
+            status_parts.append(f"{summary['created']} produk baru ditambahkan")
+        if summary.get("updated"):
+            status_parts.append(f"{summary['updated']} produk diperbarui")
+        if not status_parts:
+            status_parts.append("Tidak ada perubahan dari file import")
+        return "; ".join(status_parts)
+
+    def warn_skipped(summary):
+        skipped_notes = summary.get("skipped_notes") or []
+        if skipped_notes:
+            detail = "; ".join(skipped_notes[:5])
+            if len(skipped_notes) > 5:
+                detail += f"; dan {len(skipped_notes) - 5} baris lainnya."
+            return detail
+        return None
+
     try:
-        df = pd.read_excel(file)
+        df = pd.read_excel(BytesIO(file_bytes))
     except Exception as e:
         flash(f"Gagal membaca file: {e}", "danger")
         return redirect("/produk")
 
-    # Validasi kolom yang diperlukan
-    required_columns = [
-        "Kode Produk",
-        "SKU",
-        "Nama Produk",
-        "Satuan ID",
-        "Kategori ID",
-        "Supplier ID",
-        "Berat",
-        "Stok Minimal",
-        "Tanggal Expired",
-    ]
-    if not all(column in df.columns for column in required_columns):
-        flash(
-            "Format file tidak valid! Pastikan semua kolom yang diperlukan ada.",
-            "danger",
-        )
+    try:
+        summary = _perform_produk_import(df)
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect("/produk")
+    except Exception as exc:
+        db.session.rollback()
+        logging.exception("Gagal import produk")
+        flash(f"Gagal menyimpan data produk: {exc}", "danger")
         return redirect("/produk")
 
-    # Simpan data ke database
-    for _, row in df.iterrows():
-        # Validasi data
-        kode_produk = row["Kode Produk"]
-        existing_produk = Produk.query.filter_by(kode_produk=kode_produk).first()
-        if existing_produk:
-            flash(
-                f"Produk dengan kode '{kode_produk}' sudah ada. Data dilewati.",
-                "warning",
-            )
-            continue
+    flash(build_summary_message(summary), "success")
+    skipped_detail = warn_skipped(summary)
+    if skipped_detail:
+        flash(f"Beberapa baris dilewati: {skipped_detail}", "warning")
 
-        # Pastikan foreign key valid
-        satuan = Satuan.query.get(row["Satuan ID"])
-        kategori = Kategori.query.get(row["Kategori ID"])
-        supplier = Supplier.query.get(row["Supplier ID"])
-
-        if not satuan or not kategori or not supplier:
-            flash(
-                f"Produk {row['Nama Produk']} dilewati karena Satuan, Kategori, atau Supplier tidak valid.",
-                "warning",
-            )
-            continue
-
-        # Buat produk baru
-        produk = Produk(
-            kode_produk=row["Kode Produk"],
-            sku=row["SKU"],
-            nama_produk=row["Nama Produk"],
-            satuan_id=row["Satuan ID"],
-            kategori_id=row["Kategori ID"],
-            supplier_id=row["Supplier ID"],
-            berat=row["Berat"] if not pd.isna(row["Berat"]) else 0.0,
-            stok_minimal=row["Stok Minimal"] if not pd.isna(row["Stok Minimal"]) else 0,
-            tanggal_expired=(
-                row["Tanggal Expired"] if not pd.isna(row["Tanggal Expired"]) else None
-            ),
-            stok_lama=0,
-            harga_lama=0.0,
-            harga_beli=None,
-            jumlah_beli=None,
-        )
-        db.session.add(produk)
-
-    db.session.commit()
-    flash("Data produk berhasil diimport!", "success")
     return redirect("/produk")
 
 
@@ -2959,6 +3315,59 @@ def get_products():
     return {"products": product_list}
 
 
+@bp.route("/api/pelanggan/suggest", methods=["GET"])
+@login_required
+@roles_required(*SALES_ROLES)
+def pelanggan_suggest():
+    term = (request.args.get("q") or "").strip()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 8, type=int)
+    page = max(1, page)
+    per_page = max(5, min(per_page, 20))
+
+    if not term:
+        return {
+            "customers": [],
+            "page": page,
+            "per_page": per_page,
+            "total": 0,
+            "has_next": False,
+        }
+
+    like = f"%{term}%"
+    base_query = (
+        Pelanggan.query.options(joinedload(Pelanggan.price_level))
+        .filter(
+            or_(
+                Pelanggan.nama.ilike(like),
+                Pelanggan.pelanggan_id.ilike(like),
+                Pelanggan.kontak.ilike(like),
+            )
+        )
+        .order_by(Pelanggan.nama.asc())
+    )
+    pagination = base_query.paginate(page=page, per_page=per_page, error_out=False)
+    customers = pagination.items
+
+    payload = [
+        {
+            "id": customer.id,
+            "pelanggan_id": customer.pelanggan_id,
+            "nama": customer.nama,
+            "kontak": customer.kontak,
+            "price_level": customer.price_level.name if customer.price_level else "",
+        }
+        for customer in customers
+    ]
+    return {
+        "customers": payload,
+        "page": page,
+        "per_page": per_page,
+        "total": pagination.total,
+        "has_next": bool(pagination.has_next),
+    }
+
+
 @bp.route("/api/price_level_costs", methods=["GET"])
 @login_required
 @roles_required(*INVENTORY_ROLES)
@@ -3144,12 +3553,17 @@ def pembelian():
                 pajak = max(0.0, pajak)
 
                 discount_amount = harga_beli * (diskon / 100.0)
-                taxable_base = harga_beli - discount_amount
-                tax_amount = taxable_base * (pajak / 100.0)
-                harga_final = taxable_base + tax_amount
-                total_hpp = harga_final * jumlah
+                net_cost = max(harga_beli - discount_amount, 0.0)
+                tax_amount = net_cost * (pajak / 100.0)
+                harga_final = net_cost + tax_amount
+                total_hpp = net_cost * jumlah  # HPP tanpa memasukkan pajak
 
                 produk = Produk.query.filter_by(kode_produk=kode_barang).first()
+                if not produk:
+                    errors.append(
+                        f"Produk dengan kode {kode_barang} tidak ditemukan (baris {index})."
+                    )
+                    continue
 
                 valid_items.append(
                     {
@@ -3162,9 +3576,10 @@ def pembelian():
                         "pajak": pajak,
                         "harga_jual": harga_jual,
                         "exp_date": exp_date,
-                        "harga_final": harga_final,
+                        "harga_final": harga_final,  # tetap simpan harga akhir termasuk pajak bila perlu dilaporkan
                         "total_hpp": total_hpp,
                         "produk": produk,
+                        "cost_basis": net_cost,
                     }
                 )
 
@@ -3197,7 +3612,7 @@ def pembelian():
             for item in valid_items:
                 produk = item["produk"]
                 if produk:
-                    produk.update_stok_dan_hpp(item["harga_final"], item["jumlah"])
+                    produk.update_stok_dan_hpp(item["cost_basis"], item["jumlah"])
 
                 barang_pembelian = BarangPembelian(
                     pembelian_id=pembelian.id,
@@ -3642,6 +4057,13 @@ def penjualan():
             if not sales_id:
                 raise ValueError("Silakan login sebelum mencatat penjualan.")
 
+            if not form.pelanggan_id.data or form.pelanggan_id.data == 0:
+                raise ValueError("Pilih pelanggan sebelum menyimpan transaksi.")
+
+            customer_exists = Pelanggan.query.get(form.pelanggan_id.data)
+            if not customer_exists:
+                raise ValueError("Pelanggan tidak ditemukan. Pilih pelanggan yang valid.")
+
             locked_period = _get_locked_period_for_date(today)
             if locked_period:
                 raise ValueError(
@@ -3781,6 +4203,7 @@ def penjualan():
                 marketplace_cost_total=marketplace_cost_total_value,
                 marketplace_cost_details=marketplace_cost_details_value,
             )
+            penjualan.no_faktur = _generate_invoice_number()
             db.session.add(penjualan)
             db.session.flush()
 
@@ -4814,6 +5237,19 @@ def _generate_journal_reference():
     return candidate
 
 
+def _generate_invoice_number(prefix="F"):
+    """
+    Generate unique invoice number using timestamp with microseconds and fallback counter.
+    """
+    base = f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+    candidate = base
+    counter = 1
+    while Penjualan.query.filter_by(no_faktur=candidate).first():
+        candidate = f"{base}-{counter}"
+        counter += 1
+    return candidate
+
+
 def _get_accounting_setting():
     _ensure_table(AccountingSetting)
     return AccountingSetting.query.first()
@@ -5651,6 +6087,51 @@ def laporan_stok_barang():
     )
 
 
+@bp.route("/api/laporan/stok-barang/suggest", methods=["GET"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def laporan_stok_barang_suggest():
+    term = (request.args.get("q") or "").strip()
+    if len(term) < 2:
+        return jsonify({"products": []})
+
+    kategori_filter = request.args.get("kategori")
+    supplier_filter = request.args.get("supplier")
+    like = f"%{term}%"
+
+    query = Produk.query.options(
+        joinedload(Produk.kategori),
+        joinedload(Produk.supplier),
+    ).filter(
+        or_(
+            Produk.nama_produk.ilike(like),
+            Produk.kode_produk.ilike(like),
+            Produk.sku.ilike(like),
+        )
+    )
+    if kategori_filter:
+        query = query.filter(Produk.kategori_id == kategori_filter)
+    if supplier_filter:
+        query = query.filter(Produk.supplier_id == supplier_filter)
+
+    rows = query.order_by(Produk.nama_produk.asc()).limit(10).all()
+    payload = []
+    for product in rows:
+        payload.append(
+            {
+                "id": product.id,
+                "code": product.kode_produk,
+                "name": product.nama_produk,
+                "sku": product.sku or "-",
+                "stock": int(product.stok_lama or 0),
+                "kategori": product.kategori.name if product.kategori else "Tanpa kategori",
+                "supplier": product.supplier.name if product.supplier else "Tanpa supplier",
+            }
+        )
+
+    return jsonify({"products": payload})
+
+
 @bp.route("/laporan/penjualan")
 @login_required
 @roles_required(*SALES_ROLES)
@@ -5662,6 +6143,18 @@ def laporan_penjualan_report():
     if end_date < start_date:
         start_date, end_date = end_date, start_date
 
+    search_query = (request.args.get("search") or "").strip()
+    selected_sales_id = request.args.get("sales")
+    selected_customer_id = request.args.get("customer")
+    try:
+        selected_sales_id = int(selected_sales_id) if selected_sales_id else None
+    except (TypeError, ValueError):
+        selected_sales_id = None
+    try:
+        selected_customer_id = int(selected_customer_id) if selected_customer_id else None
+    except (TypeError, ValueError):
+        selected_customer_id = None
+
     sales_query = (
         Penjualan.query.options(
             joinedload(Penjualan.detail_penjualan).joinedload(DetailPenjualan.produk),
@@ -5672,6 +6165,24 @@ def laporan_penjualan_report():
         .filter(Penjualan.tanggal_penjualan <= end_date)
         .order_by(Penjualan.tanggal_penjualan.asc(), Penjualan.id.asc())
     )
+
+    if selected_sales_id:
+        sales_query = sales_query.filter(Penjualan.sales_id == selected_sales_id)
+    if selected_customer_id:
+        sales_query = sales_query.filter(Penjualan.pelanggan_id == selected_customer_id)
+    if search_query:
+        like = f"%{search_query}%"
+        sales_query = (
+            sales_query.join(Penjualan.pelanggan)
+            .join(Penjualan.sales)
+            .filter(
+                or_(
+                    Penjualan.no_faktur.ilike(like),
+                    Pelanggan.nama.ilike(like),
+                    User.username.ilike(like),
+                )
+            )
+        )
     sales_records = sales_query.all()
 
     totals = {
@@ -5932,8 +6443,16 @@ def laporan_penjualan_report():
     filter_values = {
         "start_date": start_date.strftime("%Y-%m-%d"),
         "end_date": end_date.strftime("%Y-%m-%d"),
+        "sales": selected_sales_id or "",
+        "customer": selected_customer_id or "",
+        "search": search_query,
     }
     range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
+
+    sales_options = (
+        User.query.filter(User.role.in_(SALES_ROLES)).order_by(User.username.asc()).all()
+    )
+    customer_options = Pelanggan.query.order_by(Pelanggan.nama.asc()).all()
 
     return render_template(
         "laporan_penjualan.html",
@@ -5948,9 +6467,101 @@ def laporan_penjualan_report():
         margin_percent=margin_percent,
         range_label=range_label,
         filter_values=filter_values,
+        sales_options=sales_options,
+        customer_options=customer_options,
         largest_invoice=largest_invoice,
         transaction_details=transaction_details,
     )
+
+
+@bp.route("/api/laporan/penjualan/suggest", methods=["GET"])
+@login_required
+@roles_required(*SALES_ROLES)
+def laporan_penjualan_suggest():
+    term = (request.args.get("q") or "").strip()
+    if len(term) < 2:
+        return jsonify({"results": []})
+
+    today = datetime.utcnow().date()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    like = f"%{term}%"
+    results = []
+
+    invoice_rows = (
+        Penjualan.query.options(joinedload(Penjualan.pelanggan))
+        .filter(Penjualan.tanggal_penjualan >= start_date)
+        .filter(Penjualan.tanggal_penjualan <= end_date)
+        .filter(Penjualan.no_faktur.ilike(like))
+        .order_by(Penjualan.tanggal_penjualan.desc(), Penjualan.id.desc())
+        .limit(6)
+        .all()
+    )
+    for sale in invoice_rows:
+        customer_name = sale.pelanggan.nama if sale.pelanggan else "Pelanggan umum"
+        date_label = (
+            _format_date_id(sale.tanggal_penjualan)
+            if sale.tanggal_penjualan
+            else "-"
+        )
+        results.append(
+            {
+                "kind": "faktur",
+                "label": sale.no_faktur,
+                "value": sale.no_faktur,
+                "subtext": f"{date_label} • {customer_name}",
+            }
+        )
+
+    customer_rows = (
+        Pelanggan.query.join(Pelanggan.penjualan)
+        .filter(Penjualan.tanggal_penjualan >= start_date)
+        .filter(Penjualan.tanggal_penjualan <= end_date)
+        .filter(Pelanggan.nama.ilike(like))
+        .distinct()
+        .order_by(Pelanggan.nama.asc())
+        .limit(6)
+        .all()
+    )
+    for customer in customer_rows:
+        subtext_parts = [customer.pelanggan_id]
+        if customer.kontak:
+            subtext_parts.append(customer.kontak)
+        results.append(
+            {
+                "kind": "pelanggan",
+                "label": customer.nama,
+                "value": customer.nama,
+                "subtext": " • ".join([p for p in subtext_parts if p]),
+            }
+        )
+
+    staff_rows = (
+        User.query.join(User.penjualan)
+        .filter(Penjualan.tanggal_penjualan >= start_date)
+        .filter(Penjualan.tanggal_penjualan <= end_date)
+        .filter(User.username.ilike(like))
+        .distinct()
+        .order_by(User.username.asc())
+        .limit(6)
+        .all()
+    )
+    for staff in staff_rows:
+        role_label = (staff.role or "").strip()
+        results.append(
+            {
+                "kind": "sales",
+                "label": staff.username,
+                "value": staff.username,
+                "subtext": role_label,
+            }
+        )
+
+    return jsonify({"results": results})
 
 
 @bp.route("/api/get_product1", methods=["GET"])

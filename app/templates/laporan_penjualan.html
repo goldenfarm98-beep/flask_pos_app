@@ -57,11 +57,14 @@
                 <div class="form-row">
                     <div class="form-group col-lg-6 col-md-8">
                         <label for="search" class="text-muted small text-uppercase">Cari faktur / pelanggan / sales</label>
-                        <div class="input-group">
-                            <div class="input-group-prepend">
-                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <div class="position-relative" id="salesReportSearchWrapper">
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                </div>
+                                <input type="text" id="search" name="search" class="form-control" placeholder="Misal: F2025 / Andi" value="{{ filter_values.search }}" autocomplete="off">
                             </div>
-                            <input type="text" id="search" name="search" class="form-control" placeholder="Misal: F2025 / Andi" value="{{ filter_values.search }}">
+                            <div class="suggestion-box mt-2" id="sales-report-suggestions" hidden></div>
                         </div>
                     </div>
                     <div class="form-group col-lg-3 col-md-4 ml-auto">
@@ -479,87 +482,87 @@
         const script = document.getElementById('sales-chart-data');
         const dataset = script ? JSON.parse(script.textContent || '[]') : [];
         const canvas = document.getElementById('salesChart');
-        if (!canvas || !window.Chart || !dataset.length) {
-            return;
-        }
-        const parent = canvas.parentElement;
-        if (parent) {
-            canvas.width = parent.clientWidth || 900;
-        }
-        canvas.height = 260;
+        const canRenderChart = !!(canvas && window.Chart && dataset.length);
+        if (canRenderChart) {
+            const parent = canvas.parentElement;
+            if (parent) {
+                canvas.width = parent.clientWidth || 900;
+            }
+            canvas.height = 260;
 
-        const labels = dataset.map(item => item.label);
-        const revenueData = dataset.map(item => item.revenue);
-        const grossData = dataset.map(item => item.gross);
+            const labels = dataset.map(item => item.label);
+            const revenueData = dataset.map(item => item.revenue);
+            const grossData = dataset.map(item => item.gross);
 
-        new Chart(canvas.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels,
-                datasets: [
-                    {
-                        label: 'Revenue',
-                        data: revenueData,
-                        borderColor: '#2563eb',
-                        backgroundColor: 'rgba(37, 99, 235, 0.12)',
-                        borderWidth: 3,
-                        tension: 0.35,
-                        fill: true
-                    },
-                    {
-                        label: 'Laba Kotor',
-                        data: grossData,
-                        borderColor: '#16a34a',
-                        backgroundColor: 'rgba(34, 197, 94, 0.15)',
-                        borderDash: [6, 4],
-                        borderWidth: 3,
-                        tension: 0.35,
-                        fill: false
-                    }
-                ]
-            },
-            options: {
-                responsive: false,
-                maintainAspectRatio: false,
-                animation: false,
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
-                },
-                responsiveAnimationDuration: 0,
-                transitions: {
-                    active: { animation: { duration: 0 } },
-                    resize: { animation: { duration: 0 } }
-                },
-                plugins: {
-                    legend: {
-                        align: 'end',
-                        labels: {
-                            boxWidth: 12,
-                            usePointStyle: true
+            new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Revenue',
+                            data: revenueData,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                            borderWidth: 3,
+                            tension: 0.35,
+                            fill: true
+                        },
+                        {
+                            label: 'Laba Kotor',
+                            data: grossData,
+                            borderColor: '#16a34a',
+                            backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                            borderDash: [6, 4],
+                            borderWidth: 3,
+                            tension: 0.35,
+                            fill: false
                         }
+                    ]
+                },
+                options: {
+                    responsive: false,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
                     },
-                    tooltip: {
-                        callbacks: {
-                            label: function (context) {
-                                const value = context.parsed.y || 0;
-                                return `${context.dataset.label}: Rp ${value.toLocaleString('id-ID')}`;
+                    responsiveAnimationDuration: 0,
+                    transitions: {
+                        active: { animation: { duration: 0 } },
+                        resize: { animation: { duration: 0 } }
+                    },
+                    plugins: {
+                        legend: {
+                            align: 'end',
+                            labels: {
+                                boxWidth: 12,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const value = context.parsed.y || 0;
+                                    return `${context.dataset.label}: Rp ${value.toLocaleString('id-ID')}`;
+                                }
                             }
                         }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function (value) {
-                                return 'Rp ' + Number(value).toLocaleString('id-ID');
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function (value) {
+                                    return 'Rp ' + Number(value).toLocaleString('id-ID');
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
+            });
+        }
 
         const detailToggles = document.querySelectorAll('.detail-toggle');
         const detailRows = document.querySelectorAll('.sale-detail-row');
@@ -578,6 +581,116 @@
                     button.classList.add('text-primary');
                 }
             });
+        });
+
+        const input = document.getElementById('search');
+        const panel = document.getElementById('sales-report-suggestions');
+        const wrapper = document.getElementById('salesReportSearchWrapper');
+        const form = input ? input.closest('form') : null;
+
+        if (!input || !panel || !wrapper || !form) {
+            return;
+        }
+
+        let debounceTimer = null;
+        let abortCtrl = null;
+
+        const hidePanel = () => {
+            panel.innerHTML = '';
+            panel.hidden = true;
+        };
+
+        const showPanel = () => {
+            panel.hidden = false;
+        };
+
+        const badgeMeta = (kind) => {
+            if (kind === 'faktur') return { label: 'Faktur', className: 'badge-soft-primary' };
+            if (kind === 'pelanggan') return { label: 'Pelanggan', className: 'badge-soft-info' };
+            if (kind === 'sales') return { label: 'Sales', className: 'badge-soft-warning' };
+            return { label: 'Hasil', className: 'badge-soft' };
+        };
+
+        const render = (items) => {
+            if (!Array.isArray(items) || !items.length) {
+                hidePanel();
+                return;
+            }
+            panel.innerHTML = '';
+            items.slice(0, 12).forEach((item) => {
+                const meta = badgeMeta(item.kind);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'suggestion-item';
+                btn.dataset.value = item.value || item.label || '';
+                const subtext = item.subtext ? String(item.subtext) : '';
+                btn.innerHTML = `
+                    <div style="min-width: 0;">
+                        <div class="font-weight-semibold">${item.label || '-'}</div>
+                        ${subtext ? `<small>${subtext}</small>` : ''}
+                    </div>
+                    <span class="badge ${meta.className} ml-2">${meta.label}</span>
+                `;
+                btn.addEventListener('click', () => {
+                    input.value = btn.dataset.value;
+                    hidePanel();
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.submit();
+                    }
+                });
+                panel.appendChild(btn);
+            });
+            showPanel();
+        };
+
+        const fetchSuggestions = (term) => {
+            if (abortCtrl) {
+                abortCtrl.abort();
+            }
+            abortCtrl = new AbortController();
+            const startDate = document.getElementById('start_date')?.value || '';
+            const endDate = document.getElementById('end_date')?.value || '';
+            fetch(`{{ url_for('main.laporan_penjualan_suggest') }}?q=${encodeURIComponent(term)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`, {
+                headers: { Accept: 'application/json' },
+                signal: abortCtrl.signal,
+            })
+                .then((res) => {
+                    if (!res.ok) throw new Error('fail');
+                    return res.json();
+                })
+                .then((data) => {
+                    const items = Array.isArray(data.results) ? data.results : [];
+                    render(items);
+                })
+                .catch((err) => {
+                    if (err.name === 'AbortError') return;
+                    hidePanel();
+                });
+        };
+
+        input.addEventListener('input', function () {
+            const term = (this.value || '').trim();
+            if (term.length < 2) {
+                hidePanel();
+                return;
+            }
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => fetchSuggestions(term), 200);
+        });
+
+        input.addEventListener('focus', function () {
+            const term = (this.value || '').trim();
+            if (term.length >= 2) {
+                fetchSuggestions(term);
+            }
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!wrapper.contains(event.target)) {
+                hidePanel();
+            }
         });
     });
 </script>
@@ -686,6 +799,86 @@
     .report-filter label {
         font-size: 0.75rem;
         letter-spacing: 0.04em;
+    }
+
+    .suggestion-box {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 30;
+        background: #fff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 12px;
+        box-shadow: 0 18px 30px rgba(15, 23, 42, 0.1);
+        max-height: 260px;
+        overflow-y: auto;
+        padding: 0.25rem;
+    }
+
+    .suggestion-item {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        font-size: 0.9rem;
+        color: #0f172a;
+        cursor: pointer;
+    }
+
+    .suggestion-item:hover,
+    .suggestion-item:focus {
+        background: rgba(59, 130, 246, 0.08);
+        outline: none;
+    }
+
+    .suggestion-item small {
+        color: #94a3b8;
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 0.1rem;
+    }
+
+    .badge-soft {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        background: rgba(99, 102, 241, 0.12);
+        color: #312e81;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .badge-soft-primary {
+        background: rgba(37, 99, 235, 0.12);
+        color: #1d4ed8;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.65rem;
+    }
+
+    .badge-soft-info {
+        background: rgba(14, 165, 233, 0.12);
+        color: #0369a1;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.65rem;
+    }
+
+    .badge-soft-warning {
+        background: rgba(245, 158, 11, 0.18);
+        color: #92400e;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.65rem;
     }
 
     .sales-table thead th {

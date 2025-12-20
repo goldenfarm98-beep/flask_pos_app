@@ -4,17 +4,42 @@
 
 {% block content %}
 <section class="sales-console">
-    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
-        <div>
-            <h1 class="h4 font-weight-bold mb-1">Penjualan Barang</h1>
-            <p class="text-muted mb-0">Gunakan kolom input untuk memilih produk, lalu pantau daftar barang di tabel di bawah.</p>
-        </div>
-        <div class="btn-group btn-group-sm">
-            <span class="btn btn-outline-secondary">F1 Baru</span>
-            <span class="btn btn-outline-secondary">F2 Tambah</span>
-            <span class="btn btn-outline-secondary">F3 Batal</span>
-            <span class="btn btn-outline-secondary">F4 Bayar</span>
-            <span class="btn btn-outline-secondary">Esc Kembali</span>
+    <div class="page-header d-print-none mb-4">
+        <div class="row align-items-center">
+            <div class="col">
+                <div class="d-flex align-items-center mb-2">
+                    <span class="status-dot status-green mr-2"></span>
+                    <h1 class="page-title mb-0">Konsol Penjualan</h1>
+                </div>
+                <div class="text-muted">
+                    Tampilan ala desktop dengan fokus ke input cepat & monitoring transaksi langsung.
+                </div>
+                <div class="d-flex flex-wrap align-items-center mt-3 quick-mode">
+                    <div class="btn-group btn-group-sm mr-2 mb-2" role="group" aria-label="Mode transaksi">
+                        <button type="button" class="btn btn-outline-primary active">
+                            <i class="fas fa-desktop mr-1"></i>Retail
+                        </button>
+                        <button type="button" class="btn btn-outline-primary">
+                            <i class="fas fa-store mr-1"></i>Grosir
+                        </button>
+                        <button type="button" class="btn btn-outline-primary">
+                            <i class="fas fa-shopping-bag mr-1"></i>Marketplace
+                        </button>
+                    </div>
+                    <button type="button" class="btn btn-light btn-sm d-flex align-items-center mb-2" data-toggle="modal" data-target="#shortcutModal">
+                        <i class="fas fa-keyboard mr-1"></i>Command Palette (Ctrl+/)
+                    </button>
+                </div>
+            </div>
+            <div class="col-auto">
+                <div class="btn-list">
+                    <span class="btn btn-outline-secondary btn-icon" title="F1 Baru"><i class="fas fa-file-medical mr-1"></i>F1</span>
+                    <span class="btn btn-outline-secondary btn-icon" title="F2 Tambah"><i class="fas fa-plus-circle mr-1"></i>F2</span>
+                    <span class="btn btn-outline-secondary btn-icon" title="F3 Batal"><i class="fas fa-undo mr-1"></i>F3</span>
+                    <span class="btn btn-primary btn-icon" title="F4 Bayar"><i class="fas fa-credit-card mr-1"></i>F4</span>
+                    <span class="btn btn-outline-secondary btn-icon" title="Esc Kembali"><i class="fas fa-arrow-left mr-1"></i>Esc</span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -163,7 +188,7 @@
                         </div>
 
                         <div class="table-responsive mt-4">
-                            <table class="table table-bordered table-hover sales-table" id="items-table">
+                            <table class="table card-table table-vcenter sales-table" id="items-table">
                                 <thead>
                                     <tr>
                                         <th class="text-center" style="width: 40px;">No</th>
@@ -194,7 +219,7 @@
                         <div class="action-buttons mb-3 mb-md-0">
                             <button type="button" class="btn btn-outline-secondary mr-2 mb-2" id="new-sale"
                                 data-shortcut="F1">
-                                <i class="fas fa-file mr-1"></i>Baru (F1)
+                                <i class="fas fa-file-medical mr-1"></i>Baru (F1)
                             </button>
                             <button type="button" class="btn btn-outline-secondary mr-2 mb-2" id="cancel-entry"
                                 data-shortcut="F3">
@@ -207,7 +232,7 @@
                         </div>
                         <div class="ml-md-auto">
                             <button type="button" class="btn btn-bayar btn-lg px-5" id="pay-button" data-shortcut="F4">
-                                <span class="h5 mb-0 d-block">Bayar (F4)</span>
+                                <span class="h5 mb-0 d-block d-flex align-items-center justify-content-center"><i class="fas fa-credit-card mr-2"></i>Bayar (F4)</span>
                                 <small class="text-uppercase">Simpan dan selesaikan</small>
                             </button>
                             <button type="submit" id="actual-submit" class="d-none">Simpan</button>
@@ -220,6 +245,18 @@
         <div class="col-xl-3 order-1 order-xl-2 mb-4 mb-xl-0">
             <div class="card summary-card shadow-sm mb-4 sticky-card">
                 <div class="card-body">
+                    <div class="hero-kpi mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="label">Grand Total</div>
+                                <div class="value" data-summary="grand">Rp 0</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="label">Item</div>
+                                <div class="h4 mb-0" data-summary="items">0</div>
+                            </div>
+                        </div>
+                    </div>
                     <h3 class="h6 font-weight-bold mb-3">Ringkasan Hitung</h3>
                     <ul class="list-unstyled mb-0">
                         <li class="d-flex justify-content-between mb-2">
@@ -361,9 +398,90 @@
 <script type="application/json" id="product-data">{{ produk_payload|tojson }}</script>
 <script type="application/json" id="customer-data">{{ customer_lookup|tojson }}</script>
 
+<div class="modal fade shortcut-modal" id="shortcutModal" tabindex="-1" role="dialog" aria-labelledby="shortcutModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title font-weight-bold" id="shortcutModalLabel"><i class="fas fa-keyboard mr-2"></i>Command Palette</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body pt-3">
+                <p class="text-muted mb-3">Pintasan ala desktop untuk mempercepat transaksi.</p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="font-weight-semibold">Navigasi & Form</h6>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>Mulai transaksi baru</span>
+                                <span class="shortcut-chip">F1</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>Tambah produk</span>
+                                <span class="shortcut-chip">F2</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>Batal baris/entry</span>
+                                <span class="shortcut-chip">F3</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>Selesaikan & bayar</span>
+                                <span class="shortcut-chip">F4</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="font-weight-semibold">Fokus & Navigasi</h6>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>Fokus ke pelanggan</span>
+                                <span class="shortcut-chip">Alt + P</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>Fokus ke produk</span>
+                                <span class="shortcut-chip">Alt + B</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>Toggle command palette</span>
+                                <span class="shortcut-chip">Ctrl + /</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
     .sales-console {
         color: #0f172a;
+        background: linear-gradient(145deg, #f6f9fc 0%, #eef2ff 35%, #f8fafc 100%);
+        border-radius: 24px;
+        padding: 1rem;
+    }
+
+    .page-title {
+        font-weight: 700;
+        font-size: 1.55rem;
+    }
+
+    .btn-list .btn {
+        border-radius: 12px;
+        font-weight: 600;
+    }
+
+    .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        background: #2fb344;
+        box-shadow: 0 0 0 6px rgba(47, 179, 68, 0.16);
     }
 
     .text-white-75 {
@@ -519,6 +637,71 @@
         font-weight: 600;
     }
 
+    .sales-meta,
+    .detail-card,
+    .action-card,
+    .summary-card,
+    .pnl-card {
+        backdrop-filter: blur(6px);
+        border: 1px solid rgba(15, 23, 42, 0.04);
+    }
+
+    .sticky-card {
+        position: sticky;
+        top: 88px;
+    }
+
+    .table.card-table thead th {
+        border-top: none;
+    }
+
+    .card .card-header {
+        border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+    }
+
+    .hero-kpi {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #2563eb 100%);
+        border-radius: 18px;
+        padding: 1rem 1.25rem;
+        color: #e2e8f0;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    .hero-kpi .label {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.7rem;
+        opacity: 0.8;
+    }
+
+    .hero-kpi .value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .shortcut-modal .modal-content {
+        border-radius: 18px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+    }
+
+    .shortcut-modal .list-group-item {
+        border: none;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .shortcut-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.25rem 0.6rem;
+        border-radius: 10px;
+        background: rgba(15, 23, 42, 0.08);
+        font-weight: 700;
+        min-width: 38px;
+    }
+
     .btn-bayar {
         border-radius: 999px;
         border: none;
@@ -540,11 +723,6 @@
     .summary-card ul li span:last-child {
         min-width: 100px;
         text-align: right;
-    }
-
-    .sticky-card {
-        position: sticky;
-        top: 1rem;
     }
 
     .pnl-card {
@@ -616,41 +794,44 @@
         color: rgba(37, 99, 235, 0.65) !important;
     }
 
-    @media (max-width: 991px) {
-        .grand-display {
-            width: 100%;
-        }
-
-        .shortcut-hints {
-            text-align: left;
-        }
+@media (max-width: 991px) {
+    .grand-display {
+        width: 100%;
     }
 
-    @media (max-width: 576px) {
-        .quick-entry-grid {
-            grid-template-columns: repeat(1, minmax(0, 1fr));
-        }
+    .shortcut-hints {
+        text-align: left;
+    }
+}
 
-        .action-card .btn-bayar {
-            width: 100%;
-        }
+@media (max-width: 576px) {
+    .quick-entry-grid {
+        grid-template-columns: repeat(1, minmax(0, 1fr));
     }
-    .marketplace-cost-panel {
-        border-radius: 18px;
-        border: 1px solid rgba(148, 163, 184, 0.4);
-        background: #ffffff;
-        padding: 1rem;
-        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+
+    .action-card .btn-bayar {
+        width: 100%;
     }
-    .marketplace-cost-breakdown .as-cost-line {
-        display: flex;
-        justify-content: space-between;
-        padding: 0.35rem 0;
-        border-bottom: 1px dashed rgba(148, 163, 184, 0.3);
-    }
-    .marketplace-cost-breakdown .as-cost-line:last-child {
-        border-bottom: none;
-    }
+}
+.marketplace-cost-panel {
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: #ffffff;
+    padding: 1rem;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+.marketplace-cost-breakdown .as-cost-line {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.35rem 0;
+    border-bottom: 1px dashed rgba(148, 163, 184, 0.3);
+}
+.marketplace-cost-breakdown .as-cost-line:last-child {
+    border-bottom: none;
+}
+.quick-mode {
+    gap: 0.5rem;
+}
 </style>
 
 <script>
@@ -1717,6 +1898,9 @@
             } else if (event.key === 'Escape') {
                 event.preventDefault();
                 window.history.back();
+            } else if ((event.ctrlKey || event.metaKey) && event.key === '/') {
+                event.preventDefault();
+                $('#shortcutModal').modal('show');
             }
         });
 

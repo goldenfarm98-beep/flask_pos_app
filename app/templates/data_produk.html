@@ -6,32 +6,39 @@
 {% set form_prefill = prefill_data if prefill_data else None %}
 {% set produk_stat = stat_cards|first if stat_cards else None %}
 
-<div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
-    <div class="mb-2">
-        <h1 class="h4 font-weight-bold mb-1">Data Produk</h1>
-        <p class="text-muted mb-0">
-            {% if produk_stat %}Produk aktif: {{ '{:,}'.format(produk_stat.value).replace(',', '.') }}.{% endif %}
-            Tambah produk atau export data dengan cepat.
-        </p>
+<div class="adminkit-products">
+    <div class="d-flex align-items-start justify-content-between flex-wrap mb-4">
+        <div class="mb-2">
+            <h1 class="h3 fw-bold mb-1">Master Data Produk</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb ak-breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Produk</li>
+                </ol>
+            </nav>
+            <p class="text-muted mb-0">
+                {% if produk_stat %}Produk aktif: {{ '{:,}'.format(produk_stat.value).replace(',', '.') }}.{% endif %}
+                Kelola katalog, export, dan import data produk.
+            </p>
+        </div>
+        <div class="btn-group ak-actions">
+            <a href="#produk-form-card" class="btn btn-sm btn-primary"><i class="fas fa-plus-circle me-1"></i>Produk baru</a>
+            <a href="{{ url_for('main.export_produk') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-file-download me-1"></i>Export</a>
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-th-large me-1"></i>Dashboard</a>
+        </div>
     </div>
-    <div class="btn-group">
-        <a href="#produk-form-card" class="btn btn-sm btn-primary"><i class="fas fa-plus-circle mr-1"></i>Produk baru</a>
-        <a href="{{ url_for('main.export_produk') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-file-download mr-1"></i>Export</a>
-        <a href="{{ url_for('main.dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-th-large mr-1"></i>Dashboard</a>
-    </div>
-</div>
 
 {% if stat_cards %}
 <div class="row stat-grid mb-4">
     {% for card in stat_cards %}
         <div class="col-sm-6 col-xl-3 mb-3">
-            <div class="card stat-card border-0 shadow-sm h-100">
+            <div class="card stat-card h-100">
                 <div class="card-body">
                     <div class="d-flex align-items-center justify-content-between mb-2">
                         <span class="stat-icon {{ card.accent }}">
                             <i class="fas {{ card.icon }}"></i>
                         </span>
-                        <span class="badge badge-light text-uppercase font-weight-semibold">{{ card.label }}</span>
+                        <span class="badge rounded-pill badge-soft-primary text-uppercase fw-semibold px-3">{{ card.label }}</span>
                     </div>
                     <div class="stat-value mb-1">
                         {{ '{:,}'.format(card.value).replace(',', '.') }}
@@ -49,35 +56,31 @@
         <div class="card card-panel shadow-sm mb-4">
             <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
                 <div>
-                    <h2 class="h5 font-weight-bold mb-1">Daftar Produk</h2>
+                    <h2 class="h5 fw-bold mb-1">Daftar Produk</h2>
                     <p class="small text-muted mb-0">Menampilkan {{ pagination.total }} produk sesuai filter yang dipilih.</p>
                 </div>
                 <a href="{{ url_for('main.produk') }}" class="btn btn-sm btn-outline-primary mt-3 mt-md-0">
-                    <i class="fas fa-sync-alt mr-1"></i>Reset filter
+                    <i class="fas fa-sync-alt me-1"></i>Reset filter
                 </a>
             </div>
             <div class="card-body">
                 <form class="filter-form mb-4" method="GET" action="{{ url_for('main.produk') }}">
                     <div class="row align-items-center">
                         <div class="col-12 col-lg-5 mb-3">
-                            <label for="filterSearch" class="sr-only">Cari Produk</label>
+                            <label for="filterSearch" class="visually-hidden">Cari Produk</label>
                             <div class="filter-search-wrapper position-relative">
                                 <div class="input-group shadow-sm filter-input">
-                                    <div class="input-group-prepend">
-                                        <span class="input-group-text bg-white border-right-0"><i class="fas fa-search text-muted"></i></span>
-                                    </div>
-                                    <input type="text" id="filterSearch" name="search" class="form-control border-left-0" placeholder="Cari nama, kode, atau SKU" value="{{ request.args.get('search', '') }}" autocomplete="off">
+                                    <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
+                                    <input type="text" id="filterSearch" name="search" class="form-control border-start-0" placeholder="Cari nama, kode, atau SKU" value="{{ request.args.get('search', '') }}" autocomplete="off">
                                 </div>
                                 <div class="filter-suggestion-panel shadow-sm" id="filterSearchSuggestions"></div>
                             </div>
                         </div>
                         <div class="col-6 col-lg-3 mb-3">
-                            <label for="filterKategori" class="sr-only">Kategori</label>
+                            <label for="filterKategori" class="visually-hidden">Kategori</label>
                             <div class="input-group shadow-sm filter-input">
-                                <div class="input-group-prepend">
-                                    <span class="input-group-text bg-white border-right-0"><i class="fas fa-tags text-muted"></i></span>
-                                </div>
-                                <select id="filterKategori" name="kategori" class="form-control border-left-0">
+                                <span class="input-group-text bg-white border-end-0"><i class="fas fa-tags text-muted"></i></span>
+                                <select id="filterKategori" name="kategori" class="form-select border-start-0">
                                     <option value="">Semua kategori</option>
                                     {% for kategori in kategoris %}
                                         <option value="{{ kategori.id }}" {% if request.args.get('kategori') == kategori.id|string %}selected{% endif %}>{{ kategori.name }}</option>
@@ -86,12 +89,10 @@
                             </div>
                         </div>
                         <div class="col-6 col-lg-3 mb-3">
-                            <label for="filterSupplier" class="sr-only">Supplier</label>
+                            <label for="filterSupplier" class="visually-hidden">Supplier</label>
                             <div class="input-group shadow-sm filter-input">
-                                <div class="input-group-prepend">
-                                    <span class="input-group-text bg-white border-right-0"><i class="fas fa-truck text-muted"></i></span>
-                                </div>
-                                <select id="filterSupplier" name="supplier" class="form-control border-left-0">
+                                <span class="input-group-text bg-white border-end-0"><i class="fas fa-truck text-muted"></i></span>
+                                <select id="filterSupplier" name="supplier" class="form-select border-start-0">
                                     <option value="">Semua supplier</option>
                                     {% for supplier in suppliers %}
                                         <option value="{{ supplier.id }}" {% if request.args.get('supplier') == supplier.id|string %}selected{% endif %}>{{ supplier.name }}</option>
@@ -101,7 +102,7 @@
                         </div>
                         <div class="col-12 col-lg-1 mb-3 d-flex align-items-center justify-content-lg-end">
                             <div class="btn-group btn-group-sm filter-actions w-100" role="group">
-                                <button type="submit" class="btn btn-primary btn-icon btn-search-only" data-toggle="tooltip" title="Cari produk">
+                                <button type="submit" class="btn btn-primary btn-icon btn-search-only" data-bs-toggle="tooltip" title="Cari produk">
                                     <i class="fas fa-arrow-right"></i>
                                 </button>
                             </div>
@@ -119,14 +120,14 @@
             <div class="col-md-6 mb-4">
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
-                        <h3 class="h6 font-weight-bold mb-3">Kesehatan data produk</h3>
-                        {% set badge_map = {'warning': 'badge-warning', 'info': 'badge-info', 'success': 'badge-success', 'secondary': 'badge-secondary'} %}
+                        <h3 class="h6 fw-bold mb-3">Kesehatan data produk</h3>
+                        {% set badge_map = {'warning': 'bg-warning text-dark', 'info': 'bg-info text-white', 'success': 'bg-success text-white', 'secondary': 'bg-secondary text-white'} %}
                         <ul class="list-unstyled mb-0">
                             {% for insight in health_insights %}
                                 <li class="mb-3">
                                     <div class="d-flex align-items-center justify-content-between">
-                                        <span class="font-weight-semibold">{{ insight.title }}</span>
-                                        <span class="badge badge-pill {{ badge_map.get(insight.status, 'badge-secondary') }}">
+                                        <span class="fw-semibold">{{ insight.title }}</span>
+                                        <span class="badge rounded-pill {{ badge_map.get(insight.status, 'bg-secondary text-white') }}">
                                             {{ '{:,}'.format(insight.value).replace(',', '.') }}
                                         </span>
                                     </div>
@@ -140,19 +141,19 @@
             <div class="col-md-6 mb-4">
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
-                        <h3 class="h6 font-weight-bold mb-3">Mendekati kadaluarsa</h3>
+                        <h3 class="h6 fw-bold mb-3">Mendekati kadaluarsa</h3>
                         {% if expiring_products %}
                             <ul class="list-group list-group-flush">
                                 {% for produk in expiring_products %}
                                     <li class="list-group-item px-0 d-flex justify-content-between align-items-start">
                                         <div>
-                                            <div class="font-weight-semibold">{{ produk.nama_produk }}</div>
+                                            <div class="fw-semibold">{{ produk.nama_produk }}</div>
                                             <small class="text-muted d-block">
-                                                <i class="fas fa-barcode mr-1"></i>{{ produk.kode_produk }}
+                                                <i class="fas fa-barcode me-1"></i>{{ produk.kode_produk }}
                                             </small>
                                         </div>
-                                        <div class="text-right">
-                                            <span class="badge badge-danger mb-1">
+                                        <div class="text-end">
+                                            <span class="badge bg-danger mb-1">
                                                 {{ produk.tanggal_expired.strftime('%d %b %Y') }}
                                             </span>
                                             <div class="small text-muted">
@@ -175,10 +176,10 @@
         <div class="sticky-column">
         <div class="card shadow-lg form-card mb-4">
             <div class="card-body">
-                <span class="badge badge-pill badge-primary text-uppercase px-3 py-2" id="productFormBadge" data-default-text="Produk Baru" data-edit-text="Perbarui Produk">
+                <span class="badge rounded-pill bg-primary text-uppercase px-3 py-2" id="productFormBadge" data-default-text="Produk Baru" data-edit-text="Perbarui Produk">
                     {% if edit_produk %}Perbarui Produk{% else %}Produk Baru{% endif %}
                 </span>
-                <h2 class="h5 font-weight-bold mt-3 mb-2">
+                <h2 class="h5 fw-bold mt-3 mb-2">
                     <span id="productFormHeading" data-default-text="Tambah produk ke katalog" data-edit-text="Ubah detail">
                         {% if edit_produk %}
                             Ubah detail
@@ -196,13 +197,13 @@
                     Anda sedang mengedit produk. Simpan perubahan atau <a href="{{ url_for('main.produk') }}" class="alert-link">batalkan untuk kembali menambah produk baru</a>.
                 </div>
 
-                <div class="alert alert-light border small d-flex align-items-start" role="alert">
-                    <i class="fas fa-layer-group text-primary mr-2 mt-1"></i>
+                <div class="alert alert-light border small d-flex align-items-start bg-white text-dark" role="alert" style="box-shadow: 0 4px 18px rgba(15,23,42,0.08);">
+                    <i class="fas fa-layer-group text-primary me-2 mt-1"></i>
                     <div>
                         Data satuan dan kategori diambil dari master. Kelola pilihan baru melalui halaman
-                        <a href="{{ url_for('main.satuan') }}" class="font-weight-semibold">Data Satuan</a>
+                        <a href="{{ url_for('main.satuan') }}" class="fw-semibold">Data Satuan</a>
                         atau
-                        <a href="{{ url_for('main.kategori') }}" class="font-weight-semibold">Data Kategori</a>.
+                        <a href="{{ url_for('main.kategori') }}" class="fw-semibold">Data Kategori</a>.
                     </div>
                 </div>
 
@@ -227,13 +228,13 @@
                         <input type="text" class="form-control" id="nama_produk" name="nama_produk" placeholder="Nama produk" value="{% if form_prefill and form_prefill.nama_produk is not none %}{{ form_prefill.nama_produk }}{% elif edit_produk %}{{ edit_produk.nama_produk }}{% else %}{% endif %}" required>
                     </div>
 
-                    <div class="form-row">
+                    <div class="row g-3">
                         <div class="form-group col-sm-6">
                             <label for="satuan">Satuan</label>
-                            <select class="form-control" id="satuan" name="satuan" required>
+                            <select class="form-select" id="satuan" name="satuan" required>
                                 {% if satuans %}
                                     {% for satuan in satuans %}
-                                        <option value="{{ satuan.id }}" {% if (form_prefill and form_prefill.satuan|int == satuan.id) or (not form_prefill and edit_produk and satuan.id == edit_produk.satuan_id) %}selected{% endif %}>{{ satuan.name }}</option>
+                                        <option value="{{ satuan.id }}" title="{{ satuan.name }}" {% if (form_prefill and form_prefill.satuan|int == satuan.id) or (not form_prefill and edit_produk and satuan.id == edit_produk.satuan_id) %}selected{% endif %}>{{ satuan.name }}</option>
                                     {% endfor %}
                                 {% else %}
                                     <option value="" disabled selected>Belum ada data satuan</option>
@@ -243,10 +244,10 @@
                         </div>
                         <div class="form-group col-sm-6">
                             <label for="kategori">Kategori</label>
-                            <select class="form-control" id="kategori" name="kategori" required>
+                            <select class="form-select" id="kategori" name="kategori" required>
                                 {% if kategoris %}
                                     {% for kategori in kategoris %}
-                                        <option value="{{ kategori.id }}" {% if (form_prefill and form_prefill.kategori|int == kategori.id) or (not form_prefill and edit_produk and kategori.id == edit_produk.kategori_id) %}selected{% endif %}>{{ kategori.name }}</option>
+                                        <option value="{{ kategori.id }}" title="{{ kategori.name }}" {% if (form_prefill and form_prefill.kategori|int == kategori.id) or (not form_prefill and edit_produk and kategori.id == edit_produk.kategori_id) %}selected{% endif %}>{{ kategori.name }}</option>
                                     {% endfor %}
                                 {% else %}
                                     <option value="" disabled selected>Belum ada data kategori</option>
@@ -258,14 +259,14 @@
 
                     <div class="form-group">
                         <label for="supplier">Supplier</label>
-                        <select class="form-control" id="supplier" name="supplier">
+                        <select class="form-select" id="supplier" name="supplier">
                             {% for supplier in suppliers %}
-                                <option value="{{ supplier.id }}" {% if (form_prefill and form_prefill.supplier|int == supplier.id) or (not form_prefill and edit_produk and supplier.id == edit_produk.supplier_id) %}selected{% endif %}>{{ supplier.name }}</option>
+                                <option value="{{ supplier.id }}" title="{{ supplier.name }}" {% if (form_prefill and form_prefill.supplier|int == supplier.id) or (not form_prefill and edit_produk and supplier.id == edit_produk.supplier_id) %}selected{% endif %}>{{ supplier.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
 
-                    <div class="form-row">
+                    <div class="row g-3">
                         <div class="form-group col-sm-6">
                             <label for="berat">Berat (kg)</label>
                             <input type="number" step="0.01" class="form-control" id="berat" name="berat" placeholder="cth. 0.25" value="{% if form_prefill and form_prefill.berat is not none %}{{ form_prefill.berat }}{% elif edit_produk and edit_produk.berat is not none %}{{ edit_produk.berat }}{% else %}{% endif %}">
@@ -282,21 +283,21 @@
                         <small class="form-text text-muted">Opsional: penting untuk produk makanan, kosmetik, dan obat.</small>
                     </div>
 
-                    <div class="price-level-manager border rounded-lg p-3 mb-4">
+                    <div class="price-level-manager border rounded-3 p-3 mb-4">
                         <div class="d-flex align-items-center justify-content-between mb-3">
                             <div>
-                                <h3 class="h6 font-weight-bold mb-1">Level harga produk</h3>
+                                <h3 class="h6 fw-bold mb-1">Level harga produk</h3>
                                 <p class="small text-muted mb-0">Atur harga Retail, marketplace, dan kanal lain dengan cepat.</p>
                             </div>
                             <a href="{{ url_for('main.harga_level') }}" class="btn btn-link btn-sm px-0">
-                                <i class="fas fa-layer-group mr-1"></i>Kelola level
+                                <i class="fas fa-layer-group me-1"></i>Kelola level
                             </a>
                         </div>
                         {% if price_levels %}
-                            <div class="form-row align-items-end">
+                            <div class="row g-3 align-items-end">
                                 <div class="form-group col-sm-6 mb-3 mb-sm-0">
                                     <label for="price_level_selector">Pilih level</label>
-                                    <select class="form-control" id="price_level_selector">
+                                    <select class="form-select" id="price_level_selector">
                                         <option value="">Pilih level</option>
                                         {% for level in price_levels %}
                                             <option value="{{ level.id }}">{{ level.name }}</option>
@@ -308,8 +309,8 @@
                                     <input type="text" class="form-control" id="price_level_value" placeholder="cth. 68.000">
                                 </div>
                             </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm btn-block" id="add_price_level_entry">
-                                <i class="fas fa-plus-circle mr-1"></i>Tambahkan level harga
+                            <button type="button" class="btn btn-outline-primary btn-sm w-100" id="add_price_level_entry">
+                                <i class="fas fa-plus-circle me-1"></i>Tambahkan level harga
                             </button>
                             <div id="price-level-feedback" class="text-danger small mt-2 d-none"></div>
                             <div class="table-responsive mt-3">
@@ -317,8 +318,8 @@
                                     <thead>
                                         <tr>
                                             <th>Level</th>
-                                            <th class="text-right">Harga</th>
-                                            <th class="text-right">Aksi</th>
+                                            <th class="text-end">Harga</th>
+                                            <th class="text-end">Aksi</th>
                                         </tr>
                                     </thead>
                                     <tbody></tbody>
@@ -332,15 +333,15 @@
                         <input type="hidden" name="price_level_payload" id="price_level_payload_input" value="[]">
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-block" id="productFormSubmit" data-default-label="Simpan Produk" data-edit-label="Simpan Perubahan">
+                    <button type="submit" class="btn btn-primary w-100" id="productFormSubmit" data-default-label="Simpan Produk" data-edit-label="Simpan Perubahan">
                         {% if edit_produk %}Simpan Perubahan{% else %}Simpan Produk{% endif %}
                     </button>
                     {% if edit_produk %}
-                        <a href="{{ url_for('main.produk') }}" class="btn btn-light btn-block mt-2">Batalkan edit</a>
+                        <a href="{{ url_for('main.produk') }}" class="btn btn-light w-100 mt-2">Batalkan edit</a>
                     {% else %}
-                        <button type="reset" class="btn btn-outline-secondary btn-block mt-2">Reset form</button>
+                        <button type="reset" class="btn btn-outline-secondary w-100 mt-2">Reset form</button>
                     {% endif %}
-                    <button type="button" class="btn btn-light btn-block mt-2 d-none" id="productCancelEditButton" data-reset-url="{{ url_for('main.produk') }}">
+                    <button type="button" class="btn btn-light w-100 mt-2 d-none" id="productCancelEditButton" data-reset-url="{{ url_for('main.produk') }}">
                         Batalkan edit
                     </button>
 
@@ -353,7 +354,7 @@
 
         <div class="card shadow-sm">
             <div class="card-body">
-                <h3 class="h6 font-weight-bold mb-2">Impor dari Excel</h3>
+                <h3 class="h6 fw-bold mb-2">Impor dari Excel</h3>
                 <p class="small text-muted mb-3">Gunakan file berekstensi .xlsx dengan kolom sesuai template berikut.</p>
                 <div class="table-responsive mb-3">
                     <table class="table table-sm table-striped mb-0">
@@ -367,12 +368,12 @@
                         <tbody>
                             {% for field in product_import_schema %}
                             <tr>
-                                <td class="font-weight-semibold">{{ field.column }}</td>
+                                <td class="fw-semibold">{{ field.column }}</td>
                                 <td>
                                     {% if field.required %}
-                                        <span class="badge badge-danger">Ya</span>
+                                        <span class="badge bg-danger">Ya</span>
                                     {% else %}
-                                        <span class="badge badge-light text-muted">Opsional</span>
+                                        <span class="badge bg-light text-muted">Opsional</span>
                                     {% endif %}
                                 </td>
                                 <td class="small text-muted">{{ field.description }}</td>
@@ -381,27 +382,65 @@
                         </tbody>
                     </table>
                 </div>
-                <form action="{{ url_for('main.import_produk') }}" method="POST" enctype="multipart/form-data">
+                <form action="{{ url_for('main.import_produk') }}" method="POST" enctype="multipart/form-data" id="produkImportForm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="custom-file">
-                        <input type="file" class="custom-file-input" id="importFile" name="file" accept=".xls,.xlsx" required>
-                        <label class="custom-file-label" for="importFile">Pilih file Excel</label>
-                    </div>
+                    <label for="importFile" class="form-label mb-1">File Excel</label>
+                    <input type="file" class="form-control" id="importFile" name="file" accept=".xls,.xlsx" required>
                     <small id="import-file-name" class="text-muted d-block mt-2">Belum ada file dipilih.</small>
-                    <button type="submit" class="btn btn-outline-primary btn-block mt-3">
-                        <i class="fas fa-file-import mr-2"></i>Impor data
+                    <button type="submit" class="btn btn-outline-primary w-100 mt-3" id="produkImportSubmit">
+                        <i class="fas fa-file-import me-2"></i>Impor data
                     </button>
+                    <div class="mt-3 d-none" id="importProgressWrapper">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small text-muted">Mengunggah & memproses file...</span>
+                            <span class="small fw-semibold" id="importProgressLabel">0%</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%;" id="importProgressBar" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <small class="text-muted d-block mt-2" id="importProgressMessage">Menyiapkan import...</small>
+                    </div>
                 </form>
                 <a href="{{ url_for('main.export_produk') }}" class="btn btn-link btn-sm px-0 mt-3">
-                    <i class="fas fa-download mr-1"></i>Unduh backup produk terbaru
+                    <i class="fas fa-download me-1"></i>Unduh backup produk terbaru
                 </a>
             </div>
         </div>
         </div>
     </div>
 </div>
+</div>
 
 <style>
+    .adminkit-products {
+        --ak-card-border: rgba(15, 23, 42, 0.08);
+        --ak-card-shadow: 0 0.25rem 0.75rem rgba(15, 23, 42, 0.08);
+        --ak-muted: #6b7280;
+        --ak-head: #0f172a;
+        --ak-primary: #3b7ddd;
+        --ak-primary-contrast: #1d4ed8;
+    }
+    .adminkit-products .ak-breadcrumb {
+        background: transparent;
+        padding: 0;
+        font-size: 0.9rem;
+    }
+    .adminkit-products .breadcrumb-item + .breadcrumb-item::before {
+        content: "›";
+        color: var(--ak-muted);
+    }
+    .adminkit-products .card {
+        border-radius: 14px;
+        border: 1px solid var(--ak-card-border);
+        box-shadow: var(--ak-card-shadow);
+    }
+    .adminkit-products .card-header {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    }
+    .adminkit-products .ak-actions .btn {
+        border-radius: 999px;
+    }
     .hero-card {
         border-radius: 20px;
         padding: 2.5rem 2rem;
@@ -415,39 +454,65 @@
     .text-white-75 {
         color: rgba(255, 255, 255, 0.75) !important;
     }
-    .font-weight-semibold {
-        font-weight: 600;
-    }
     .stat-card {
-        border-radius: 18px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: 0 0.35rem 1rem rgba(15, 23, 42, 0.08);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
     .stat-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 18px 35px rgba(15, 23, 42, 0.12);
+        transform: translateY(-2px);
+        box-shadow: 0 0.6rem 1.4rem rgba(15, 23, 42, 0.12);
     }
     .stat-card .stat-icon {
-        font-size: 1.75rem;
+        font-size: 1.4rem;
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(15, 23, 42, 0.06);
+        color: #0f172a;
+    }
+    .stat-card .stat-icon.text-primary {
+        background: rgba(59, 125, 221, 0.14);
+        color: #3b7ddd;
+    }
+    .stat-card .stat-icon.text-success {
+        background: rgba(16, 185, 129, 0.14);
+        color: #059669;
+    }
+    .stat-card .stat-icon.text-warning {
+        background: rgba(245, 158, 11, 0.18);
+        color: #b45309;
+    }
+    .stat-card .stat-icon.text-info {
+        background: rgba(14, 165, 233, 0.14);
+        color: #0284c7;
     }
     .stat-card .stat-value {
-        font-size: 1.85rem;
+        font-size: 1.7rem;
         font-weight: 700;
     }
     .card-panel {
-        border-radius: 18px;
+        border-radius: 14px;
     }
-    .table-modern thead th {
+    .adminkit-products .ak-table thead th {
+        font-size: 0.8rem;
         text-transform: uppercase;
-        font-size: 0.75rem;
-        letter-spacing: 0.08em;
-        border-bottom: 2px solid rgba(15, 23, 42, 0.08);
+        letter-spacing: 0.06em;
+        color: #475569;
+        border-top: none;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+        background: #f8fafc;
         white-space: nowrap;
     }
-    .table-modern tbody td {
+    .adminkit-products .ak-table tbody td {
         vertical-align: middle;
     }
-    .table-modern tbody tr:hover {
-        background-color: rgba(37, 99, 235, 0.04);
+    .adminkit-products .ak-table tbody tr:hover {
+        background-color: rgba(59, 125, 221, 0.06);
     }
     .empty-icon {
         width: 72px;
@@ -460,6 +525,14 @@
     }
     .form-card {
         border-radius: 20px;
+    }
+    select.form-control,
+    select.custom-select {
+        min-height: 46px;
+    }
+    select.form-control option,
+    select.custom-select option {
+        white-space: normal;
     }
     .sticky-column {
         position: sticky;
@@ -571,13 +644,6 @@
         transform: translateY(-2px);
         box-shadow: 0 14px 24px rgba(15, 23, 42, 0.16);
     }
-    .custom-file-label {
-        border-radius: 12px;
-    }
-    .custom-file-input:focus ~ .custom-file-label {
-        box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.25);
-        border-color: rgba(37, 99, 235, 0.4);
-    }
     .price-level-manager {
         background: #f8fafc;
         border-radius: 16px;
@@ -590,8 +656,8 @@
         gap: 0.35rem;
     }
     .badge-soft-primary {
-        background-color: rgba(37, 99, 235, 0.12);
-        color: #1d4ed8;
+        background-color: rgba(59, 125, 221, 0.14);
+        color: var(--ak-primary-contrast);
         font-weight: 600;
         border-radius: 999px;
         padding: 0.35rem 0.75rem;
@@ -738,13 +804,13 @@
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td><span class="badge badge-soft-primary">${entry.level_name}</span></td>
-                        <td class="text-right font-weight-semibold">${formatCurrency(entry.price)}</td>
-                        <td class="text-right">
-                            <button type="button" class="btn btn-link btn-sm p-0 pr-2 price-level-edit text-primary" data-level-id="${entry.level_id}">
-                                <i class="fas fa-edit mr-1"></i>Edit
+                        <td class="text-end fw-semibold">${formatCurrency(entry.price)}</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-link btn-sm p-0 pe-2 price-level-edit text-primary" data-level-id="${entry.level_id}">
+                                <i class="fas fa-edit me-1"></i>Edit
                             </button>
                             <button type="button" class="btn btn-link btn-sm p-0 text-danger price-level-remove" data-level-id="${entry.level_id}">
-                                <i class="fas fa-trash mr-1"></i>Hapus
+                                <i class="fas fa-trash me-1"></i>Hapus
                             </button>
                         </td>
                     `;
@@ -834,31 +900,20 @@
 </script>
 
 <script>
-    if (window.jQuery && typeof window.jQuery.fn.tooltip === 'function') {
-        $('[data-toggle="tooltip"]').tooltip();
-    }
-
     document.addEventListener('change', function (event) {
-        if (!event.target.classList.contains('custom-file-input')) {
+        if (!event.target || event.target.id !== 'importFile') {
             return;
         }
         var input = event.target;
-        var label = input.nextElementSibling;
         var helper = document.getElementById('import-file-name');
         if (input.files && input.files.length > 0) {
             var fileName = input.files[0].name;
-            if (label) {
-                label.textContent = fileName;
-            }
             if (helper) {
                 helper.textContent = fileName;
                 helper.classList.remove('text-muted');
                 helper.classList.add('text-primary');
             }
         } else {
-            if (label) {
-                label.textContent = 'Pilih file Excel';
-            }
             if (helper) {
                 helper.textContent = 'Belum ada file dipilih.';
                 helper.classList.add('text-muted');
@@ -870,6 +925,68 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const importForm = document.getElementById('produkImportForm');
+        const importButton = document.getElementById('produkImportSubmit');
+        const importButtonDefaultHtml = importButton ? importButton.innerHTML : '';
+        const importProgressWrapper = document.getElementById('importProgressWrapper');
+        const importProgressBar = document.getElementById('importProgressBar');
+        const importProgressLabel = document.getElementById('importProgressLabel');
+        const importProgressMessage = document.getElementById('importProgressMessage');
+        const importFileInput = document.getElementById('importFile');
+        let importTimer = null;
+
+        const updateImportProgress = (value, message) => {
+            if (importProgressWrapper) {
+                importProgressWrapper.classList.remove('d-none');
+            }
+            if (!importProgressBar || !importProgressLabel) return;
+            const safeValue = Math.max(0, Math.min(100, Math.round(value)));
+            importProgressBar.style.width = `${safeValue}%`;
+            importProgressBar.setAttribute('aria-valuenow', String(safeValue));
+            importProgressLabel.textContent = `${safeValue}%`;
+            if (importProgressMessage && message) {
+                importProgressMessage.textContent = message;
+            }
+        };
+
+        const resetImportButton = () => {
+            if (importButton) {
+                importButton.disabled = false;
+                importButton.innerHTML = importButtonDefaultHtml;
+            }
+        };
+
+        const startOptimisticProgress = () => {
+            if (importButton) {
+                importButton.disabled = true;
+                importButton.innerHTML =
+                    '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Memproses import...';
+            }
+            updateImportProgress(5, 'Mengunggah file...');
+
+            if (importTimer) {
+                clearInterval(importTimer);
+            }
+
+            let current = 5;
+            importTimer = setInterval(() => {
+                current = Math.min(current + Math.random() * 12 + 8, 90);
+                updateImportProgress(current, 'Memproses data...');
+                if (current >= 90) {
+                    clearInterval(importTimer);
+                }
+            }, 400);
+        };
+
+        if (importForm) {
+            importForm.addEventListener('submit', function () {
+                if (!importFileInput || !importFileInput.files || !importFileInput.files.length) {
+                    return;
+                }
+                startOptimisticProgress();
+            });
+        }
+
         const filterForm = document.querySelector('.filter-form');
         const tableContainer = document.getElementById('productTableContainer');
         if (!filterForm || !tableContainer) return;

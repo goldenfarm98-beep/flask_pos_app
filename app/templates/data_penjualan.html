@@ -24,7 +24,7 @@
                     <div class="card-body">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <span class="stat-icon {{ card.accent }}"><i class="fas {{ card.icon }}"></i></span>
-                            <span class="badge badge-light text-uppercase font-weight-semibold">{{ card.label }}</span>
+                            <span class="badge badge-pill badge-soft-primary text-uppercase font-weight-semibold px-3">{{ card.label }}</span>
                         </div>
                         <div class="stat-value mb-1">
                             {% if card.type == 'currency' %}
@@ -314,13 +314,13 @@
         <div class="col-xl-4">
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
-                    <h3 class="h6 font-weight-bold mb-3">Insight periode ini</h3>
+                    <h3 class="h6 font-weight-bold mb-3 text-primary" style="font-size: 1.05rem;">Insight periode ini</h3>
                     <ul class="list-unstyled mb-0">
                         {% for insight in insight_cards %}
                             <li class="mb-3">
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <span class="font-weight-semibold">{{ insight.title }}</span>
-                                    <span class="badge badge-pill badge-light">
+                                    <span class="font-weight-semibold" style="font-size: 1.05rem;">{{ insight.title }}</span>
+                                    <span class="badge badge-pill badge-soft-primary px-3 py-2" style="font-size: 0.95rem;">
                                         {% if insight.type == 'currency' %}
                                             {{ ('Rp {:,.0f}'.format(insight.value)).replace(',', '.') }}
                                         {% elif insight.type == 'text' %}
@@ -339,17 +339,17 @@
 
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
-                    <h3 class="h6 font-weight-bold mb-3">Performa sales</h3>
+                    <h3 class="h6 font-weight-bold mb-3 text-success" style="font-size: 1.05rem;">Performa sales</h3>
                     {% if top_sales %}
                         <ul class="list-group list-group-flush">
                             {% for sales in top_sales %}
                                 <li class="list-group-item px-0">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
-                                            <div class="font-weight-semibold">{{ sales.name }}</div>
+                                            <div class="font-weight-semibold" style="font-size: 1.05rem;">{{ sales.name }}</div>
                                             <small class="text-muted">{{ sales.orders }} transaksi</small>
                                         </div>
-                                        <span class="font-weight-semibold text-primary">
+                                        <span class="badge badge-pill badge-soft-success px-3 py-2" style="font-size: 0.95rem;">
                                             {{ ('Rp {:,.0f}'.format(sales.total)).replace(',', '.') }}
                                         </span>
                                     </div>
@@ -364,16 +364,16 @@
 
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
-                    <h3 class="h6 font-weight-bold mb-3">Produk terlaris</h3>
+                    <h3 class="h6 font-weight-bold mb-3 text-warning" style="font-size: 1.05rem;">Produk terlaris</h3>
                     {% if top_products %}
                         <ul class="list-group list-group-flush">
                             {% for product in top_products %}
                                 <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
                                     <div>
-                                        <div class="font-weight-semibold">{{ product.name }}</div>
+                                        <div class="font-weight-semibold" style="font-size: 1.05rem;">{{ product.name }}</div>
                                         <small class="text-muted">{{ product.qty }} unit</small>
                                     </div>
-                                    <span class="font-weight-semibold">
+                                    <span class="badge badge-pill badge-soft-warning px-3 py-2" style="font-size: 0.95rem;">
                                         {{ ('Rp {:,.0f}'.format(product.total)).replace(',', '.') }}
                                     </span>
                                 </li>
@@ -387,17 +387,17 @@
 
             <div class="card shadow-sm">
                 <div class="card-body">
-                    <h3 class="h6 font-weight-bold mb-3">Ringkasan harian</h3>
+                    <h3 class="h6 font-weight-bold mb-3 text-info" style="font-size: 1.05rem;">Ringkasan harian</h3>
                     {% if daily_summary %}
                         <ul class="list-unstyled mb-0">
                             {% for day in daily_summary %}
                                 <li class="mb-3">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
-                                            <div class="font-weight-semibold">{{ day.label }}</div>
+                                            <div class="font-weight-semibold" style="font-size: 1.05rem;">{{ day.label }}</div>
                                             <small class="text-muted">{{ day.orders }} transaksi</small>
                                         </div>
-                                        <span class="font-weight-semibold text-dark">
+                                        <span class="badge badge-pill badge-soft-info px-3 py-2" style="font-size: 0.95rem;">
                                             {{ ('Rp {:,.0f}'.format(day.total)).replace(',', '.') }}
                                         </span>
                                     </div>
@@ -458,6 +458,21 @@
         background: rgba(37, 99, 235, 0.12);
         color: #1d4ed8;
         font-weight: 600;
+    }
+    .badge-soft-success {
+        background: rgba(22, 163, 74, 0.14);
+        color: #15803d;
+        font-weight: 650;
+    }
+    .badge-soft-warning {
+        background: rgba(234, 179, 8, 0.16);
+        color: #b45309;
+        font-weight: 650;
+    }
+    .badge-soft-info {
+        background: rgba(14, 165, 233, 0.14);
+        color: #0ea5e9;
+        font-weight: 650;
     }
     .sale-detail {
         background: #f8fafc;

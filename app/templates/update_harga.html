@@ -24,7 +24,7 @@
 
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <div class="card shadow-sm border-0 mb-4">
+    <div class="card shadow-sm border-0 mb-4 bg-gradient-light">
         <div class="card-body">
             <div class="d-flex flex-column flex-md-row align-items-md-center mb-3">
                 <div class="flex-fill mr-md-3 w-100">
@@ -38,7 +38,7 @@
                 </div>
                 <div class="mt-3 mt-md-0">
                     <label class="small text-muted text-uppercase mb-1">&nbsp;</label>
-                    <button class="btn btn-primary btn-lg" id="submit-updates">
+                    <button class="btn btn-primary btn-lg shadow" id="submit-updates">
                         <i class="fas fa-save mr-2"></i>Simpan Perubahan
                     </button>
                 </div>
@@ -98,7 +98,7 @@
         </div>
     </div>
 
-    <div class="card shadow-sm border-0">
+    <div class="card shadow-sm border-0 bg-gradient-light">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div>
@@ -270,9 +270,18 @@
 
 <style>
     .price-update .eyebrow {
-        letter-spacing: 0.25em;
-        font-size: 0.75rem;
-        color: #94a3b8;
+        letter-spacing: 0.16em;
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+
+    .price-update {
+        font-size: 1.03rem;
+    }
+
+    .price-update .table th,
+    .price-update .table td {
+        font-size: 0.98rem;
     }
 
     .price-update .text-navy {
@@ -281,6 +290,7 @@
 
     .update-hero {
         border-radius: 22px;
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(244, 63, 94, 0.08), rgba(16, 185, 129, 0.10));
     }
 
     .state-pill {
@@ -304,6 +314,10 @@
 
     .price-update table td {
         vertical-align: middle;
+    }
+
+    .bg-gradient-light {
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.02), rgba(37, 99, 235, 0.04));
     }
 </style>
 {% endblock %}

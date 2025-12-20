@@ -8,303 +8,600 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/adminkit/app.css') }}">
+    {% block extra_head %}{% endblock %}
     <style>
-        :root {
-            --primary-500: #2563eb;
-            --primary-600: #1d4ed8;
-            --slate-50: #f8fafc;
-            --slate-800: #1e293b;
+        /* Bootstrap 4 compatibility layer (minimal) so existing templates keep working on Bootstrap 5/AdminKit. */
+        .mr-0 { margin-right: 0 !important; } .mr-1 { margin-right: .25rem !important; } .mr-2 { margin-right: .5rem !important; } .mr-3 { margin-right: 1rem !important; } .mr-4 { margin-right: 1.5rem !important; } .mr-5 { margin-right: 3rem !important; }
+        .ml-0 { margin-left: 0 !important; } .ml-1 { margin-left: .25rem !important; } .ml-2 { margin-left: .5rem !important; } .ml-3 { margin-left: 1rem !important; } .ml-4 { margin-left: 1.5rem !important; } .ml-5 { margin-left: 3rem !important; }
+        .mr-auto { margin-right: auto !important; }
+        .ml-auto { margin-left: auto !important; }
+        .pr-0 { padding-right: 0 !important; } .pr-1 { padding-right: .25rem !important; } .pr-2 { padding-right: .5rem !important; } .pr-3 { padding-right: 1rem !important; } .pr-4 { padding-right: 1.5rem !important; } .pr-5 { padding-right: 3rem !important; }
+        .pl-0 { padding-left: 0 !important; } .pl-1 { padding-left: .25rem !important; } .pl-2 { padding-left: .5rem !important; } .pl-3 { padding-left: 1rem !important; } .pl-4 { padding-left: 1.5rem !important; } .pl-5 { padding-left: 3rem !important; }
+        .text-left { text-align: left !important; } .text-right { text-align: right !important; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+        .badge-pill { border-radius: 50rem !important; }
+        .btn-block { display: block; width: 100%; }
+        .font-weight-bold { font-weight: 700 !important; }
+        .font-weight-semibold { font-weight: 600 !important; }
+        .font-weight-normal { font-weight: 400 !important; }
+        .no-gutters { margin-right: 0; margin-left: 0; }
+        .no-gutters > .col, .no-gutters > [class*="col-"] { padding-right: 0; padding-left: 0; }
+        .form-row { display: flex; flex-wrap: wrap; margin-right: -0.5rem; margin-left: -0.5rem; }
+        .form-row > .col, .form-row > [class*="col-"] { padding-right: 0.5rem; padding-left: 0.5rem; }
+        .input-group-prepend, .input-group-append { display: flex; }
+        .border-left-0 { border-left: 0 !important; } .border-right-0 { border-right: 0 !important; } .border-top-0 { border-top: 0 !important; } .border-bottom-0 { border-bottom: 0 !important; }
+        .dropdown-menu-right { right: 0; left: auto; }
+        .badge-primary { background-color: var(--bs-primary) !important; color: #fff !important; }
+        .badge-secondary { background-color: var(--bs-secondary) !important; color: #fff !important; }
+        .badge-success { background-color: var(--bs-success) !important; color: #fff !important; }
+        .badge-danger { background-color: var(--bs-danger) !important; color: #fff !important; }
+        .badge-warning { background-color: var(--bs-warning) !important; color: #111827 !important; }
+        .badge-info { background-color: var(--bs-info) !important; color: #fff !important; }
+        .badge-light { background-color: var(--bs-light) !important; color: #111827 !important; }
+        .badge-dark { background-color: var(--bs-dark) !important; color: #fff !important; }
+        .badge-soft-primary { background: rgba(59, 125, 221, 0.16) !important; color: #2f64b1 !important; font-weight: 600; }
+        /* Pagination (AdminKit build doesn't ship Bootstrap pagination styles). */
+        .pagination {
+            display: flex;
+            flex-wrap: wrap;
+            padding-left: 0;
+            margin-bottom: 0;
+            list-style: none;
+            gap: 0.25rem;
         }
-        body {
-            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-            background: var(--slate-50);
-            color: var(--slate-800);
-            min-height: 100vh;
+        .page-item {
+            display: block;
+        }
+        .page-link {
+            position: relative;
+            display: block;
+            padding: 0.375rem 0.75rem;
+            color: var(--bs-link-color);
+            background-color: #fff;
+            border: 1px solid var(--bs-border-color);
+            border-radius: var(--bs-border-radius);
+            text-decoration: none;
+        }
+        .page-link:hover {
+            color: var(--bs-link-hover-color);
+            background-color: rgba(59, 125, 221, 0.06);
+            border-color: rgba(59, 125, 221, 0.35);
+        }
+        .page-item.active .page-link {
+            z-index: 3;
+            color: #fff;
+            background-color: var(--bs-primary);
+            border-color: var(--bs-primary);
+        }
+        .page-item.disabled .page-link {
+            color: rgba(73, 80, 87, 0.55);
+            pointer-events: none;
+            background-color: #fff;
+            border-color: var(--bs-border-color);
+            opacity: 0.75;
+        }
+        .pagination-sm .page-link {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            border-radius: var(--bs-border-radius-sm);
+        }
+        /* Breadcrumb (AdminKit build doesn't ship Bootstrap breadcrumb styles). */
+        .breadcrumb {
+            display: flex;
+            flex-wrap: wrap;
+            padding: 0;
+            margin: 0;
+            list-style: none;
+        }
+        .breadcrumb-item {
+            display: inline-flex;
+            align-items: center;
+            color: rgba(73, 80, 87, 0.85);
+        }
+        .breadcrumb-item + .breadcrumb-item::before {
+            content: "/";
+            padding: 0 0.5rem;
+            color: rgba(73, 80, 87, 0.55);
+        }
+        .breadcrumb-item.active {
+            color: rgba(73, 80, 87, 0.7);
+        }
+        .custom-select {
+            display: block;
+            width: 100%;
+            padding: 0.375rem 2.25rem 0.375rem 0.75rem;
+            line-height: 1.5;
+            color: var(--bs-body-color);
+            background-color: var(--bs-body-bg);
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 16px 12px;
+            border: 1px solid var(--bs-border-color);
+            border-radius: var(--bs-border-radius);
+            appearance: none;
+        }
+        .custom-select:focus {
+            border-color: rgba(59, 125, 221, 0.6);
+            outline: 0;
+            box-shadow: 0 0 0 0.25rem rgba(59, 125, 221, 0.18);
+        }
+        .custom-select-lg {
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            padding-left: 1rem;
+            border-radius: var(--bs-border-radius-lg);
+        }
+        .custom-file { position: relative; display: block; width: 100%; }
+        .custom-file-input { width: 100%; }
+        .custom-file-label { display: block; padding: .375rem .75rem; border: 1px solid rgba(0,0,0,.15); border-radius: .25rem; background: #fff; }
+        .close { background: transparent; border: 0; font-size: 1.25rem; line-height: 1; opacity: .5; }
+        .close:hover { opacity: .75; }
+
+        /* Modern toast flash notifications */
+        .flash-toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 2000;
             display: flex;
             flex-direction: column;
+            gap: 0.75rem;
+            width: min(420px, calc(100vw - 2rem));
+            pointer-events: none;
         }
-        .navbar {
-            padding: 0.85rem 0;
+        .flash-toast {
+            pointer-events: auto;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.85rem 0.95rem;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+            backdrop-filter: blur(10px);
+            transform: translateY(-6px);
+            opacity: 0;
+            transition: transform 180ms ease, opacity 180ms ease;
+            position: relative;
+            overflow: hidden;
         }
-        .navbar .dropdown-menu {
-            border-radius: 16px;
-            border: none;
-            min-width: 14rem;
-            padding: 0.75rem;
+        .flash-toast.is-visible {
+            transform: translateY(0);
+            opacity: 1;
         }
-        .navbar .dropdown-item {
-            border-radius: 8px;
-            font-weight: 500;
-            padding: 0.35rem 0.75rem;
+        .flash-toast.is-hiding {
+            transform: translateY(-6px);
+            opacity: 0;
         }
-        .navbar .dropdown-item.active,
-        .navbar .dropdown-item:active {
-            background-color: rgba(37, 99, 235, 0.1);
-            color: var(--primary-600);
-        }
-        .mega-dropdown.active > a,
-        .mega-dropdown:hover > a {
-            color: #fff;
-        }
-        .navbar-brand {
-            font-weight: 600;
-            letter-spacing: 0.01em;
-        }
-        .nav-link .icon {
-            margin-right: 0.45rem;
-        }
-        @media (min-width: 992px) {
-            .nav-main {
-                flex-wrap: nowrap;
-                gap: 0.25rem;
-            }
-            .nav-main .nav-link {
-                white-space: nowrap;
-                padding-left: 0.75rem;
-                padding-right: 0.75rem;
-            }
-        }
-        .avatar-circle {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.2);
-            color: #fff;
+        .flash-toast .toast-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            flex: 0 0 auto;
+            color: #0f172a;
+            background: rgba(15, 23, 42, 0.06);
+        }
+        .flash-toast .toast-body {
+            min-width: 0;
+            flex: 1 1 auto;
+            color: #0f172a;
+            line-height: 1.35;
+            font-size: 0.95rem;
+        }
+        .flash-toast .toast-title {
             font-weight: 700;
+            margin-bottom: 0.1rem;
+            font-size: 0.95rem;
         }
-        .user-dropdown .dropdown-toggle {
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            white-space: nowrap;
+        .flash-toast .toast-message {
+            opacity: 0.9;
+            word-break: break-word;
         }
-        .user-menu {
-            min-width: 16rem;
+        .flash-toast .toast-close {
+            pointer-events: auto;
+            border: 0;
+            background: transparent;
+            padding: 0.15rem 0.25rem;
+            color: rgba(15, 23, 42, 0.55);
+            position: absolute;
+            top: 0.35rem;
+            right: 0.4rem;
         }
-        .user-menu .avatar-circle {
-            background: #1d4ed8;
-            color: #fff;
+        .flash-toast .toast-close:hover {
+            color: rgba(15, 23, 42, 0.9);
         }
-        .user-dropdown .user-name {
-            max-width: 140px;
-            display: inline-block;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        .flash-toast .toast-progress {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            height: 3px;
+            width: 100%;
+            background: rgba(15, 23, 42, 0.06);
         }
-        .hero-gradient {
-            background: linear-gradient(140deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
-            color: #f8fafc;
+        .flash-toast .toast-progress > span {
+            display: block;
+            height: 100%;
+            width: 100%;
+            transform-origin: left;
+            background: rgba(59, 125, 221, 0.55);
         }
-        .flash-stack > .alert {
-            box-shadow: 0 15px 30px rgba(15, 23, 42, 0.08);
-            border-radius: 12px;
-        }
-        footer {
-            background: #0f172a;
-            color: #e2e8f0;
-        }
-        footer a {
-            color: #cbd5f5;
-        }
+        .flash-toast.toast-success .toast-icon { background: rgba(28, 187, 140, 0.14); color: #0b4b38; }
+        .flash-toast.toast-success .toast-progress > span { background: rgba(28, 187, 140, 0.65); }
+        .flash-toast.toast-danger .toast-icon { background: rgba(220, 53, 69, 0.12); color: #58151c; }
+        .flash-toast.toast-danger .toast-progress > span { background: rgba(220, 53, 69, 0.65); }
+        .flash-toast.toast-warning .toast-icon { background: rgba(252, 185, 44, 0.18); color: #654a12; }
+        .flash-toast.toast-warning .toast-progress > span { background: rgba(252, 185, 44, 0.75); }
+        .flash-toast.toast-info .toast-icon { background: rgba(23, 162, 184, 0.14); color: #09414a; }
+        .flash-toast.toast-info .toast-progress > span { background: rgba(23, 162, 184, 0.65); }
     </style>
 </head>
 <body>
-    <header class="shadow-sm">
-        {% set current = request.endpoint or '' %}
-        {% if session.get('user_id') %}
-            {% set primary_links = [
-                {'label': 'Dashboard', 'endpoint': 'main.dashboard', 'icon': 'fa-chart-line', 'active_prefix': 'main.dashboard'}
-            ] %}
-            {% set grouped_links = [
-                {
-                    'label': 'Master Data',
-                    'icon': 'fa-database',
-                    'links': [
-                        {'label': 'Produk', 'endpoint': 'main.produk', 'active_prefix': 'main.produk'},
-                        {'label': 'Pelanggan', 'endpoint': 'main.pelanggan', 'active_prefix': 'main.pelanggan'},
-                        {'label': 'Supplier', 'endpoint': 'main.supplier', 'active_prefix': 'main.supplier'},
-                        {'label': 'Level Harga', 'endpoint': 'main.harga_level', 'active_prefix': 'main.harga_level'}
-                    ]
-                },
-                {
-                    'label': 'Maintenance',
-                    'icon': 'fa-tools',
-                    'links': [
-                        {'label': 'Update Harga', 'endpoint': 'main.update_harga', 'active_prefix': 'main.update_harga'},
-                        {'label': 'Stok Opname', 'endpoint': 'main.stok_opname', 'active_prefix': 'main.stok_opname'},
-                        {'label': 'Status Server', 'endpoint': 'main.status', 'active_prefix': 'main.status'}
-                    ]
-                },
-                {
-                    'label': 'Transaksi',
-                    'icon': 'fa-exchange-alt',
-                    'links': [
-                        {'label': 'Penjualan', 'endpoint': 'main.penjualan', 'active_prefix': 'main.penjualan'},
-                        {'label': 'Pembelian', 'endpoint': 'main.pembelian', 'active_prefix': 'main.pembelian'},
-                        {'label': 'Data Penjualan', 'endpoint': 'main.data_penjualan', 'active_prefix': 'main.data_penjualan'}
-                    ]
-                },
-                {
-                    'label': 'Keuangan',
-                    'icon': 'fa-wallet',
-                    'links': [
-                        {'label': 'Data Akun', 'endpoint': 'main.akun', 'active_prefix': 'main.akun'},
-                        {'label': 'Jurnal Umum', 'endpoint': 'main.jurnal', 'active_prefix': 'main.jurnal'},
-                        {'label': 'COGS Otomatis', 'endpoint': 'main.accounting_settings', 'active_prefix': 'main.accounting_settings'},
-                        {'label': 'Tutup Buku', 'endpoint': 'main.close_books', 'active_prefix': 'main.close_books'}
-                    ]
-                },
-                {
-                    'label': 'Tim',
-                    'icon': 'fa-users-cog',
-                    'links': [
-                        {'label': 'Sales & Kasir', 'endpoint': 'main.sales_staff', 'active_prefix': 'main.sales_staff'}
-                    ]
-                }
-            ] %}
-        {% else %}
-            {% set primary_links = [
-                {'label': 'Tentang', 'endpoint': 'main.about', 'icon': 'fa-info-circle', 'active_prefix': 'main.about'}
-            ] %}
-            {% set grouped_links = [] %}
-        {% endif %}
+    {% set current = request.endpoint or '' %}
+    {% if session.get('user_id') %}
+        {% set primary_links = [
+            {'label': 'Dashboard', 'endpoint': 'main.dashboard', 'icon': 'fa-tachometer-alt', 'active_prefix': 'main.dashboard'},
+            {'label': 'Penjualan', 'endpoint': 'main.penjualan', 'icon': 'fa-cash-register', 'active_prefix': 'main.penjualan'},
+            {'label': 'Pembelian', 'endpoint': 'main.pembelian', 'icon': 'fa-shopping-cart', 'active_prefix': 'main.pembelian'}
+        ] %}
+        {% set grouped_links = [
+            {
+                'label': 'Master Data',
+                'icon': 'fa-database',
+                'links': [
+                    {'label': 'Produk', 'endpoint': 'main.produk', 'active_prefix': 'main.produk'},
+                    {'label': 'Pelanggan', 'endpoint': 'main.pelanggan', 'active_prefix': 'main.pelanggan'},
+                    {'label': 'Supplier', 'endpoint': 'main.supplier', 'active_prefix': 'main.supplier'},
+                    {'label': 'Satuan', 'endpoint': 'main.satuan', 'active_prefix': 'main.satuan'},
+                    {'label': 'Kategori', 'endpoint': 'main.kategori', 'active_prefix': 'main.kategori'},
+                    {'label': 'Level Harga', 'endpoint': 'main.harga_level', 'active_prefix': 'main.harga_level'}
+                ]
+            },
+            {
+                'label': 'Laporan',
+                'icon': 'fa-chart-pie',
+                'links': [
+                    {'label': 'Laporan Supplier', 'endpoint': 'main.laporan_supplier', 'active_prefix': 'main.laporan_supplier'},
+                    {'label': 'Laporan Penjualan', 'endpoint': 'main.laporan_penjualan_report', 'active_prefix': 'main.laporan_penjualan_report'},
+                    {'label': 'Laporan Pembelian', 'endpoint': 'main.laporan_pembelian', 'active_prefix': 'main.laporan_pembelian'},
+                    {'label': 'Laporan Stok Opname', 'endpoint': 'main.laporan_stok_opname', 'active_prefix': 'main.laporan_stok_opname'},
+                    {'label': 'Laporan Stok Barang', 'endpoint': 'main.laporan_stok_barang', 'active_prefix': 'main.laporan_stok_barang'},
+                    {'label': 'Laporan Laba Rugi', 'endpoint': 'main.laporan_laba_rugi', 'active_prefix': 'main.laporan_laba_rugi'}
+                ]
+            },
+            {
+                'label': 'Maintenance',
+                'icon': 'fa-tools',
+                'links': [
+                    {'label': 'Update Harga', 'endpoint': 'main.update_harga', 'active_prefix': 'main.update_harga'},
+                    {'label': 'Stok Opname', 'endpoint': 'main.stok_opname', 'active_prefix': 'main.stok_opname'},
+                    {'label': 'Status Server', 'endpoint': 'main.status', 'active_prefix': 'main.status'}
+                ]
+            },
+            {
+                'label': 'Keuangan',
+                'icon': 'fa-wallet',
+                'links': [
+                    {'label': 'Data Akun', 'endpoint': 'main.akun', 'active_prefix': 'main.akun'},
+                    {'label': 'Jurnal Umum', 'endpoint': 'main.jurnal', 'active_prefix': 'main.jurnal'},
+                    {'label': 'COGS Otomatis', 'endpoint': 'main.accounting_settings', 'active_prefix': 'main.accounting_settings'},
+                    {'label': 'Tutup Buku', 'endpoint': 'main.close_books', 'active_prefix': 'main.close_books'}
+                ]
+            },
+            {
+                'label': 'Tim',
+                'icon': 'fa-users-cog',
+                'links': [
+                    {'label': 'Sales & Kasir', 'endpoint': 'main.sales_staff', 'active_prefix': 'main.sales_staff'}
+                ]
+            }
+        ] %}
+    {% else %}
+        {% set primary_links = [
+            {'label': 'Beranda', 'endpoint': 'main.index', 'icon': 'fa-home', 'active_prefix': 'main.index'},
+            {'label': 'Tentang', 'endpoint': 'main.about', 'icon': 'fa-info-circle', 'active_prefix': 'main.about'}
+        ] %}
+        {% set grouped_links = [] %}
+    {% endif %}
 
-        <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-            <div class="container">
-                <a class="navbar-brand" href="{{ url_for('main.index') }}">
-                    <i class="fas fa-store-alt mr-2"></i>Kasir Pintar
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar js-sidebar">
+            <div class="sidebar-content js-simplebar">
+                <a class="sidebar-brand" href="{{ url_for('main.dashboard') if session.get('user_id') else url_for('main.index') }}">
+                    <span class="align-middle">Kasir Pintar</span>
                 </a>
-                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarMain" aria-controls="navbarMain" aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
 
-                <div class="collapse navbar-collapse" id="navbarMain">
-                    <ul class="navbar-nav nav-main mr-auto align-items-lg-center">
-                        {% for item in primary_links %}
-                            {% set is_active = current.startswith(item.active_prefix) %}
-                            <li class="nav-item {% if is_active %}active{% endif %}">
-                                <a class="nav-link {% if is_active %}font-weight-bold{% endif %}" href="{{ url_for(item.endpoint) }}">
-                                    <i class="icon fas {{ item.icon }}"></i>{{ item.label }}
-                                </a>
-                            </li>
+                <ul class="sidebar-nav">
+                    <li class="sidebar-header">Menu</li>
+
+                    {% for item in primary_links %}
+                        {% set is_active = current.startswith(item.active_prefix) %}
+                        <li class="sidebar-item {% if is_active %}active{% endif %}">
+                            <a class="sidebar-link" href="{{ url_for(item.endpoint) }}">
+                                <i class="align-middle fas {{ item.icon }}"></i> <span class="align-middle">{{ item.label }}</span>
+                            </a>
+                        </li>
+                    {% endfor %}
+
+                    {% for group in grouped_links %}
+                        {% set ns = namespace(group_active=false) %}
+                        {% for entry in group.links %}
+                            {% if current.startswith(entry.active_prefix) %}
+                                {% set ns.group_active = true %}
+                            {% endif %}
                         {% endfor %}
-                        {% for group in grouped_links %}
-                            {% set group_active = false %}
-                            {% for entry in group.links %}
-                                {% if current.startswith(entry.active_prefix) %}
-                                    {% set group_active = true %}
-                                {% endif %}
-                            {% endfor %}
-                            <li class="nav-item dropdown mega-dropdown {% if group_active %}active{% endif %}">
-                                <a class="nav-link dropdown-toggle {% if group_active %}font-weight-bold{% endif %}" href="#" id="dropdown-{{ loop.index }}" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                    <i class="icon fas {{ group.icon }}"></i>{{ group.label }}
-                                </a>
-                                <div class="dropdown-menu shadow-lg" aria-labelledby="dropdown-{{ loop.index }}">
+                        {% set collapse_id = "sidebar-group-" ~ loop.index %}
+                        <li class="sidebar-item {% if ns.group_active %}active{% endif %}">
+                            <a class="sidebar-link {% if not ns.group_active %}collapsed{% endif %}" data-bs-toggle="collapse" href="#{{ collapse_id }}" role="button" aria-expanded="{{ 'true' if ns.group_active else 'false' }}" aria-controls="{{ collapse_id }}">
+                                <i class="align-middle fas {{ group.icon }}"></i> <span class="align-middle">{{ group.label }}</span>
+                            </a>
+                            <div class="collapse {% if ns.group_active %}show{% endif %}" id="{{ collapse_id }}">
+                                <ul class="sidebar-dropdown list-unstyled">
                                     {% for entry in group.links %}
-                                        <a class="dropdown-item {% if current.startswith(entry.active_prefix) %}active{% endif %}" href="{{ url_for(entry.endpoint) }}">{{ entry.label }}</a>
+                                        <li class="sidebar-item {% if current.startswith(entry.active_prefix) %}active{% endif %}">
+                                            <a class="sidebar-link" href="{{ url_for(entry.endpoint) }}">{{ entry.label }}</a>
+                                        </li>
                                     {% endfor %}
-                                </div>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                    <div class="navbar-nav">
+                                </ul>
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </nav>
+
+        <div class="main">
+            <nav class="navbar navbar-expand navbar-light navbar-bg">
+                <a class="sidebar-toggle js-sidebar-toggle">
+                    <i class="hamburger align-self-center"></i>
+                </a>
+
+                <div class="navbar-collapse collapse">
+                    <ul class="navbar-nav navbar-align">
                         {% if session.get('user_id') %}
                             {% set display_name = session.get('username', 'User') %}
-                            {% set display_name_short = display_name if display_name|length <= 16 else display_name[:13] ~ '...' %}
+                            {% set display_name_short = display_name if display_name|length <= 18 else display_name[:15] ~ '...' %}
                             {% set display_email = session.get('email', '') %}
-                            {% set initials = (display_name[:1] or 'U')|upper %}
-                            <li class="nav-item dropdown user-dropdown">
-                                <a class="nav-link d-flex align-items-center" href="#" id="userDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                    <span class="avatar-circle mr-2">{{ initials }}</span>
-                                    <span class="d-none d-md-inline font-weight-semibold text-white user-name">{{ display_name_short }}</span>
-                                    <i class="fas fa-chevron-down ml-1 small text-white-50 d-none d-md-inline"></i>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle d-none d-sm-inline-block" href="#" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <span class="text-dark align-middle">{{ display_name_short }}</span>
                                 </a>
-                                <div class="dropdown-menu dropdown-menu-right shadow-lg user-menu" aria-labelledby="userDropdown">
-                                    <div class="media align-items-center mb-3">
-                                        <div class="avatar-circle mr-3">{{ initials }}</div>
-                                        <div class="media-body">
-                                            <div class="font-weight-bold text-dark">{{ display_name }}</div>
-                                            {% if display_email %}
-                                                <div class="small text-muted">{{ display_email }}</div>
-                                            {% endif %}
-                                        </div>
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <div class="px-3 py-2">
+                                        <div class="fw-semibold text-dark">{{ display_name }}</div>
+                                        {% if display_email %}
+                                            <div class="small text-muted">{{ display_email }}</div>
+                                        {% endif %}
                                     </div>
                                     <div class="dropdown-divider"></div>
                                     <a class="dropdown-item" href="{{ url_for('main.profile') }}">
-                                        <i class="fas fa-user-cog mr-2 text-primary"></i>Profil & Password
+                                        <i class="align-middle me-1 fas fa-user-cog"></i> Profil
                                     </a>
                                     <a class="dropdown-item" href="{{ url_for('main.dashboard') }}">
-                                        <i class="fas fa-tachometer-alt mr-2 text-primary"></i>Dashboard
-                                    </a>
-                                    <a class="dropdown-item" href="{{ url_for('main.data_penjualan') }}">
-                                        <i class="fas fa-history mr-2 text-primary"></i>Riwayat Penjualan
+                                        <i class="align-middle me-1 fas fa-tachometer-alt"></i> Dashboard
                                     </a>
                                     <div class="dropdown-divider"></div>
-                                    <a class="dropdown-item text-danger font-weight-bold" href="{{ url_for('main.logout') }}">
-                                        <i class="fas fa-sign-out-alt mr-2"></i>Keluar
+                                    <a class="dropdown-item text-danger" href="{{ url_for('main.logout') }}">
+                                        <i class="align-middle me-1 fas fa-sign-out-alt"></i> Keluar
                                     </a>
                                 </div>
                             </li>
                         {% else %}
-                            <a class="btn btn-sm btn-outline-light mr-2" href="{{ url_for('main.login') }}">
-                                <i class="fas fa-sign-in-alt mr-2"></i>Masuk
-                            </a>
-                            <a class="btn btn-sm btn-light" href="{{ url_for('main.register') }}">
-                                <i class="fas fa-user-plus mr-2"></i>Daftar
-                            </a>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.login') }}">Masuk</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.register') }}">Daftar</a>
+                            </li>
                         {% endif %}
+                    </ul>
+                </div>
+            </nav>
+
+            <main class="content">
+                <div class="container-fluid p-0">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            <div class="flash-toast-container" id="flashToasts" aria-live="polite" aria-relevant="additions text">
+                                {% for category, message in messages %}
+                                    {% set category_map = {
+                                        'message': 'info',
+                                        'error': 'danger',
+                                        'danger': 'danger',
+                                        'warning': 'warning',
+                                        'success': 'success',
+                                        'info': 'info'
+                                    } %}
+                                    {% set tone = category_map.get(category, 'info') %}
+                                    {% set toast_meta = {
+                                        'success': {'title': 'Berhasil', 'icon': 'fa-check-circle'},
+                                        'danger': {'title': 'Gagal', 'icon': 'fa-exclamation-triangle'},
+                                        'warning': {'title': 'Perhatian', 'icon': 'fa-exclamation-circle'},
+                                        'info': {'title': 'Info', 'icon': 'fa-info-circle'}
+                                    } %}
+                                    {% set meta = toast_meta.get(tone, toast_meta['info']) %}
+                                    <div class="flash-toast toast-{{ tone }}" role="alert" data-timeout="4500">
+                                        <div class="toast-icon" aria-hidden="true">
+                                            <i class="fas {{ meta.icon }}"></i>
+                                        </div>
+                                        <div class="toast-body">
+                                            <div class="toast-title">{{ meta.title }}</div>
+                                            <div class="toast-message">{{ message }}</div>
+                                        </div>
+                                        <button type="button" class="toast-close" aria-label="Tutup notifikasi">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                        <div class="toast-progress" aria-hidden="true"><span></span></div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% endwith %}
+
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
+
+            <footer class="footer">
+                <div class="container-fluid">
+                    <div class="row text-muted">
+                        <div class="col-6 text-start">
+                            <p class="mb-0">
+                                <span class="text-muted">&copy; {{ current_year }} Kasir Pintar</span>
+                            </p>
+                        </div>
+                        <div class="col-6 text-end">
+                            <p class="mb-0">
+                                <span class="text-muted">Powered by Flask</span>
+                            </p>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </nav>
-    </header>
-
-    <main class="flex-grow-1 py-4">
-        <div class="container">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    <div class="flash-stack mb-4">
-                        {% for category, message in messages %}
-                            {% set category_map = {
-                                'message': 'info',
-                                'error': 'danger',
-                                'danger': 'danger',
-                                'warning': 'warning',
-                                'success': 'success',
-                                'info': 'info'
-                            } %}
-                            {% set alert_class = category_map.get(category, 'info') %}
-                            <div class="alert alert-{{ alert_class }} alert-dismissible fade show" role="alert">
-                                {{ message }}
-                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                    <span aria-hidden="true">&times;</span>
-                                </button>
-                            </div>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            {% endwith %}
-
-            {% block content %}{% endblock %}
+            </footer>
         </div>
-    </main>
+    </div>
 
-    <footer class="py-4 mt-auto">
-        <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between">
-            <span>&copy; {{ current_year }} Aplikasi Kasir Pintar.</span>
-            <span class="small text-muted">
-                Dibangun dengan <i class="fas fa-heart mx-1 text-danger"></i> dan <a href="https://flask.palletsprojects.com/" target="_blank" rel="noreferrer">Flask</a>
-            </span>
-        </div>
-    </footer>
+    <script src="{{ url_for('static', filename='vendor/adminkit/app.js') }}"></script>
+    <script>
+        (function persistSidebarCollapsedState() {
+            const STORAGE_KEY = "adminkit.sidebarCollapsed";
+            const MOBILE_MEDIA = "(max-width: 991.98px)";
 
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+            function safeGet(key) {
+                try {
+                    return window.localStorage.getItem(key);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function safeSet(key, value) {
+                try {
+                    window.localStorage.setItem(key, value);
+                } catch (e) {}
+            }
+
+            function isMobile() {
+                return window.matchMedia && window.matchMedia(MOBILE_MEDIA).matches;
+            }
+
+            function applyPreference() {
+                const sidebar = document.querySelector(".js-sidebar");
+                if (!sidebar) return;
+
+                const stored = safeGet(STORAGE_KEY);
+                if (stored === null) {
+                    if (isMobile()) sidebar.classList.add("collapsed");
+                    return;
+                }
+                if (stored === "1") sidebar.classList.add("collapsed");
+                else sidebar.classList.remove("collapsed");
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                applyPreference();
+
+                const sidebar = document.querySelector(".js-sidebar");
+                const toggle = document.querySelector(".js-sidebar-toggle");
+                if (sidebar && toggle) {
+                    toggle.addEventListener("click", function () {
+                        window.setTimeout(function () {
+                            safeSet(
+                                STORAGE_KEY,
+                                sidebar.classList.contains("collapsed") ? "1" : "0"
+                            );
+                        }, 0);
+                    });
+                }
+            });
+        })();
+    </script>
+    <script>
+        (function bootstrap4Compat() {
+            document.addEventListener("DOMContentLoaded", function () {
+                document.querySelectorAll("[data-toggle]").forEach((el) => {
+                    if (!el.hasAttribute("data-bs-toggle")) {
+                        el.setAttribute("data-bs-toggle", el.getAttribute("data-toggle"));
+                    }
+                });
+                document.querySelectorAll("[data-target]").forEach((el) => {
+                    if (!el.hasAttribute("data-bs-target")) {
+                        el.setAttribute("data-bs-target", el.getAttribute("data-target"));
+                    }
+                });
+                document.querySelectorAll("[data-dismiss]").forEach((el) => {
+                    if (!el.hasAttribute("data-bs-dismiss")) {
+                        el.setAttribute("data-bs-dismiss", el.getAttribute("data-dismiss"));
+                    }
+                });
+                document.querySelectorAll("[data-parent]").forEach((el) => {
+                    if (!el.hasAttribute("data-bs-parent")) {
+                        el.setAttribute("data-bs-parent", el.getAttribute("data-parent"));
+                    }
+                });
+
+                if (window.bootstrap && bootstrap.Tooltip) {
+                    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+                        try {
+                            new bootstrap.Tooltip(el);
+                        } catch (e) {}
+                    });
+                }
+            });
+        })();
+    </script>
+    <script>
+        (function flashToastNotifications() {
+            const HIDE_ANIMATION_MS = 220;
+
+            function hideToast(toast) {
+                if (!toast || toast.dataset.hiding === "1") return;
+                toast.dataset.hiding = "1";
+                toast.classList.remove("is-visible");
+                toast.classList.add("is-hiding");
+                window.setTimeout(() => toast.remove(), HIDE_ANIMATION_MS);
+            }
+
+            function initToast(toast) {
+                const timeoutMs = Math.max(0, parseInt(toast.getAttribute("data-timeout") || "0", 10) || 0);
+                const closeButton = toast.querySelector(".toast-close");
+                const progress = toast.querySelector(".toast-progress > span");
+
+                if (closeButton) {
+                    closeButton.addEventListener("click", (e) => {
+                        e.preventDefault();
+                        hideToast(toast);
+                    });
+                }
+
+                requestAnimationFrame(() => {
+                    toast.classList.add("is-visible");
+                });
+
+                if (progress && timeoutMs > 0) {
+                    progress.style.transform = "scaleX(1)";
+                    progress.style.transition = "none";
+                    requestAnimationFrame(() => {
+                        progress.style.transition = `transform ${timeoutMs}ms linear`;
+                        progress.style.transform = "scaleX(0)";
+                    });
+                }
+
+                if (timeoutMs > 0) {
+                    window.setTimeout(() => hideToast(toast), timeoutMs);
+                }
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                document.querySelectorAll(".flash-toast").forEach(initToast);
+            });
+        })();
+    </script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

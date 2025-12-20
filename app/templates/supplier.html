@@ -2,6 +2,49 @@
 
 {% block title %}Data Supplier{% endblock %}
 
+{% block extra_head %}
+<style>
+    .autocomplete-panel {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        max-height: 320px;
+        overflow-y: auto;
+        z-index: 20;
+        margin-top: 0.25rem;
+    }
+    .autocomplete-panel[hidden] {
+        display: none;
+    }
+    .autocomplete-item {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+        cursor: pointer;
+    }
+    .autocomplete-item:last-child {
+        border-bottom: none;
+    }
+    .autocomplete-item:hover,
+    .autocomplete-item:focus {
+        background: rgba(37, 99, 235, 0.08);
+        outline: none;
+    }
+    .autocomplete-item .name {
+        font-weight: 600;
+        color: #0f172a;
+        display: block;
+    }
+    .autocomplete-item .meta {
+        font-size: 0.85rem;
+        color: #475569;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 {% set is_editing = edit_supplier is not none %}
 {% set form_action = url_for('main.edit_supplier', supplier_id=edit_supplier.id) if is_editing else
@@ -30,7 +73,7 @@ url_for('main.supplier') %}
                     <span class="stat-icon {{ card.accent }}">
                         <i class="fas {{ card.icon }}"></i>
                     </span>
-                    <span class="badge badge-light text-uppercase font-weight-semibold">{{ card.label }}</span>
+                    <span class="badge badge-pill badge-soft-primary text-uppercase font-weight-semibold px-3">{{ card.label }}</span>
                 </div>
                 <div class="stat-value mb-1">
                     {% if card.type == 'currency' %}
@@ -87,9 +130,9 @@ url_for('main.supplier') %}
                                 value="{{ edit_supplier.phone if is_editing else '' }}" required>
                         </div>
                         <div class="form-group col-md-6">
-                            <label for="email">Email (opsional)</label>
-                            <input type="email" class="form-control" id="email" name="email"
-                                placeholder="email@pemasok.com" value="{{ edit_supplier.email if is_editing else '' }}">
+                            <label for="bank_name">Nama Bank</label>
+                            <input type="text" class="form-control" id="bank_name" name="bank_name" placeholder="Nama bank"
+                                value="{{ edit_supplier.bank_name if is_editing else '' }}" required>
                         </div>
                     </div>
 
@@ -106,6 +149,12 @@ url_for('main.supplier') %}
                                 placeholder="PT Nama Rekening"
                                 value="{{ edit_supplier.account_name if is_editing else '' }}" required>
                         </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email (opsional)</label>
+                        <input type="email" class="form-control" id="email" name="email"
+                            placeholder="email@pemasok.com" value="{{ edit_supplier.email if is_editing else '' }}">
                     </div>
 
                     <div class="form-group">
@@ -147,10 +196,10 @@ url_for('main.supplier') %}
                         pencarian. Total pemasok: {{ '{:,}'.format(total_suppliers).replace(',', '.') }}.
                     </p>
                 </div>
-                <form class="mt-3 mt-md-0" method="GET" action="{{ url_for('main.supplier') }}">
+                <form class="mt-3 mt-md-0 position-relative supplier-search-form" method="GET" action="{{ url_for('main.supplier') }}" autocomplete="off">
                     <div class="input-group input-group-sm">
-                        <input type="text" name="search" class="form-control" placeholder="Cari nama / kontak / email"
-                            value="{{ search_query }}">
+                        <input type="text" name="search" class="form-control" placeholder="Cari nama supplier"
+                            value="{{ search_query }}" id="supplier-search-input">
                         <div class="input-group-append">
                             <button class="btn btn-outline-primary" type="submit">Cari</button>
                         </div>
@@ -169,9 +218,19 @@ url_for('main.supplier') %}
                                 <th class="text-right">Aksi</th>
                             </tr>
                         </thead>
-                        <tbody id="supplier-table-body">
+                        <tbody id="supplier-table-body" data-csrf="{{ csrf_token() }}">
                             {% for supplier in suppliers %}
-                            <tr>
+                            {% set normalized_phone = (supplier.phone or '').replace(' ', '').replace('-', '') %}
+                            {% if normalized_phone.startswith('+62') %}
+                                {% set normalized_phone = '0' ~ normalized_phone[3:] %}
+                            {% elif normalized_phone.startswith('62') %}
+                                {% set normalized_phone = '0' ~ normalized_phone[2:] %}
+                            {% elif normalized_phone.startswith('0') %}
+                                {% set normalized_phone = normalized_phone %}
+                            {% elif normalized_phone %}
+                                {% set normalized_phone = '0' ~ normalized_phone %}
+                            {% endif %}
+                            <tr data-filter-text="{{ (supplier.name or '') | lower }}">
                                 <td>
                                     <div class="font-weight-semibold">{{ supplier.name }}</div>
                                     <small class="text-muted d-block">PIC: {{ supplier.contact_person or '-' }}</small>
@@ -179,18 +238,34 @@ url_for('main.supplier') %}
                                 </td>
                                 <td>
                                     {% if supplier.phone %}
-                                    <a href="tel:{{ supplier.phone }}" class="badge badge-pill badge-success">
-                                        <i class="fas fa-phone-alt mr-1"></i>{{ supplier.phone }}
-                                    </a>
+                                    {% set normalized = (supplier.phone or '').replace(' ', '').replace('-', '') %}
+                                    {% if normalized.startswith('+62') %}
+                                        {% set display_phone = '0' ~ normalized[3:] %}
+                                    {% elif normalized.startswith('62') %}
+                                        {% set display_phone = '0' ~ normalized[2:] %}
+                                    {% elif normalized.startswith('0') %}
+                                        {% set display_phone = normalized %}
+                                    {% else %}
+                                        {% set display_phone = '0' ~ normalized %}
+                                    {% endif %}
+                                    <div class="d-flex align-items-center">
+                                        <i class="fas fa-phone-alt text-success mr-2"></i>
+                                        <a href="https://wa.me/62{{ display_phone[1:] }}" class="text-dark font-weight-semibold" target="_blank" rel="noreferrer">
+                                            {{ display_phone }}
+                                        </a>
+                                    </div>
                                     {% else %}
                                     <span class="badge badge-pill badge-warning text-dark">Belum ada</span>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if supplier.email %}
-                                    <a href="mailto:{{ supplier.email }}" class="badge badge-pill badge-info">
-                                        <i class="fas fa-envelope mr-1"></i>{{ supplier.email }}
-                                    </a>
+                                    <div class="d-flex align-items-center">
+                                        <i class="fas fa-envelope text-info mr-2"></i>
+                                        <a href="mailto:{{ supplier.email }}" class="text-dark font-weight-semibold">
+                                            {{ supplier.email }}
+                                        </a>
+                                    </div>
                                     {% else %}
                                     <span class="badge badge-pill badge-warning text-dark">Belum ada</span>
                                     {% endif %}
@@ -229,7 +304,7 @@ url_for('main.supplier') %}
                             {% else %}
                             <tr>
                                 <td colspan="5" class="text-center text-muted py-4">Belum ada supplier sesuai filter.
-                                    Tambahkan supplier baru atau ubah pencarian.</td>
+                            Tambahkan supplier baru atau ubah pencarian.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -341,16 +416,27 @@ url_for('main.supplier') %}
                 <p class="small text-muted">Gunakan template Excel untuk mempercepat pengisian banyak supplier
                     sekaligus. Pastikan kolom sesuai format.</p>
                 <form action="{{ url_for('main.import_suppliers') }}" method="POST" enctype="multipart/form-data"
-                    class="mb-3">
+                    class="mb-3" id="supplierImportForm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="custom-file">
                         <input type="file" class="custom-file-input" id="importFile" name="file" accept=".xlsx,.xls"
                             required>
                         <label class="custom-file-label" for="importFile">Pilih file Excel</label>
                     </div>
-                    <button type="submit" class="btn btn-outline-primary btn-block mt-3">
+                    <button type="submit" class="btn btn-outline-primary btn-block mt-3" id="supplierImportButton">
                         <i class="fas fa-upload mr-2"></i>Import data
                     </button>
+                    <div class="mt-3 d-none" id="supplierImportProgress">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small text-muted" id="supplierImportStatus">Mengunggah file...</span>
+                            <span class="small font-weight-semibold" id="supplierImportPercent">0%</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100"
+                                id="supplierImportBar"></div>
+                        </div>
+                    </div>
                 </form>
                 <a href="{{ url_for('main.export_suppliers') }}" class="btn btn-link btn-sm px-0">
                     <i class="fas fa-download mr-1"></i>Unduh data supplier saat ini
@@ -482,13 +568,187 @@ url_for('main.supplier') %}
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        var importInput = document.getElementById('importFile');
+        const importInput = document.getElementById('importFile');
+        const importForm = document.getElementById('supplierImportForm');
+        const importButton = document.getElementById('supplierImportButton');
+        const importProgress = document.getElementById('supplierImportProgress');
+        const importBar = document.getElementById('supplierImportBar');
+        const importPercent = document.getElementById('supplierImportPercent');
+        const importStatus = document.getElementById('supplierImportStatus');
+        let importTimer = null;
         if (importInput) {
             importInput.addEventListener('change', function () {
-                var label = importInput.nextElementSibling;
+                const label = importInput.nextElementSibling;
                 if (label && importInput.files && importInput.files.length > 0) {
                     label.textContent = importInput.files[0].name;
                 }
+            });
+        }
+
+        function setImportProgress(value, message) {
+            if (!importBar || !importPercent) return;
+            const safe = Math.max(0, Math.min(100, Math.round(value)));
+            importBar.style.width = `${safe}%`;
+            importBar.setAttribute('aria-valuenow', String(safe));
+            importPercent.textContent = `${safe}%`;
+            if (importStatus && message) {
+                importStatus.textContent = message;
+            }
+            if (importProgress) {
+                importProgress.classList.remove('d-none');
+            }
+        }
+
+        if (importForm && importButton) {
+            importForm.addEventListener('submit', function () {
+                if (!importInput || !importInput.files || !importInput.files.length) {
+                    return;
+                }
+                importButton.disabled = true;
+                importButton.innerHTML = '<span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>Memproses import...';
+                setImportProgress(5, 'Mengunggah file...');
+                if (importTimer) {
+                    clearInterval(importTimer);
+                }
+                let current = 5;
+                importTimer = setInterval(() => {
+                    current = Math.min(current + Math.random() * 12 + 8, 90);
+                    setImportProgress(current, 'Memproses data...');
+                    if (current >= 90) {
+                        clearInterval(importTimer);
+                    }
+                }, 400);
+            });
+        }
+
+        const searchInput = document.getElementById('supplier-search-input');
+        const tableBody = document.getElementById('supplier-table-body');
+        const tableRows = Array.from(document.querySelectorAll('#supplier-table-body tr[data-filter-text]'));
+        const form = document.querySelector('.supplier-search-form');
+        const pagination = document.querySelector('.pagination');
+        const csrfToken = tableBody ? tableBody.dataset.csrf : '';
+        const originalHTML = tableBody ? tableBody.innerHTML : '';
+        const originalPaginationDisplay = pagination ? pagination.style.display : '';
+
+        function applyFilter(term) {
+            const q = (term || '').toLowerCase();
+            tableRows.forEach((row) => {
+                const text = row.dataset.filterText || '';
+                row.style.display = text.includes(q) ? '' : 'none';
+            });
+        }
+
+        function normalizePhone(raw) {
+            let v = (raw || '').replace(/\\s|-/g, '');
+            if (!v) return '';
+            if (v.startsWith('+62')) v = '0' + v.slice(3);
+            else if (v.startsWith('62')) v = '0' + v.slice(2);
+            else if (!v.startsWith('0')) v = '0' + v;
+            return v;
+        }
+
+        function buildRow(item) {
+            const phone = normalizePhone(item.phone);
+            return `
+                <tr data-filter-text="${(item.name || '').toLowerCase()}">
+                    <td>
+                        <div class="font-weight-semibold">${item.name || '-'}</div>
+                        <small class="text-muted d-block">PIC: ${item.contact_person || '-'}</small>
+                        <small class="text-muted d-block">Alamat: ${item.address || '-'}</small>
+                    </td>
+                    <td>
+                        ${phone ? `<div class="d-flex align-items-center">
+                            <i class="fas fa-phone-alt text-success mr-2"></i>
+                            <a href="https://wa.me/62${phone.slice(1)}" class="text-dark font-weight-semibold" target="_blank" rel="noreferrer">${phone}</a>
+                        </div>` : '<span class="badge badge-pill badge-warning text-dark">Belum ada</span>'}
+                    </td>
+                    <td>
+                        ${item.email ? `<div class="d-flex align-items-center">
+                            <i class="fas fa-envelope text-info mr-2"></i>
+                            <a href="mailto:${item.email}" class="text-dark font-weight-semibold">${item.email}</a>
+                        </div>` : '<span class="badge badge-pill badge-warning text-dark">Belum ada</span>'}
+                    </td>
+                    <td>
+                        ${item.website ? `<a href="${item.website}" target="_blank" rel="noreferrer" class="badge badge-pill badge-light text-primary"><i class="fas fa-globe mr-1"></i>Website</a>` : '<span class="badge badge-pill badge-light text-muted">Tidak tersedia</span>'}
+                    </td>
+                    <td class="text-right">
+                        <div class="btn-group" role="group">
+                            <a href="/supplier/${item.id}" class="btn btn-sm btn-outline-info" title="Detail">
+                                <i class="fas fa-info-circle"></i>
+                            </a>
+                            <a href="/supplier/edit/${item.id}" class="btn btn-sm btn-outline-secondary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <form action="/supplier/delete/${item.id}" method="POST" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="${csrfToken}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus"
+                                    onclick="return confirm('Hapus supplier ini?')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function renderFetched(list) {
+            if (!tableBody) return;
+            tableBody.innerHTML = list.map(buildRow).join('') || '<tr><td colspan="5" class="text-center text-muted py-4">Tidak ada hasil</td></tr>';
+        }
+
+        function restoreOriginal() {
+            if (tableBody) {
+                tableBody.innerHTML = originalHTML;
+            }
+            if (pagination) {
+                pagination.style.display = originalPaginationDisplay || '';
+            }
+        }
+
+        function fetchAll(term) {
+            if (!term) {
+                restoreOriginal();
+                return;
+            }
+            if (pagination) {
+                pagination.style.display = 'none';
+            }
+            const params = new URLSearchParams({ q: term, limit: 500 });
+            fetch(`{{ url_for('main.get_suppliers') }}?${params.toString()}`, {
+                headers: { Accept: 'application/json' },
+            })
+                .then((res) => {
+                    if (!res.ok) throw new Error('failed');
+                    return res.json();
+                })
+                .then((data) => {
+                    renderFetched(data.suppliers || []);
+                })
+                .catch(() => {
+                    restoreOriginal();
+                });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', function () {
+                const term = this.value;
+                applyFilter(term);
+                fetchAll(term);
+            });
+            applyFilter(searchInput.value);
+            if (searchInput.value) {
+                fetchAll(searchInput.value);
+            }
+        }
+
+        if (form) {
+            form.addEventListener('submit', function (e) {
+                // tetap biarkan server-side, tapi kita sudah fetch semua supaya hasil lintas halaman muncul
+                e.preventDefault();
+                const term = searchInput ? searchInput.value : '';
+                applyFilter(term);
+                fetchAll(term);
             });
         }
     });
