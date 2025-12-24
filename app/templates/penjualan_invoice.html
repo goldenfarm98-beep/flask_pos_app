@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Invoice {{ sale.no_faktur }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 18mm;
+        }
+
+        body {
+            font-family: "Times New Roman", Times, serif;
+            color: #111827;
+            margin: 0;
+            background: #f5f7fb;
+        }
+
+        .page {
+            max-width: 210mm;
+            margin: 0 auto;
+            background: #fff;
+            padding: 12mm;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+        }
+
+        .action-bar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            padding: 1rem;
+        }
+
+        .btn {
+            border: 1px solid #cbd5f5;
+            border-radius: 6px;
+            padding: 0.45rem 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            color: #1f2937;
+            background: #fff;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            color: #fff;
+            border-color: #2563eb;
+        }
+
+        .header {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            border-bottom: 2px solid #111827;
+            padding-bottom: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .logo {
+            width: 64px;
+            height: 64px;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.85rem;
+            background: #f8fafc;
+        }
+
+        .logo img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .header-info h1 {
+            font-size: 1.1rem;
+            margin: 0;
+            text-transform: uppercase;
+        }
+
+        .header-info div {
+            font-size: 0.9rem;
+        }
+
+        .doc-title {
+            text-align: right;
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 0.2rem;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 0.5rem;
+            font-size: 0.92rem;
+        }
+
+        .meta-grid table {
+            width: 100%;
+        }
+
+        .meta-grid td {
+            padding: 2px 0;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.92rem;
+        }
+
+        .table th,
+        .table td {
+            border: 1px solid #111827;
+            padding: 6px;
+        }
+
+        .table th {
+            text-align: center;
+        }
+
+        .table td {
+            vertical-align: top;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: 1fr 200px;
+            gap: 1rem;
+            margin-top: 0.8rem;
+        }
+
+        .summary table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .summary td {
+            border: 1px solid #111827;
+            padding: 6px;
+        }
+
+        .summary .label {
+            width: 60%;
+        }
+
+        .signatures {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+        }
+
+        .signature-box {
+            text-align: center;
+        }
+
+        .signature-line {
+            border-bottom: 1px solid #111827;
+            margin-top: 3rem;
+        }
+
+        @media print {
+            body {
+                background: #fff;
+            }
+            .action-bar {
+                display: none;
+            }
+            .page {
+                box-shadow: none;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="action-bar">
+        <a class="btn btn-primary" href="#" onclick="window.print();return false;">Cetak Invoice</a>
+        <a class="btn" href="{{ url_for('main.penjualan_receipt', sale_id=sale.id) }}">Kembali</a>
+    </div>
+
+    <div class="page">
+        <div class="header">
+            <div class="logo">
+                {% if company_profile.logo_url %}
+                    <img src="{{ company_profile.logo_url }}" alt="Logo">
+                {% else %}
+                    {{ company_profile.name[:2] }}
+                {% endif %}
+            </div>
+            <div class="header-info">
+                <h1>{{ company_profile.name }}</h1>
+                <div>{{ company_profile.address }}</div>
+                <div>{{ company_profile.city }}</div>
+                <div>{{ company_profile.phone }}</div>
+                <div>{{ company_profile.website }}</div>
+            </div>
+            <div class="doc-title">INVOICE</div>
+        </div>
+
+        <div class="meta-grid">
+            <table>
+                <tr><td><strong>Kepada Yth.</strong></td><td></td></tr>
+                <tr><td>Nama</td><td>: {{ sale.pelanggan.nama if sale.pelanggan else 'Customer' }}</td></tr>
+                <tr><td>No. Telp</td><td>: {{ sale.pelanggan.kontak if sale.pelanggan else '-' }}</td></tr>
+                <tr><td>Alamat</td><td>: {{ sale.pelanggan.alamat if sale.pelanggan else '-' }}</td></tr>
+            </table>
+            <table>
+                <tr><td>Sales</td><td>: {{ sale.sales.username if sale.sales else '-' }}</td></tr>
+                <tr><td>No. Invoice</td><td>: {{ sale.no_faktur }}</td></tr>
+                <tr><td>Tanggal</td><td>: {{ sale.tanggal_penjualan.strftime('%d %b %Y') if sale.tanggal_penjualan else '-' }}</td></tr>
+                <tr><td>Pembayaran</td><td>: {{ payment_label }}</td></tr>
+            </table>
+        </div>
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Nama Barang</th>
+                    <th>Qty</th>
+                    <th>Berat</th>
+                    <th>Jml Berat</th>
+                    <th>Harga Satuan</th>
+                    <th>Diskon</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td class="text-center">{{ item.qty }}</td>
+                    <td class="text-center">{{ '{:.2f}'.format(item.unit_weight) }}</td>
+                    <td class="text-center">{{ '{:.2f}'.format(item.total_weight) }}</td>
+                    <td class="text-right">{{ ('Rp {:,.0f}'.format(item.price)).replace(',', '.') }}</td>
+                    <td class="text-center">{{ item.discount_pct }}%</td>
+                    <td class="text-right">{{ ('Rp {:,.0f}'.format(item.total)).replace(',', '.') }}</td>
+                </tr>
+                {% endfor %}
+                {% if not items %}
+                <tr>
+                    <td colspan="7" style="text-align:center;">Tidak ada item.</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+
+        <div class="summary">
+            <div>
+                <div><strong>Total Berat</strong> : {{ '{:.2f}'.format(total_weight) }} Kg</div>
+                <div><strong>Expedisi</strong> : {{ sale.expedition.name if sale.expedition else '-' }}</div>
+                <div><strong>Note</strong> : Pembayaran di transfer ke Rekening {{ company_profile.bank_info }}</div>
+            </div>
+            <table>
+                <tr>
+                    <td class="label">Sub Total</td>
+                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(subtotal)).replace(',', '.') }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Diskon</td>
+                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(discount_total)).replace(',', '.') }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Pajak</td>
+                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(tax_total)).replace(',', '.') }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Biaya Pengiriman</td>
+                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(shipping_fee)).replace(',', '.') }}</td>
+                </tr>
+                <tr>
+                    <td class="label"><strong>TOTAL</strong></td>
+                    <td style="text-align:right;"><strong>{{ ('Rp {:,.0f}'.format(grand_total)).replace(',', '.') }}</strong></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="signatures">
+            <div class="signature-box">
+                Penerima / Pembeli
+                <div class="signature-line"></div>
+            </div>
+            <div class="signature-box">
+                {{ company_profile.name }}
+                <div class="signature-line"></div>
+                Administrator
+            </div>
+        </div>
+    </div>
+</body>
+</html>

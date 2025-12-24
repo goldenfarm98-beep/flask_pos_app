@@ -1,145 +1,210 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Struk Penjualan</title>
+    <style>
+        :root {
+            --receipt-width: 58mm;
+            --receipt-font: 11px;
+        }
 
-{% block title %}Struk Penjualan{% endblock %}
+        * {
+            box-sizing: border-box;
+        }
 
-{% block content %}
-<div class="container mt-4">
-    <div class="d-print-none d-flex justify-content-between align-items-center mb-3">
+        body {
+            margin: 0;
+            font-family: "Courier New", Courier, monospace;
+            background: #f5f7fb;
+            color: #111827;
+        }
+
+        .muted {
+            color: #6b7280;
+        }
+
+        .action-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+            background: #ffffff;
+            border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
+        .action-bar .btn-group {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            border: none;
+            border-radius: 8px;
+            padding: 0.5rem 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            color: #fff;
+        }
+
+        .btn-outline {
+            background: #fff;
+            border: 1px solid #cbd5f5;
+            color: #1f2937;
+        }
+
+        .receipt-wrapper {
+            display: flex;
+            justify-content: center;
+            padding: 1.5rem 1rem 2rem;
+        }
+
+        .receipt {
+            width: var(--receipt-width);
+            background: #fff;
+            padding: 6px 8px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+            font-size: var(--receipt-font);
+        }
+
+        .receipt h1 {
+            font-size: 12px;
+            margin: 0 0 4px;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+
+        .receipt .center {
+            text-align: center;
+        }
+
+        .receipt .muted {
+            color: #6b7280;
+        }
+
+        .receipt .divider {
+            border-top: 1px dashed #94a3b8;
+            margin: 6px 0;
+        }
+
+        .receipt .meta-line,
+        .receipt .item-line,
+        .receipt .total-line {
+            display: flex;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .receipt .item-name {
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .receipt .total-line strong {
+            font-weight: 700;
+        }
+
+        .receipt .footer-note {
+            margin-top: 8px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        @media print {
+            body {
+                background: #fff;
+            }
+            .action-bar {
+                display: none !important;
+            }
+            .receipt-wrapper {
+                padding: 0;
+            }
+            .receipt {
+                width: var(--receipt-width);
+                box-shadow: none;
+                padding: 4px 6px;
+            }
+            @page {
+                size: 58mm auto;
+                margin: 2mm;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="action-bar">
         <div>
-            <h2 class="mb-1"><i class="fas fa-receipt mr-2"></i>Struk Penjualan</h2>
-            <small class="text-muted">Preview transaksi yang baru disimpan.</small>
+            <strong>Struk 58mm</strong>
+            <div class="muted">Preview struk setelah transaksi disimpan.</div>
         </div>
         <div class="btn-group">
-            <button type="button" class="btn btn-primary" onclick="window.print()">
-                <i class="fas fa-print mr-2"></i>Cetak Struk
-            </button>
-            <a href="{{ url_for('main.penjualan') }}" class="btn btn-outline-secondary">
-                <i class="fas fa-times mr-2"></i>Batal
-            </a>
+            <button class="btn btn-primary" onclick="window.print()">Cetak Struk</button>
+            <a class="btn btn-outline" href="{{ url_for('main.penjualan_invoice', sale_id=sale.id) }}" target="_blank" rel="noreferrer">Cetak Invoice</a>
+            <a class="btn btn-outline" href="{{ url_for('main.penjualan_surat_jalan', sale_id=sale.id) }}" target="_blank" rel="noreferrer">Surat Jalan</a>
+            <a class="btn btn-outline" href="{{ url_for('main.penjualan') }}">Kembali</a>
         </div>
     </div>
 
-    <div class="card shadow-sm receipt-card">
-        <div class="card-body">
-            <div class="row mb-3">
-                <div class="col-md-6">
-                    <div class="text-muted small text-uppercase">No Faktur</div>
-                    <div class="h5 mb-2">{{ sale.no_faktur }}</div>
-                    <div class="text-muted small text-uppercase">Tanggal</div>
-                    <div>{{ sale.tanggal_penjualan.strftime('%d %b %Y') if sale.tanggal_penjualan else '-' }}</div>
-                </div>
-                <div class="col-md-6 text-md-right">
-                    <div class="text-muted small text-uppercase">Pelanggan</div>
-                    <div class="h6 mb-2">{{ sale.pelanggan.nama if sale.pelanggan else 'Umum' }}</div>
-                    <div class="text-muted small text-uppercase">Kasir / Sales</div>
-                    <div>{{ sale.sales.username if sale.sales else '-' }}</div>
-                </div>
-            </div>
+    <div class="receipt-wrapper">
+        <div class="receipt">
+            <h1>{{ company_profile.name }}</h1>
+            <div class="center muted">{{ company_profile.address }}</div>
+            <div class="center muted">{{ company_profile.city }}</div>
+            <div class="center muted">{{ company_profile.phone }}</div>
+            <div class="center muted">{{ company_profile.website }}</div>
 
-            <div class="table-responsive">
-                <table class="table table-sm table-striped">
-                    <thead class="thead-light">
-                        <tr>
-                            <th>Produk</th>
-                            <th class="text-center">Qty</th>
-                            <th class="text-right">Harga</th>
-                            <th class="text-center">Diskon</th>
-                            <th class="text-center">Pajak</th>
-                            <th class="text-right">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in items %}
-                        <tr>
-                            <td>
-                                <div class="font-weight-semibold">{{ item.name }}</div>
-                                <small class="text-muted">{{ item.sku }}</small>
-                            </td>
-                            <td class="text-center">{{ item.qty }}</td>
-                            <td class="text-right">{{ ('Rp {:,.0f}'.format(item.price)).replace(',', '.') }}</td>
-                            <td class="text-center">{{ item.discount_pct }}%</td>
-                            <td class="text-center">{{ item.tax_pct }}%</td>
-                            <td class="text-right font-weight-semibold">{{ ('Rp {:,.0f}'.format(item.total)).replace(',', '.') }}</td>
-                        </tr>
-                        {% endfor %}
-                        {% if not items %}
-                        <tr>
-                            <td colspan="6" class="text-center text-muted">Tidak ada item.</td>
-                        </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
-            </div>
+            <div class="divider"></div>
 
-            <div class="row mt-3">
-                <div class="col-md-6">
-                    <div class="text-muted small text-uppercase">Metode Pembayaran</div>
-                    <div class="mb-2">{{ payment_label }}</div>
-                    {% if sale.due_date %}
-                    <div class="text-muted small text-uppercase">Jatuh Tempo</div>
-                    <div class="mb-2">{{ sale.due_date.strftime('%d %b %Y') }}</div>
-                    {% endif %}
-                    {% if sale.expedition %}
-                    <div class="text-muted small text-uppercase">Expedisi</div>
-                    <div class="mb-2">{{ sale.expedition.name }}</div>
-                    {% endif %}
-                    <div class="text-muted small text-uppercase">Total Berat</div>
-                    <div>{{ '{:.2f}'.format(sale.total_weight or 0) }} kg</div>
+            <div class="meta-line"><span>Tanggal</span><span>{{ sale.tanggal_penjualan.strftime('%d/%m/%Y') if sale.tanggal_penjualan else '-' }}</span></div>
+            <div class="meta-line"><span>Transaksi</span><span>{{ sale.no_faktur }}</span></div>
+            <div class="meta-line"><span>Operator</span><span>{{ sale.sales.username if sale.sales else '-' }}</span></div>
+            <div class="meta-line"><span>Pelanggan</span><span>{{ sale.pelanggan.nama if sale.pelanggan else 'Umum' }}</span></div>
+            <div class="meta-line"><span>Telepon</span><span>{{ (sale.pelanggan.kontak or '-') if sale.pelanggan else '-' }}</span></div>
+
+            <div class="divider"></div>
+
+            {% for item in items %}
+                <div class="item-name">{{ item.name }}</div>
+                <div class="item-line">
+                    <span>{{ item.qty }} x {{ ('Rp {:,.0f}'.format(item.price)).replace(',', '.') }}</span>
+                    <span>{{ ('Rp {:,.0f}'.format(item.total)).replace(',', '.') }}</span>
                 </div>
-                <div class="col-md-6">
-                    <table class="table table-borderless table-sm mb-0">
-                        <tr>
-                            <td class="text-muted">Subtotal</td>
-                            <td class="text-right">{{ ('Rp {:,.0f}'.format(subtotal)).replace(',', '.') }}</td>
-                        </tr>
-                        <tr>
-                            <td class="text-muted">Diskon</td>
-                            <td class="text-right text-danger">-{{ ('Rp {:,.0f}'.format(discount_total)).replace(',', '.') }}</td>
-                        </tr>
-                        <tr>
-                            <td class="text-muted">Pajak</td>
-                            <td class="text-right text-info">{{ ('Rp {:,.0f}'.format(tax_total)).replace(',', '.') }}</td>
-                        </tr>
-                        <tr>
-                            <td class="text-muted">Ongkos Kirim</td>
-                            <td class="text-right">{{ ('Rp {:,.0f}'.format(shipping_fee)).replace(',', '.') }}</td>
-                        </tr>
-                        <tr class="border-top">
-                            <th>Grand Total</th>
-                            <th class="text-right text-primary">{{ ('Rp {:,.0f}'.format(grand_total)).replace(',', '.') }}</th>
-                        </tr>
-                        <tr>
-                            <td class="text-muted">Jumlah Bayar</td>
-                            <td class="text-right">{{ ('Rp {:,.0f}'.format(sale.amount_paid or 0)).replace(',', '.') }}</td>
-                        </tr>
-                        <tr>
-                            <td class="text-muted">Kembali</td>
-                            <td class="text-right text-success">{{ ('Rp {:,.0f}'.format(sale.change_due or 0)).replace(',', '.') }}</td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
+            {% endfor %}
+
+            <div class="divider"></div>
+
+            <div class="meta-line"><span>{{ items|sum(attribute='qty') }} items</span><span></span></div>
+            <div class="total-line"><span>PAJAK (PPN)</span><span>{{ ('Rp {:,.0f}'.format(tax_total)).replace(',', '.') }}</span></div>
+            <div class="total-line"><span>DISKON</span><span>{{ ('Rp {:,.0f}'.format(discount_total)).replace(',', '.') }}</span></div>
+            <div class="total-line"><span>BIAYA KIRIM</span><span>{{ ('Rp {:,.0f}'.format(shipping_fee)).replace(',', '.') }}</span></div>
+            <div class="total-line"><strong>GRAND TOTAL</strong><strong>{{ ('Rp {:,.0f}'.format(grand_total)).replace(',', '.') }}</strong></div>
+            <div class="total-line"><span>TUNAI</span><span>{{ ('Rp {:,.0f}'.format(sale.amount_paid or 0)).replace(',', '.') }}</span></div>
+            <div class="total-line"><span>KEMBALI</span><span>{{ ('Rp {:,.0f}'.format(sale.change_due or 0)).replace(',', '.') }}</span></div>
+
+            <div class="divider"></div>
+
+            <div class="meta-line"><span>TOTAL</span><span>{{ '{:.2f}'.format(total_weight) }} Kg</span></div>
+            <div class="meta-line"><span>EXPEDISI</span><span>{{ sale.expedition.name if sale.expedition else '-' }}</span></div>
+            <div class="meta-line"><span>BAYAR</span><span>{{ payment_label }}</span></div>
+            {% if payment_label.startswith('Kartu') %}
+            <div class="meta-line"><span>REKENING</span><span>{{ company_profile.bank_info }}</span></div>
+            {% endif %}
+
+            <div class="footer-note">Terima kasih</div>
         </div>
     </div>
-</div>
-
-<style>
-    .receipt-card {
-        border-radius: 16px;
-        border: none;
-    }
-
-    @media print {
-        .d-print-none {
-            display: none !important;
-        }
-        .receipt-card {
-            box-shadow: none !important;
-            border: none !important;
-        }
-        body {
-            background: #fff !important;
-        }
-    }
-</style>
-{% endblock %}
+</body>
+</html>
