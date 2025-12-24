@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Data Expedisi{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center"><i class="fas fa-truck"></i> Data Expedisi</h2>
+    <p class="text-center text-muted">Kelola daftar expedisi pengiriman</p>
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-plus-circle"></i> Input Expedisi</h5>
+                    <form method="POST"
+                        action="{% if edit_expedisi %}/expedisi/edit/{{ edit_expedisi.id }}{% else %}/expedisi{% endif %}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label for="name">Nama Expedisi</label>
+                            <input type="text" class="form-control" id="name" name="name" placeholder="Nama expedisi"
+                                value="{% if edit_expedisi %}{{ edit_expedisi.name }}{% endif %}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="phone">No. Telepon</label>
+                            <input type="text" class="form-control" id="phone" name="phone" placeholder="Nomor telepon"
+                                value="{% if edit_expedisi %}{{ edit_expedisi.phone }}{% endif %}">
+                        </div>
+                        <div class="form-group">
+                            <label for="address">Alamat</label>
+                            <textarea class="form-control" id="address" name="address" rows="2"
+                                placeholder="Alamat atau kantor cabang">{% if edit_expedisi %}{{ edit_expedisi.address }}{% endif %}</textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="note">Catatan</label>
+                            <input type="text" class="form-control" id="note" name="note"
+                                placeholder="Catatan tambahan"
+                                value="{% if edit_expedisi %}{{ edit_expedisi.note }}{% endif %}">
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            {% if edit_expedisi %}<i class="fas fa-save"></i> Update{% else %}<i class="fas fa-save"></i> Simpan{% endif %}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-list"></i> Data Expedisi</h5>
+                    <div class="form-group">
+                        <input type="text" class="form-control" id="searchExpedisi" placeholder="Cari data expedisi">
+                    </div>
+                    <table class="table table-bordered table-hover">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Nama</th>
+                                <th>Telepon</th>
+                                <th>Alamat</th>
+                                <th>Catatan</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expedisiTable">
+                            {% for expedisi in expedisi_list %}
+                            <tr>
+                                <td>{{ expedisi.name }}</td>
+                                <td>{{ expedisi.phone or '-' }}</td>
+                                <td>{{ expedisi.address or '-' }}</td>
+                                <td>{{ expedisi.note or '-' }}</td>
+                                <td>
+                                    <a href="/expedisi/edit/{{ expedisi.id }}" class="btn btn-sm btn-warning">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </a>
+                                    <form action="/expedisi/delete/{{ expedisi.id }}" method="POST" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-danger"
+                                            onclick="return confirm('Hapus expedisi ini?')">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-secondary" onclick="window.location.href='/dashboard'">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const searchInput = document.getElementById('searchExpedisi');
+    const rows = document.querySelectorAll('#expedisiTable tr');
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
+            const query = this.value.toLowerCase();
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                const match = Array.from(cells).some(cell => cell.textContent.toLowerCase().includes(query));
+                row.style.display = match ? '' : 'none';
+            });
+        });
+    }
+</script>
+
+<style>
+    h2 {
+        font-weight: bold;
+        color: #007bff;
+    }
+    .card {
+        border: none;
+        border-radius: 10px;
+    }
+    .btn {
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}

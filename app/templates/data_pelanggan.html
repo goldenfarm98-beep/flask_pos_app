@@ -57,6 +57,9 @@ url_for('main.pelanggan') %}
                         Menampilkan {{ pelanggans|length }} pelanggan pada halaman ini dari {{ filtered_count }} hasil
                         pencarian. Total terdaftar: {{ total_customers }}.
                     </p>
+                    {% if show_duplicate_contacts %}
+                    <span class="badge badge-pill badge-soft-warning mt-2">Filter: Kontak duplikat</span>
+                    {% endif %}
                 </div>
             </div>
             <div class="card-body">
@@ -66,7 +69,7 @@ url_for('main.pelanggan') %}
                         <div class="input-group input-group-lg">
                             <span class="input-group-text"><i class="fas fa-search"></i></span>
                             <input type="text" id="searchCustomer" name="search" class="form-control"
-                                   placeholder="Cari nama, ID, atau kontak" value="{{ search_query }}" autocomplete="off">
+                                   placeholder="Cari nama, ID, kontak, atau email" value="{{ search_query }}" autocomplete="off">
                             <button type="submit" class="btn btn-primary">
                                 Cari
                             </button>
@@ -74,6 +77,9 @@ url_for('main.pelanggan') %}
                                 Reset
                             </a>
                         </div>
+                        {% if show_duplicate_contacts %}
+                        <input type="hidden" name="duplicate" value="1">
+                        {% endif %}
                         <div class="suggestion-box" id="customer-suggestions" hidden></div>
                     </div>
                 </form>
@@ -85,6 +91,7 @@ url_for('main.pelanggan') %}
                             <tr>
                                 <th>Pelanggan</th>
                                 <th>Kontak</th>
+                                <th>Email</th>
                                 <th>Alamat</th>
                                 <th>Level Harga</th>
                                 <th class="text-right">Aksi</th>
@@ -102,14 +109,24 @@ url_for('main.pelanggan') %}
                                     </div>
                                 </td>
                                 <td>
-                                    {% if pelanggan.kontak %}
-                                    <a href="tel:{{ pelanggan.kontak }}" class="badge badge-pill badge-soft-success">
-                                        <i class="fas fa-phone-alt mr-1"></i>{{ pelanggan.kontak }}
+                                    {% set display_phone = pelanggan.kontak | normalize_phone %}
+                                    {% if display_phone and display_phone|length > 1 %}
+                                    <a href="https://wa.me/62{{ display_phone[1:] }}" class="badge badge-pill badge-soft-success" target="_blank" rel="noreferrer">
+                                        <i class="fab fa-whatsapp mr-1"></i>{{ display_phone }}
                                     </a>
                                     {% else %}
                                     <span class="badge badge-pill badge-soft-warning">
                                         <i class="fas fa-exclamation-circle mr-1"></i>Belum diisi
                                     </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if pelanggan.email %}
+                                    <a href="mailto:{{ pelanggan.email }}" class="badge badge-pill badge-soft-info">
+                                        <i class="fas fa-envelope mr-1"></i>{{ pelanggan.email }}
+                                    </a>
+                                    {% else %}
+                                    <span class="badge badge-pill badge-soft-secondary">Belum diisi</span>
                                     {% endif %}
                                 </td>
                                 <td>
@@ -154,7 +171,7 @@ url_for('main.pelanggan') %}
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
                                 <a class="page-link"
-                                    href="{{ url_for('main.pelanggan', page=pagination.prev_num, search=search_query, per_page=per_page) }}"
+                                    href="{{ url_for('main.pelanggan', page=pagination.prev_num, search=search_query, per_page=per_page, duplicate=1 if show_duplicate_contacts else None) }}"
                                     aria-label="Sebelumnya">
                                     <span aria-hidden="true">&laquo;</span>
                                 </a>
@@ -163,7 +180,7 @@ url_for('main.pelanggan') %}
                                 {% if page_number %}
                                     <li class="page-item {% if page_number == page %}active{% endif %}">
                                         <a class="page-link"
-                                            href="{{ url_for('main.pelanggan', page=page_number, search=search_query, per_page=per_page) }}">
+                                            href="{{ url_for('main.pelanggan', page=page_number, search=search_query, per_page=per_page, duplicate=1 if show_duplicate_contacts else None) }}">
                                             {{ page_number }}
                                         </a>
                                     </li>
@@ -173,7 +190,7 @@ url_for('main.pelanggan') %}
                             {% endfor %}
                             <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
                                 <a class="page-link"
-                                    href="{{ url_for('main.pelanggan', page=pagination.next_num, search=search_query, per_page=per_page) }}"
+                                    href="{{ url_for('main.pelanggan', page=pagination.next_num, search=search_query, per_page=per_page, duplicate=1 if show_duplicate_contacts else None) }}"
                                     aria-label="Berikutnya">
                                     <span aria-hidden="true">&raquo;</span>
                                 </a>
@@ -243,6 +260,11 @@ url_for('main.pelanggan') %}
                                     </span>
                                 </div>
                                 <p class="small text-muted mb-0">{{ insight.description }}</p>
+                                {% if insight.action_url %}
+                                <a class="small text-primary font-weight-semibold" href="{{ insight.action_url }}">
+                                    {{ insight.action_label or 'Lihat' }}
+                                </a>
+                                {% endif %}
                             </li>
                             {% endfor %}
                         </ul>
@@ -296,6 +318,12 @@ url_for('main.pelanggan') %}
                         <input type="text" class="form-control" id="kontak" name="kontak"
                             placeholder="Nomor telepon atau WhatsApp"
                             value="{{ edit_pelanggan.kontak if is_editing else '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email (opsional)</label>
+                        <input type="email" class="form-control" id="email" name="email"
+                            placeholder="email@contoh.com"
+                            value="{{ edit_pelanggan.email if is_editing else '' }}">
                     </div>
                     <div class="form-group">
                         <label for="alamat">Alamat</label>
@@ -356,6 +384,29 @@ url_for('main.pelanggan') %}
                 <p class="small text-muted mb-0">Belum ada data pelanggan. Mulai tambahkan untuk melihat daftar terbaru
                     di sini.</p>
                 {% endif %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-body">
+                <h3 class="h6 font-weight-bold mb-3">Import / Export</h3>
+                <p class="small text-muted">Gunakan template Excel untuk mengelola data pelanggan.
+                    Kolom wajib: Nama Pelanggan, Kontak, Alamat. Opsional: ID Pelanggan, Email, Level Harga.</p>
+                <form action="{{ url_for('main.import_pelanggan') }}" method="POST" enctype="multipart/form-data"
+                    class="mb-3" id="customerImportForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="custom-file">
+                        <input type="file" class="custom-file-input" id="customerImportFile" name="file" accept=".xlsx,.xls"
+                            required>
+                        <label class="custom-file-label" for="customerImportFile">Pilih file Excel</label>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary btn-block mt-3">
+                        <i class="fas fa-upload mr-2"></i>Import data
+                    </button>
+                </form>
+                <a href="{{ url_for('main.export_pelanggan') }}" class="btn btn-link btn-sm px-0">
+                    <i class="fas fa-download mr-1"></i>Unduh data pelanggan saat ini
+                </a>
             </div>
         </div>
     </div>
@@ -558,6 +609,7 @@ url_for('main.pelanggan') %}
         const panel = document.getElementById('customer-suggestions');
         const wrapper = document.getElementById('customerSearchWrapper');
         const form = input ? input.closest('form') : null;
+        const importInput = document.getElementById('customerImportFile');
 
         if (!input || !panel || !form) {
             return;
@@ -688,6 +740,15 @@ url_for('main.pelanggan') %}
                 fetchSuggestions(term);
             }
         });
+
+        if (importInput) {
+            importInput.addEventListener('change', function () {
+                const label = importInput.nextElementSibling;
+                if (label && importInput.files && importInput.files.length > 0) {
+                    label.textContent = importInput.files[0].name;
+                }
+            });
+        }
 
         document.addEventListener('click', function (event) {
             if (!wrapper.contains(event.target)) {

@@ -12,7 +12,7 @@
             <h5 class="card-title text-center text-primary"><i class="fas fa-building"></i> {{ supplier.name }}</h5>
             <ul class="list-group list-group-flush">
                 <li class="list-group-item"><i class="fas fa-map-marker-alt text-primary"></i> <strong>Alamat:</strong> {{ supplier.address }}</li>
-                <li class="list-group-item"><i class="fas fa-phone text-primary"></i> <strong>No Telp:</strong> {{ supplier.phone }}</li>
+                <li class="list-group-item"><i class="fas fa-phone text-primary"></i> <strong>No Telp:</strong> {{ supplier.phone | normalize_phone or '-' }}</li>
                 <li class="list-group-item"><i class="fas fa-university text-primary"></i> <strong>Nama Bank:</strong> {{ supplier.bank_name or '-' }}</li>
                 <li class="list-group-item"><i class="fas fa-university text-primary"></i> <strong>No Rekening Bank:</strong> {{ supplier.bank_account }}</li>
                 <li class="list-group-item"><i class="fas fa-user-circle text-primary"></i> <strong>Nama Rekening:</strong> {{ supplier.account_name }}</li>

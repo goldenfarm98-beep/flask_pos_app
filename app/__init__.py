@@ -6,6 +6,7 @@ except ModuleNotFoundError:  # fallback kalau dependency belum terpasang
 
 load_dotenv()  # akan membaca file .env di root project, no-op jika modul tidak tersedia
 from datetime import datetime
+import re
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -17,6 +18,28 @@ from .config_db import load_env_once, resolve_database_uri, resolve_secret_key
 db = SQLAlchemy()
 migrate = Migrate()
 csrf = CSRFProtect()
+
+
+def normalize_phone(value):
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        value = str(int(value)) if value.is_integer() else str(value)
+    else:
+        value = str(value)
+    value = value.strip()
+    if not value:
+        return ""
+    if re.fullmatch(r"\d+\.0+", value):
+        value = value.split(".", 1)[0]
+    digits = re.sub(r"\D", "", value)
+    if not digits:
+        return ""
+    if digits.startswith("62"):
+        digits = "0" + digits[2:]
+    elif not digits.startswith("0"):
+        digits = "0" + digits
+    return digits
 
 
 def create_app():
@@ -33,6 +56,7 @@ def create_app():
     db.init_app(app)
     migrate.init_app(app, db)
     csrf.init_app(app)
+    app.jinja_env.filters["normalize_phone"] = normalize_phone
 
     # Optional: register blueprint jika ada
     try:

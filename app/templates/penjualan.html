@@ -124,12 +124,14 @@
                                 <input type="hidden" name="price_level_id" id="sales_price_level_id">
                                 <input type="hidden" name="marketplace_cost_total" id="marketplace-cost-total" value="0">
                                 <input type="hidden" name="marketplace_cost_details" id="marketplace-cost-details" value="[]">
-                            </div>
-                            <div class="grand-display text-lg-right mt-4 mt-lg-0">
-                                <span class="grand-label text-uppercase">GRANDTOTAL</span>
-                                <div class="grand-amount" data-summary="grand">Rp 0</div>
-                                <div class="small text-white-75">Total item <strong data-summary="items">0</strong>
-                                </div>
+                                <input type="hidden" name="payment_method" id="payment_method">
+                                <input type="hidden" name="due_date" id="payment_due_date">
+                                <input type="hidden" name="expedition_id" id="expedition_id">
+                                <input type="hidden" name="payment_channel_id" id="payment_channel_id">
+                                <input type="hidden" name="shipping_fee" id="shipping_fee">
+                                <input type="hidden" name="total_weight" id="total_weight">
+                                <input type="hidden" name="amount_paid" id="amount_paid">
+                                <input type="hidden" name="change_due" id="change_due">
                             </div>
                         </div>
                     </div>
@@ -195,6 +197,7 @@
                                         <th class="text-nowrap">Kode Barang</th>
                                         <th>Nama Barang</th>
                                         <th class="text-center">Stok</th>
+                                        <th class="text-center">Berat</th>
                                         <th class="text-center">Qty</th>
                                         <th class="text-right">Harga Jual</th>
                                         <th class="text-center">Diskon</th>
@@ -205,11 +208,19 @@
                                 </thead>
                                 <tbody id="items-table-body">
                                     <tr id="empty-row">
-                                        <td colspan="10" class="text-center text-muted py-4">Belum ada produk. Gunakan
+                                        <td colspan="11" class="text-center text-muted py-4">Belum ada produk. Gunakan
                                             kolom input di atas atau tekan F2 setelah mengisi.</td>
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="grand-total-panel mt-3">
+                            <div class="grand-display">
+                                <span class="grand-label text-uppercase">GRANDTOTAL</span>
+                                <div class="grand-amount" data-summary="grand">Rp 0</div>
+                                <div class="small text-white-75">Total item <strong data-summary="items">0</strong>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -233,9 +244,115 @@
                         <div class="ml-md-auto">
                             <button type="button" class="btn btn-bayar btn-lg px-5" id="pay-button" data-shortcut="F4">
                                 <span class="h5 mb-0 d-block d-flex align-items-center justify-content-center"><i class="fas fa-credit-card mr-2"></i>Bayar (F4)</span>
-                                <small class="text-uppercase">Simpan dan selesaikan</small>
                             </button>
                             <button type="submit" id="actual-submit" class="d-none">Simpan</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal fade" id="paymentModal" tabindex="-1" role="dialog" aria-labelledby="paymentModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header border-0 pb-0">
+                                <h5 class="modal-title font-weight-bold" id="paymentModalLabel">
+                                    <i class="fas fa-cash-register mr-2"></i>Pembayaran
+                                </h5>
+                                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                            <div class="modal-body pt-2">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="payment-method-select">Metode Pembayaran</label>
+                                            <select class="custom-select" id="payment-method-select">
+                                                <option value="Tunai">Tunai</option>
+                                                <option value="Kartu">Kartu</option>
+                                                <option value="Tempo">Tempo</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" id="payment-channel-group">
+                                            <label for="payment-channel-select">Kartu / Bank</label>
+                                            <select class="custom-select" id="payment-channel-select">
+                                                <option value="">Pilih kartu/bank</option>
+                                                {% for channel in payment_channels %}
+                                                    <option value="{{ channel.id }}">{{ channel.name }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <small class="text-muted">Data berasal dari master metode pembayaran.</small>
+                                            {% if not payment_channels %}
+                                            <small class="text-warning d-block">Belum ada data kartu/bank, tambahkan dulu di master.</small>
+                                            {% endif %}
+                                        </div>
+                                        <div class="form-group" id="due-date-group">
+                                            <label for="payment-due-date-input">Tanggal Jatuh Tempo</label>
+                                            <input type="date" class="form-control" id="payment-due-date-input">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="expedition-select">Expedisi</label>
+                                            <select class="custom-select" id="expedition-select">
+                                                <option value="">Pilih expedisi</option>
+                                                {% for expedisi in expedisi_list %}
+                                                    <option value="{{ expedisi.id }}">{{ expedisi.name }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <small class="text-muted">Data berasal dari master expedisi.</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="shipping-fee-input">Ongkos Kirim</label>
+                                            <input type="number" class="form-control" id="shipping-fee-input" min="0" step="0.01" value="0">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="amount-paid-input">Jumlah Bayar</label>
+                                            <input type="number" class="form-control" id="amount-paid-input" min="0" step="0.01" value="0">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card border-0 shadow-sm">
+                                            <div class="card-body">
+                                                <h6 class="font-weight-bold mb-3">Ringkasan Pembayaran</h6>
+                                                <ul class="list-unstyled mb-0">
+                                                    <li class="d-flex justify-content-between mb-2">
+                                                        <span>Total Berat</span>
+                                                        <span class="font-weight-semibold" id="total-weight-display">0</span>
+                                                    </li>
+                                                    <li class="d-flex justify-content-between mb-2">
+                                                        <span>Subtotal</span>
+                                                        <span class="font-weight-semibold" id="subtotal-display">Rp 0</span>
+                                                    </li>
+                                                    <li class="d-flex justify-content-between mb-2">
+                                                        <span>Diskon</span>
+                                                        <span class="font-weight-semibold text-danger" id="discount-display">Rp 0</span>
+                                                    </li>
+                                                    <li class="d-flex justify-content-between mb-2">
+                                                        <span>Pajak</span>
+                                                        <span class="font-weight-semibold text-info" id="tax-display">Rp 0</span>
+                                                    </li>
+                                                    <li class="d-flex justify-content-between mb-2">
+                                                        <span>Ongkos Kirim</span>
+                                                        <span class="font-weight-semibold" id="shipping-display">Rp 0</span>
+                                                    </li>
+                                                    <li class="d-flex justify-content-between pt-2 mt-2 border-top">
+                                                        <span class="font-weight-bold text-uppercase">Grand Total</span>
+                                                        <span class="font-weight-bold text-primary" id="grand-display">Rp 0</span>
+                                                    </li>
+                                                    <li class="d-flex justify-content-between mt-3">
+                                                        <span class="font-weight-bold">Kembali</span>
+                                                        <span class="font-weight-bold text-success" id="change-display">Rp 0</span>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer border-0">
+                                <button type="button" class="btn btn-secondary" data-dismiss="modal">Batalkan</button>
+                                <button type="button" class="btn btn-primary btn-payment-confirm" id="confirm-payment">
+                                    <span class="d-flex align-items-center justify-content-center"><i class="fas fa-check-circle mr-2"></i>Simpan dan selesaikan</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -379,7 +496,7 @@
                                     <div class="font-weight-semibold text-dark">
                                         {{ ('Rp {:,.0f}'.format(sale.total)).replace(',', '.') }}
                                     </div>
-                                    <small class="text-muted">{{ sale.items }} item</small>
+                                    <small class="text-muted">{{ sale["items"] }} item</small>
                                 </div>
                             </div>
                         </li>
@@ -520,7 +637,8 @@
         border-radius: 18px;
         padding: 1.75rem 2rem;
         color: #fff;
-        min-width: 240px;
+        min-width: 0;
+        width: 100%;
         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
     }
 
@@ -531,9 +649,10 @@
     }
 
     .grand-amount {
-        font-size: 2.8rem;
+        font-size: clamp(1.8rem, 4.2vw, 2.8rem);
         font-weight: 700;
         line-height: 1.1;
+        overflow-wrap: anywhere;
     }
 
     .quick-entry-grid {
@@ -711,6 +830,31 @@
         transition: transform 0.15s ease;
     }
 
+    .btn-payment-confirm {
+        border-radius: 14px;
+        border: none;
+        background: linear-gradient(135deg, #2563eb, #0ea5e9);
+        box-shadow: 0 16px 32px rgba(37, 99, 235, 0.35);
+        padding: 0.85rem 1.6rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+    }
+
+    .btn-payment-confirm small {
+        font-size: 0.7rem;
+        opacity: 0.85;
+        letter-spacing: 0.16em;
+    }
+
+    .btn-payment-confirm:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 18px 36px rgba(14, 165, 233, 0.35);
+    }
+
+    .btn-payment-confirm:focus {
+        box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.25);
+    }
+
     .btn-bayar:hover {
         transform: translateY(-2px);
         color: #fff;
@@ -812,6 +956,10 @@
     .action-card .btn-bayar {
         width: 100%;
     }
+
+    .grand-amount {
+        font-size: clamp(1.6rem, 6vw, 2.2rem);
+    }
 }
 .marketplace-cost-panel {
     border-radius: 18px;
@@ -892,6 +1040,32 @@
         const newSaleButton = document.getElementById('new-sale');
         const goBackButton = document.getElementById('go-back');
         const payButton = document.getElementById('pay-button');
+        const paymentModal = document.getElementById('paymentModal');
+        const shortcutModal = document.getElementById('shortcutModal');
+        const paymentMethodSelect = document.getElementById('payment-method-select');
+        const paymentChannelGroup = document.getElementById('payment-channel-group');
+        const paymentChannelSelect = document.getElementById('payment-channel-select');
+        const dueDateGroup = document.getElementById('due-date-group');
+        const dueDateInput = document.getElementById('payment-due-date-input');
+        const expeditionSelect = document.getElementById('expedition-select');
+        const shippingFeeInput = document.getElementById('shipping-fee-input');
+        const amountPaidInput = document.getElementById('amount-paid-input');
+        const confirmPaymentButton = document.getElementById('confirm-payment');
+        const subtotalDisplay = document.getElementById('subtotal-display');
+        const discountDisplay = document.getElementById('discount-display');
+        const taxDisplay = document.getElementById('tax-display');
+        const shippingDisplay = document.getElementById('shipping-display');
+        const grandDisplay = document.getElementById('grand-display');
+        const changeDisplay = document.getElementById('change-display');
+        const totalWeightDisplay = document.getElementById('total-weight-display');
+        const paymentMethodInput = document.getElementById('payment_method');
+        const paymentDueDateInput = document.getElementById('payment_due_date');
+        const expeditionIdInput = document.getElementById('expedition_id');
+        const paymentChannelInput = document.getElementById('payment_channel_id');
+        const shippingFeeHiddenInput = document.getElementById('shipping_fee');
+        const totalWeightInput = document.getElementById('total_weight');
+        const amountPaidHiddenInput = document.getElementById('amount_paid');
+        const changeDueInput = document.getElementById('change_due');
 
         let customerPriceLevelId = null;
         let manualPriceLevelId = null;
@@ -927,6 +1101,33 @@
         let currentLevelCosts = [];
         let lastRevenueForCosts = 0;
         let costFetchController = null;
+        let shippingFeeValue = 0;
+        let lastTotals = {
+            subtotal: 0,
+            discount: 0,
+            tax: 0,
+            items: 0,
+            weight: 0,
+            baseGrand: 0,
+            grand: 0,
+        };
+
+        function showModal(modalEl) {
+            if (!modalEl) {
+                return;
+            }
+            if (window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                return;
+            }
+            if (window.$ && typeof window.$.fn?.modal === 'function') {
+                window.$(modalEl).modal('show');
+                return;
+            }
+            modalEl.classList.add('show');
+            modalEl.style.display = 'block';
+            modalEl.removeAttribute('aria-hidden');
+        }
 
         function buildCustomerLabel(data) {
             if (!data) {
@@ -1247,6 +1448,7 @@
             let tax = 0;
             let items = 0;
             let cogs = 0;
+            let weight = 0;
 
             getRows().forEach(row => {
                 subtotal += parseNumber(row.dataset.subtotal);
@@ -1254,13 +1456,16 @@
                 tax += parseNumber(row.dataset.taxValue);
                 items += parseNumber(row.dataset.qty);
                 cogs += parseNumber(row.dataset.costValue);
+                weight += parseNumber(row.dataset.lineWeight);
             });
 
-            const grand = subtotal - discount + tax;
+            const baseGrand = subtotal - discount + tax;
+            const grand = baseGrand + (Number.isFinite(shippingFeeValue) ? shippingFeeValue : 0);
             const revenue = subtotal - discount;
             const grossProfit = revenue - cogs;
             const margin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
+            lastTotals = { subtotal, discount, tax, items, weight, baseGrand, grand };
             renderSummary('subtotal', subtotal);
             renderSummary('discount', discount);
             renderSummary('tax', tax);
@@ -1274,7 +1479,65 @@
                 tax,
                 margin
             });
-            renderMarketplaceCosts(grand);
+            renderMarketplaceCosts(baseGrand);
+            if (totalWeightInput) {
+                totalWeightInput.value = weight.toFixed(2);
+            }
+            updatePaymentSummary();
+        }
+
+        function updatePaymentSummary() {
+            if (!subtotalDisplay) {
+                return;
+            }
+            subtotalDisplay.textContent = formatCurrency(lastTotals.subtotal);
+            discountDisplay.textContent = formatCurrency(lastTotals.discount);
+            taxDisplay.textContent = formatCurrency(lastTotals.tax);
+            shippingDisplay.textContent = formatCurrency(shippingFeeValue || 0);
+            grandDisplay.textContent = formatCurrency(lastTotals.grand);
+            if (totalWeightDisplay) {
+                totalWeightDisplay.textContent = `${(lastTotals.weight || 0).toFixed(2)} kg`;
+            }
+            const paidValue = parseNumber(amountPaidInput ? amountPaidInput.value : 0);
+            const change = Math.max(0, paidValue - lastTotals.grand);
+            if (changeDisplay) {
+                changeDisplay.textContent = formatCurrency(change);
+            }
+        }
+
+        function applyPaymentMethodState() {
+            if (!paymentMethodSelect) {
+                return;
+            }
+            const method = paymentMethodSelect.value;
+            if (dueDateGroup) {
+                dueDateGroup.style.display = method === 'Tempo' ? '' : 'none';
+            }
+            if (paymentChannelGroup) {
+                paymentChannelGroup.style.display = method === 'Kartu' ? '' : 'none';
+            }
+            if (paymentChannelSelect) {
+                if (method === 'Kartu') {
+                    const hasOptions = paymentChannelSelect.options.length > 1;
+                    if (hasOptions && !paymentChannelSelect.value) {
+                        paymentChannelSelect.selectedIndex = 1;
+                    }
+                } else {
+                    paymentChannelSelect.value = '';
+                }
+            }
+            if (amountPaidInput) {
+                if (method === 'Tempo') {
+                    amountPaidInput.value = '0';
+                    amountPaidInput.setAttribute('disabled', 'disabled');
+                } else {
+                    amountPaidInput.removeAttribute('disabled');
+                    if (!amountPaidInput.value || parseNumber(amountPaidInput.value) === 0) {
+                        amountPaidInput.value = lastTotals.grand.toFixed(2);
+                    }
+                }
+            }
+            updatePaymentSummary();
         }
 
         function refreshRowNumbers() {
@@ -1529,6 +1792,8 @@
             const metrics = computeLine(qty, price, discount, tax);
             const unitCost = parseNumber(product.hpp ?? product.last_cost ?? product.harga_beli ?? 0);
             const costValue = unitCost * qty;
+            const unitWeight = parseNumber(product.weight ?? product.berat ?? 0);
+            const lineWeight = unitWeight * qty;
             const row = document.createElement('tr');
             row.dataset.row = 'true';
             row.dataset.productId = product.id;
@@ -1544,6 +1809,8 @@
             row.dataset.stockAfter = stockAfter ?? '';
             row.dataset.unitCost = unitCost;
             row.dataset.costValue = costValue;
+            row.dataset.unitWeight = unitWeight;
+            row.dataset.lineWeight = lineWeight;
 
             const productCode = escapeHtml(product.code || '-');
             const productName = escapeHtml(product.name || '-');
@@ -1562,22 +1829,25 @@
                     <small class="text-muted">${productCategory}</small>
                 </td>
                 <td class="align-middle text-center">
-                    <span class="badge badge-soft">${typeof stockAfter === 'number' ? stockAfter : (typeof stockBefore === 'number' ? stockBefore : '-')}</span>
+                    <span class="badge badge-soft stock-badge">${typeof stockAfter === 'number' ? stockAfter : (typeof stockBefore === 'number' ? stockBefore : '-')}</span>
                 </td>
                 <td class="align-middle text-center">
-                    <span class="badge badge-soft">${qty}</span>
+                    <span class="badge badge-soft weight-badge">${lineWeight.toFixed(2)}</span>
+                </td>
+                <td class="align-middle text-center">
+                    <span class="badge badge-soft qty-badge">${qty}</span>
                     <input type="hidden" name="jumlah[]" value="${qty}">
                 </td>
                 <td class="align-middle text-right">
-                    <span>${formatCurrency(price)}</span>
+                    <span class="price-text">${formatCurrency(price)}</span>
                     <input type="hidden" name="harga[]" value="${price}">
                 </td>
                 <td class="align-middle text-center">
-                    <span>${discount}%</span>
+                    <span class="discount-text">${discount}%</span>
                     <input type="hidden" name="diskon[]" value="${discount}">
                 </td>
                 <td class="align-middle text-center">
-                    <span>${tax}%</span>
+                    <span class="tax-text">${tax}%</span>
                     <input type="hidden" name="pajak[]" value="${tax}">
                 </td>
                 <td class="align-middle text-right font-weight-semibold">
@@ -1609,6 +1879,83 @@
             });
 
             return row;
+        }
+
+        function updateRowValues(row, payload) {
+            if (!row || !payload) {
+                return;
+            }
+            const { qty, price, discount, tax, stockAfter, unitCost, unitWeight } = payload;
+            const metrics = computeLine(qty, price, discount, tax);
+            const resolvedUnitCost = Number.isFinite(unitCost) ? unitCost : parseNumber(row.dataset.unitCost);
+            const costValue = resolvedUnitCost * qty;
+            const resolvedUnitWeight = Number.isFinite(unitWeight)
+                ? unitWeight
+                : parseNumber(row.dataset.unitWeight);
+            const lineWeight = resolvedUnitWeight * qty;
+
+            row.dataset.qty = qty;
+            row.dataset.price = price;
+            row.dataset.discountPercent = discount;
+            row.dataset.taxPercent = tax;
+            row.dataset.subtotal = metrics.subtotal;
+            row.dataset.discountValue = metrics.discountValue;
+            row.dataset.taxValue = metrics.taxValue;
+            row.dataset.total = metrics.total;
+            row.dataset.costValue = costValue;
+            row.dataset.unitCost = resolvedUnitCost;
+            row.dataset.unitWeight = resolvedUnitWeight;
+            row.dataset.lineWeight = lineWeight;
+            if (typeof stockAfter === 'number') {
+                row.dataset.stockAfter = stockAfter;
+            }
+
+            const qtyBadge = row.querySelector('.qty-badge');
+            if (qtyBadge) {
+                qtyBadge.textContent = qty;
+            }
+            const qtyInput = row.querySelector('input[name="jumlah[]"]');
+            if (qtyInput) {
+                qtyInput.value = qty;
+            }
+            const priceText = row.querySelector('.price-text');
+            if (priceText) {
+                priceText.textContent = formatCurrency(price);
+            }
+            const priceInput = row.querySelector('input[name="harga[]"]');
+            if (priceInput) {
+                priceInput.value = price;
+            }
+            const discountText = row.querySelector('.discount-text');
+            if (discountText) {
+                discountText.textContent = `${discount}%`;
+            }
+            const discountInput = row.querySelector('input[name="diskon[]"]');
+            if (discountInput) {
+                discountInput.value = discount;
+            }
+            const taxText = row.querySelector('.tax-text');
+            if (taxText) {
+                taxText.textContent = `${tax}%`;
+            }
+            const taxInput = row.querySelector('input[name="pajak[]"]');
+            if (taxInput) {
+                taxInput.value = tax;
+            }
+            const lineTotal = row.querySelector('.line-total');
+            if (lineTotal) {
+                lineTotal.textContent = formatCurrency(metrics.total);
+            }
+            const weightBadge = row.querySelector('.weight-badge');
+            if (weightBadge) {
+                weightBadge.textContent = lineWeight.toFixed(2);
+            }
+            if (typeof stockAfter === 'number') {
+                const stockBadge = row.querySelector('.stock-badge');
+                if (stockBadge) {
+                    stockBadge.textContent = stockAfter;
+                }
+            }
         }
 
         function loadRowIntoQuickEntry(row) {
@@ -1673,8 +2020,34 @@
             const remainingStock = availableStock - qty;
             setAvailableStock(String(productId), remainingStock);
 
-            const row = buildRow({ product, qty, price, discount, tax, stockBefore: availableStock, stockAfter: remainingStock });
-            itemsTableBody.appendChild(row);
+            const existingRow = getRows().find(
+                (row) => row.dataset.productId === String(productId)
+            );
+            if (existingRow) {
+                const existingQty = parseNumber(existingRow.dataset.qty);
+                const unitCost = parseNumber(
+                    product.hpp ?? product.last_cost ?? product.harga_beli ?? existingRow.dataset.unitCost ?? 0
+                );
+                updateRowValues(existingRow, {
+                    qty: existingQty + qty,
+                    price,
+                    discount,
+                    tax,
+                    stockAfter: remainingStock,
+                    unitCost,
+                });
+            } else {
+                const row = buildRow({
+                    product,
+                    qty,
+                    price,
+                    discount,
+                    tax,
+                    stockBefore: availableStock,
+                    stockAfter: remainingStock,
+                });
+                itemsTableBody.appendChild(row);
+            }
             toggleEmptyState();
             refreshRowNumbers();
             updateTotals();
@@ -1830,8 +2203,98 @@
             salesForm.requestSubmit ? salesForm.requestSubmit() : salesForm.submit();
         }
 
+        function openPaymentModal() {
+            if (getRows().length === 0) {
+                alert('Tambahkan minimal satu produk sebelum menyimpan penjualan.');
+                return;
+            }
+            if (shippingFeeInput) {
+                shippingFeeValue = Math.max(0, parseNumber(shippingFeeInput.value));
+            }
+            updateTotals();
+            applyPaymentMethodState();
+            showModal(paymentModal);
+        }
+
         if (payButton) {
-            payButton.addEventListener('click', submitForm);
+            payButton.addEventListener('click', openPaymentModal);
+        }
+
+        if (paymentMethodSelect) {
+            paymentMethodSelect.addEventListener('change', applyPaymentMethodState);
+        }
+
+        if (shippingFeeInput) {
+            shippingFeeInput.addEventListener('input', () => {
+                shippingFeeValue = Math.max(0, parseNumber(shippingFeeInput.value));
+                updateTotals();
+            });
+        }
+
+        if (amountPaidInput) {
+            amountPaidInput.addEventListener('input', updatePaymentSummary);
+        }
+
+        if (confirmPaymentButton) {
+            confirmPaymentButton.addEventListener('click', () => {
+                const approved = confirm('Simpan dan selesaikan pesanan ini?');
+                if (!approved) {
+                    return;
+                }
+                const method = paymentMethodSelect ? paymentMethodSelect.value : '';
+                const dueDateValue = dueDateInput ? dueDateInput.value : '';
+            if (method === 'Tempo' && !dueDateValue) {
+                alert('Tanggal jatuh tempo wajib diisi untuk pembayaran tempo.');
+                if (dueDateInput) {
+                    dueDateInput.focus();
+                }
+                return;
+            }
+            if (method === 'Kartu') {
+                const channelValue = paymentChannelSelect ? paymentChannelSelect.value : '';
+                if (!channelValue) {
+                    alert('Pilih kartu/bank untuk pembayaran kartu.');
+                    if (paymentChannelSelect) {
+                        paymentChannelSelect.focus();
+                    }
+                    return;
+                }
+            }
+            const paidValue = parseNumber(amountPaidInput ? amountPaidInput.value : 0);
+            if (method !== 'Tempo' && paidValue < lastTotals.grand) {
+                alert('Jumlah bayar kurang dari grand total.');
+                if (amountPaidInput) {
+                    amountPaidInput.focus();
+                }
+                return;
+            }
+            if (paymentMethodInput) {
+                paymentMethodInput.value = method;
+            }
+            if (paymentDueDateInput) {
+                paymentDueDateInput.value = method === 'Tempo' ? dueDateValue : '';
+            }
+            if (expeditionIdInput) {
+                expeditionIdInput.value = expeditionSelect ? expeditionSelect.value : '';
+            }
+            if (paymentChannelInput) {
+                paymentChannelInput.value = paymentChannelSelect ? paymentChannelSelect.value : '';
+            }
+                if (shippingFeeHiddenInput) {
+                    shippingFeeHiddenInput.value = (shippingFeeValue || 0).toFixed(2);
+                }
+                if (totalWeightInput) {
+                    totalWeightInput.value = (lastTotals.weight || 0).toFixed(2);
+                }
+                if (amountPaidHiddenInput) {
+                    amountPaidHiddenInput.value = paidValue.toFixed(2);
+                }
+                if (changeDueInput) {
+                    const change = Math.max(0, paidValue - lastTotals.grand);
+                    changeDueInput.value = change.toFixed(2);
+                }
+                submitForm();
+            });
         }
 
         if (salesForm) {
@@ -1894,13 +2357,13 @@
                 }
             } else if (event.key === 'F4') {
                 event.preventDefault();
-                submitForm();
+                openPaymentModal();
             } else if (event.key === 'Escape') {
                 event.preventDefault();
                 window.history.back();
             } else if ((event.ctrlKey || event.metaKey) && event.key === '/') {
                 event.preventDefault();
-                $('#shortcutModal').modal('show');
+                showModal(shortcutModal);
             }
         });
 

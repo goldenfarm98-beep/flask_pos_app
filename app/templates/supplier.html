@@ -127,7 +127,7 @@ url_for('main.supplier') %}
                         <div class="form-group col-md-6">
                             <label for="phone">Nomor Telepon</label>
                             <input type="text" class="form-control" id="phone" name="phone" placeholder="0812-XXXX-XXXX"
-                                value="{{ edit_supplier.phone if is_editing else '' }}" required>
+                                value="{{ (edit_supplier.phone | normalize_phone) if is_editing else '' }}" required>
                         </div>
                         <div class="form-group col-md-6">
                             <label for="bank_name">Nama Bank</label>
@@ -220,16 +220,6 @@ url_for('main.supplier') %}
                         </thead>
                         <tbody id="supplier-table-body" data-csrf="{{ csrf_token() }}">
                             {% for supplier in suppliers %}
-                            {% set normalized_phone = (supplier.phone or '').replace(' ', '').replace('-', '') %}
-                            {% if normalized_phone.startswith('+62') %}
-                                {% set normalized_phone = '0' ~ normalized_phone[3:] %}
-                            {% elif normalized_phone.startswith('62') %}
-                                {% set normalized_phone = '0' ~ normalized_phone[2:] %}
-                            {% elif normalized_phone.startswith('0') %}
-                                {% set normalized_phone = normalized_phone %}
-                            {% elif normalized_phone %}
-                                {% set normalized_phone = '0' ~ normalized_phone %}
-                            {% endif %}
                             <tr data-filter-text="{{ (supplier.name or '') | lower }}">
                                 <td>
                                     <div class="font-weight-semibold">{{ supplier.name }}</div>
@@ -237,17 +227,8 @@ url_for('main.supplier') %}
                                     <small class="text-muted d-block">Alamat: {{ supplier.address or '-' }}</small>
                                 </td>
                                 <td>
-                                    {% if supplier.phone %}
-                                    {% set normalized = (supplier.phone or '').replace(' ', '').replace('-', '') %}
-                                    {% if normalized.startswith('+62') %}
-                                        {% set display_phone = '0' ~ normalized[3:] %}
-                                    {% elif normalized.startswith('62') %}
-                                        {% set display_phone = '0' ~ normalized[2:] %}
-                                    {% elif normalized.startswith('0') %}
-                                        {% set display_phone = normalized %}
-                                    {% else %}
-                                        {% set display_phone = '0' ~ normalized %}
-                                    {% endif %}
+                                    {% set display_phone = supplier.phone | normalize_phone %}
+                                    {% if display_phone and display_phone|length > 1 %}
                                     <div class="d-flex align-items-center">
                                         <i class="fas fa-phone-alt text-success mr-2"></i>
                                         <a href="https://wa.me/62{{ display_phone[1:] }}" class="text-dark font-weight-semibold" target="_blank" rel="noreferrer">
@@ -639,10 +620,11 @@ url_for('main.supplier') %}
         }
 
         function normalizePhone(raw) {
-            let v = (raw || '').replace(/\\s|-/g, '');
+            let v = (raw || '').toString().trim();
             if (!v) return '';
-            if (v.startsWith('+62')) v = '0' + v.slice(3);
-            else if (v.startsWith('62')) v = '0' + v.slice(2);
+            if (/^\d+\.0+$/.test(v)) v = v.split('.')[0];
+            v = v.replace(/\D/g, '');
+            if (v.startsWith('62')) v = '0' + v.slice(2);
             else if (!v.startsWith('0')) v = '0' + v;
             return v;
         }

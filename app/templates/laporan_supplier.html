@@ -50,17 +50,8 @@
                         <td class="font-weight-semibold">{{ supplier.name }}</td>
                         <td>{{ supplier.contact_person or '-' }}</td>
                         <td>
-                            {% if supplier.phone %}
-                                {% set normalized = (supplier.phone or '').replace(' ', '').replace('-', '') %}
-                                {% if normalized.startswith('+62') %}
-                                    {% set display_phone = '0' ~ normalized[3:] %}
-                                {% elif normalized.startswith('62') %}
-                                    {% set display_phone = '0' ~ normalized[2:] %}
-                                {% elif normalized.startswith('0') %}
-                                    {% set display_phone = normalized %}
-                                {% else %}
-                                    {% set display_phone = '0' ~ normalized %}
-                                {% endif %}
+                            {% set display_phone = supplier.phone | normalize_phone %}
+                            {% if display_phone and display_phone|length > 1 %}
                                 <a href="https://wa.me/62{{ display_phone[1:] }}" target="_blank" rel="noreferrer" class="text-dark">
                                     {{ display_phone }}
                                 </a>

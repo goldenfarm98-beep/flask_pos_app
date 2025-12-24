@@ -22,15 +22,18 @@
             </p>
         </div>
         <div class="btn-group ak-actions">
-            <a href="#produk-form-card" class="btn btn-sm btn-primary"><i class="fas fa-plus-circle me-1"></i>Produk baru</a>
-            <a href="{{ url_for('main.export_produk') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-file-download me-1"></i>Export</a>
-            <a href="{{ url_for('main.dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-th-large me-1"></i>Dashboard</a>
+            <a href="#produk-form-card" class="btn btn-sm btn-primary"><i class="fas fa-plus-circle me-1"></i>Produk
+                baru</a>
+            <a href="{{ url_for('main.export_produk') }}" class="btn btn-sm btn-outline-primary"><i
+                    class="fas fa-file-download me-1"></i>Export</a>
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-sm btn-outline-secondary"><i
+                    class="fas fa-th-large me-1"></i>Dashboard</a>
         </div>
     </div>
 
-{% if stat_cards %}
-<div class="row stat-grid mb-4">
-    {% for card in stat_cards %}
+    {% if stat_cards %}
+    <div class="row stat-grid mb-4">
+        {% for card in stat_cards %}
         <div class="col-sm-6 col-xl-3 mb-3">
             <div class="card stat-card h-100">
                 <div class="card-body">
@@ -38,7 +41,8 @@
                         <span class="stat-icon {{ card.accent }}">
                             <i class="fas {{ card.icon }}"></i>
                         </span>
-                        <span class="badge rounded-pill badge-soft-primary text-uppercase fw-semibold px-3">{{ card.label }}</span>
+                        <span class="badge rounded-pill badge-soft-primary text-uppercase fw-semibold px-3">{{
+                            card.label }}</span>
                     </div>
                     <div class="stat-value mb-1">
                         {{ '{:,}'.format(card.value).replace(',', '.') }}
@@ -47,368 +51,432 @@
                 </div>
             </div>
         </div>
-    {% endfor %}
-</div>
-{% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
 
-<div class="row align-items-start">
-    <div class="col-lg-8">
-        <div class="card card-panel shadow-sm mb-4">
-            <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
-                <div>
-                    <h2 class="h5 fw-bold mb-1">Daftar Produk</h2>
-                    <p class="small text-muted mb-0">Menampilkan {{ pagination.total }} produk sesuai filter yang dipilih.</p>
-                </div>
-                <a href="{{ url_for('main.produk') }}" class="btn btn-sm btn-outline-primary mt-3 mt-md-0">
-                    <i class="fas fa-sync-alt me-1"></i>Reset filter
-                </a>
-            </div>
-            <div class="card-body">
-                <form class="filter-form mb-4" method="GET" action="{{ url_for('main.produk') }}">
-                    <div class="row align-items-center">
-                        <div class="col-12 col-lg-5 mb-3">
-                            <label for="filterSearch" class="visually-hidden">Cari Produk</label>
-                            <div class="filter-search-wrapper position-relative">
-                                <div class="input-group shadow-sm filter-input">
-                                    <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
-                                    <input type="text" id="filterSearch" name="search" class="form-control border-start-0" placeholder="Cari nama, kode, atau SKU" value="{{ request.args.get('search', '') }}" autocomplete="off">
-                                </div>
-                                <div class="filter-suggestion-panel shadow-sm" id="filterSearchSuggestions"></div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-lg-3 mb-3">
-                            <label for="filterKategori" class="visually-hidden">Kategori</label>
-                            <div class="input-group shadow-sm filter-input">
-                                <span class="input-group-text bg-white border-end-0"><i class="fas fa-tags text-muted"></i></span>
-                                <select id="filterKategori" name="kategori" class="form-select border-start-0">
-                                    <option value="">Semua kategori</option>
-                                    {% for kategori in kategoris %}
-                                        <option value="{{ kategori.id }}" {% if request.args.get('kategori') == kategori.id|string %}selected{% endif %}>{{ kategori.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-6 col-lg-3 mb-3">
-                            <label for="filterSupplier" class="visually-hidden">Supplier</label>
-                            <div class="input-group shadow-sm filter-input">
-                                <span class="input-group-text bg-white border-end-0"><i class="fas fa-truck text-muted"></i></span>
-                                <select id="filterSupplier" name="supplier" class="form-select border-start-0">
-                                    <option value="">Semua supplier</option>
-                                    {% for supplier in suppliers %}
-                                        <option value="{{ supplier.id }}" {% if request.args.get('supplier') == supplier.id|string %}selected{% endif %}>{{ supplier.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-12 col-lg-1 mb-3 d-flex align-items-center justify-content-lg-end">
-                            <div class="btn-group btn-group-sm filter-actions w-100" role="group">
-                                <button type="submit" class="btn btn-primary btn-icon btn-search-only" data-bs-toggle="tooltip" title="Cari produk">
-                                    <i class="fas fa-arrow-right"></i>
-                                </button>
-                            </div>
-                        </div>
+    <div class="row align-items-start">
+        <div class="col-lg-8">
+            <div class="card card-panel shadow-sm mb-4">
+                <div
+                    class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
+                    <div>
+                        <h2 class="h5 fw-bold mb-1">Daftar Produk</h2>
+                        <p class="small text-muted mb-0">Menampilkan {{ pagination.total }} produk sesuai filter yang
+                            dipilih.</p>
                     </div>
-                </form>
+                    <a href="{{ url_for('main.produk') }}" class="btn btn-sm btn-outline-primary mt-3 mt-md-0">
+                        <i class="fas fa-sync-alt me-1"></i>Reset filter
+                    </a>
+                </div>
+                <div class="card-body">
+                    <form class="filter-form mb-4" method="GET" action="{{ url_for('main.produk') }}">
+                        <div class="row align-items-center">
+                            <div class="col-12 col-lg-5 mb-3">
+                                <label for="filterSearch" class="visually-hidden">Cari Produk</label>
+                                <div class="filter-search-wrapper position-relative">
+                                    <div class="input-group shadow-sm filter-input">
+                                        <span class="input-group-text bg-white border-end-0"><i
+                                                class="fas fa-search text-muted"></i></span>
+                                        <input type="text" id="filterSearch" name="search"
+                                            class="form-control border-start-0" placeholder="Cari nama, kode, atau SKU"
+                                            value="{{ request.args.get('search', '') }}" autocomplete="off">
+                                    </div>
+                                    <div class="filter-suggestion-panel shadow-sm" id="filterSearchSuggestions"></div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-lg-3 mb-3">
+                                <label for="filterKategori" class="visually-hidden">Kategori</label>
+                                <div class="input-group shadow-sm filter-input">
+                                    <span class="input-group-text bg-white border-end-0"><i
+                                            class="fas fa-tags text-muted"></i></span>
+                                    <select id="filterKategori" name="kategori" class="form-select border-start-0">
+                                        <option value="">Semua kategori</option>
+                                        {% for kategori in kategoris %}
+                                        <option value="{{ kategori.id }}" {% if
+                                            request.args.get('kategori')==kategori.id|string %}selected{% endif %}>{{
+                                            kategori.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-6 col-lg-3 mb-3">
+                                <label for="filterSupplier" class="visually-hidden">Supplier</label>
+                                <div class="input-group shadow-sm filter-input">
+                                    <span class="input-group-text bg-white border-end-0"><i
+                                            class="fas fa-truck text-muted"></i></span>
+                                    <select id="filterSupplier" name="supplier" class="form-select border-start-0">
+                                        <option value="">Semua supplier</option>
+                                        {% for supplier in suppliers %}
+                                        <option value="{{ supplier.id }}" {% if
+                                            request.args.get('supplier')==supplier.id|string %}selected{% endif %}>{{
+                                            supplier.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-1 mb-3 d-flex align-items-center justify-content-lg-end">
+                                <div class="btn-group btn-group-sm filter-actions w-100" role="group">
+                                    <button type="submit" class="btn btn-primary btn-icon btn-search-only"
+                                        data-bs-toggle="tooltip" title="Cari produk">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
 
-                <div id="productTableContainer">
-                    {% include 'partials/product_table.html' %}
+                    <div id="productTableContainer">
+                        {% include 'partials/product_table.html' %}
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="row">
-            <div class="col-md-6 mb-4">
-                <div class="card shadow-sm h-100">
-                    <div class="card-body">
-                        <h3 class="h6 fw-bold mb-3">Kesehatan data produk</h3>
-                        {% set badge_map = {'warning': 'bg-warning text-dark', 'info': 'bg-info text-white', 'success': 'bg-success text-white', 'secondary': 'bg-secondary text-white'} %}
-                        <ul class="list-unstyled mb-0">
-                            {% for insight in health_insights %}
+            <div class="row">
+                <div class="col-md-6 mb-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+                            <h3 class="h6 fw-bold mb-3">Kesehatan data produk</h3>
+                            {% set badge_map = {'warning': 'bg-warning text-dark', 'info': 'bg-info text-white',
+                            'success': 'bg-success text-white', 'secondary': 'bg-secondary text-white'} %}
+                            <ul class="list-unstyled mb-0">
+                                {% for insight in health_insights %}
                                 <li class="mb-3">
                                     <div class="d-flex align-items-center justify-content-between">
                                         <span class="fw-semibold">{{ insight.title }}</span>
-                                        <span class="badge rounded-pill {{ badge_map.get(insight.status, 'bg-secondary text-white') }}">
+                                        <span
+                                            class="badge rounded-pill {{ badge_map.get(insight.status, 'bg-secondary text-white') }}">
                                             {{ '{:,}'.format(insight.value).replace(',', '.') }}
                                         </span>
                                     </div>
                                     <p class="small text-muted mb-0">{{ insight.description }}</p>
                                 </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6 mb-4">
-                <div class="card shadow-sm h-100">
-                    <div class="card-body">
-                        <h3 class="h6 fw-bold mb-3">Mendekati kadaluarsa</h3>
-                        {% if expiring_products %}
-                            <ul class="list-group list-group-flush">
-                                {% for produk in expiring_products %}
-                                    <li class="list-group-item px-0 d-flex justify-content-between align-items-start">
-                                        <div>
-                                            <div class="fw-semibold">{{ produk.nama_produk }}</div>
-                                            <small class="text-muted d-block">
-                                                <i class="fas fa-barcode me-1"></i>{{ produk.kode_produk }}
-                                            </small>
-                                        </div>
-                                        <div class="text-end">
-                                            <span class="badge bg-danger mb-1">
-                                                {{ produk.tanggal_expired.strftime('%d %b %Y') }}
-                                            </span>
-                                            <div class="small text-muted">
-                                                {{ produk.supplier.name if produk.supplier else 'Supplier tidak ada' }}
-                                            </div>
-                                        </div>
-                                    </li>
                                 {% endfor %}
                             </ul>
-                        {% else %}
-                            <p class="small text-muted mb-0">Belum ada produk dengan tanggal kedaluwarsa yang tercatat. Tambahkan tanggal pada produk sensitif.</p>
-                        {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+                            <h3 class="h6 fw-bold mb-3">Mendekati kadaluarsa</h3>
+                            {% if expiring_products %}
+                            <ul class="list-group list-group-flush">
+                                {% for produk in expiring_products %}
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <div class="fw-semibold">{{ produk.nama_produk }}</div>
+                                        <small class="text-muted d-block">
+                                            <i class="fas fa-barcode me-1"></i>{{ produk.kode_produk }}
+                                        </small>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge bg-danger mb-1">
+                                            {{ produk.tanggal_expired.strftime('%d %b %Y') }}
+                                        </span>
+                                        <div class="small text-muted">
+                                            {{ produk.supplier.name if produk.supplier else 'Supplier tidak ada' }}
+                                        </div>
+                                    </div>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <p class="small text-muted mb-0">Belum ada produk dengan tanggal kedaluwarsa yang tercatat.
+                                Tambahkan tanggal pada produk sensitif.</p>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="col-lg-4" id="produk-form-card">
-        <div class="sticky-column">
-        <div class="card shadow-lg form-card mb-4">
-            <div class="card-body">
-                <span class="badge rounded-pill bg-primary text-uppercase px-3 py-2" id="productFormBadge" data-default-text="Produk Baru" data-edit-text="Perbarui Produk">
-                    {% if edit_produk %}Perbarui Produk{% else %}Produk Baru{% endif %}
-                </span>
-                <h2 class="h5 fw-bold mt-3 mb-2">
-                    <span id="productFormHeading" data-default-text="Tambah produk ke katalog" data-edit-text="Ubah detail">
-                        {% if edit_produk %}
-                            Ubah detail
-                        {% else %}
-                            Tambah produk ke katalog
-                        {% endif %}
-                    </span>
-                    <span id="productFormHeadingName" class="text-primary {% if not edit_produk %}d-none{% endif %}">
-                        {% if edit_produk %}{{ edit_produk.nama_produk }}{% endif %}
-                    </span>
-                </h2>
-                <p class="small text-muted">Lengkapi informasi utama untuk mempercepat proses penjualan dan analitik stok.</p>
-
-                <div id="productFormEditAlert" class="alert alert-info small {% if not edit_produk %}d-none{% endif %}" role="alert">
-                    Anda sedang mengedit produk. Simpan perubahan atau <a href="{{ url_for('main.produk') }}" class="alert-link">batalkan untuk kembali menambah produk baru</a>.
-                </div>
-
-                <div class="alert alert-light border small d-flex align-items-start bg-white text-dark" role="alert" style="box-shadow: 0 4px 18px rgba(15,23,42,0.08);">
-                    <i class="fas fa-layer-group text-primary me-2 mt-1"></i>
-                    <div>
-                        Data satuan dan kategori diambil dari master. Kelola pilihan baru melalui halaman
-                        <a href="{{ url_for('main.satuan') }}" class="fw-semibold">Data Satuan</a>
-                        atau
-                        <a href="{{ url_for('main.kategori') }}" class="fw-semibold">Data Kategori</a>.
-                    </div>
-                </div>
-
-                <form method="POST" id="productForm">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="produk_id" value="{% if edit_produk %}{{ edit_produk.id }}{% endif %}">
-
-                    <div class="form-group">
-                        <label for="kode_produk">Kode Produk</label>
-                        <input type="text" class="form-control" id="kode_produk" name="kode_produk" placeholder="Contoh: BRG-001" value="{% if form_prefill and form_prefill.kode_produk is not none %}{{ form_prefill.kode_produk }}{% elif edit_produk %}{{ edit_produk.kode_produk }}{% else %}{% endif %}" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="sku">SKU</label>
-                        <input type="text" class="form-control" id="sku" name="sku" placeholder="Opsional: SKU internal" value="{% if form_prefill and form_prefill.sku is not none %}{{ form_prefill.sku }}{% elif edit_produk %}{{ edit_produk.sku }}{% else %}{% endif %}">
-                    </div>
-                    <div class="form-group">
-                        <label for="barcode">Barcode</label>
-                        <input type="text" class="form-control" id="barcode" name="barcode" placeholder="Kode barcode" value="{% if form_prefill and form_prefill.barcode is not none %}{{ form_prefill.barcode }}{% elif edit_produk %}{{ edit_produk.barcode }}{% else %}{% endif %}">
-                    </div>
-                    <div class="form-group">
-                        <label for="nama_produk">Nama Produk</label>
-                        <input type="text" class="form-control" id="nama_produk" name="nama_produk" placeholder="Nama produk" value="{% if form_prefill and form_prefill.nama_produk is not none %}{{ form_prefill.nama_produk }}{% elif edit_produk %}{{ edit_produk.nama_produk }}{% else %}{% endif %}" required>
-                    </div>
-
-                    <div class="row g-3">
-                        <div class="form-group col-sm-6">
-                            <label for="satuan">Satuan</label>
-                            <select class="form-select" id="satuan" name="satuan" required>
-                                {% if satuans %}
-                                    {% for satuan in satuans %}
-                                        <option value="{{ satuan.id }}" title="{{ satuan.name }}" {% if (form_prefill and form_prefill.satuan|int == satuan.id) or (not form_prefill and edit_produk and satuan.id == edit_produk.satuan_id) %}selected{% endif %}>{{ satuan.name }}</option>
-                                    {% endfor %}
+        <div class="col-lg-4" id="produk-form-card">
+            <div class="sticky-column">
+                <div class="card shadow-lg form-card mb-4">
+                    <div class="card-body">
+                        <span class="badge rounded-pill bg-primary text-uppercase px-3 py-2" id="productFormBadge"
+                            data-default-text="Produk Baru" data-edit-text="Perbarui Produk">
+                            {% if edit_produk %}Perbarui Produk{% else %}Produk Baru{% endif %}
+                        </span>
+                        <h2 class="h5 fw-bold mt-3 mb-2">
+                            <span id="productFormHeading" data-default-text="Tambah produk ke katalog"
+                                data-edit-text="Ubah detail">
+                                {% if edit_produk %}
+                                Ubah detail
                                 {% else %}
-                                    <option value="" disabled selected>Belum ada data satuan</option>
+                                Tambah produk ke katalog
                                 {% endif %}
-                            </select>
-                            <small class="form-text text-muted">Tidak menemukan opsi? Tambahkan di <a href="{{ url_for('main.satuan') }}">Data Satuan</a>.</small>
-                        </div>
-                        <div class="form-group col-sm-6">
-                            <label for="kategori">Kategori</label>
-                            <select class="form-select" id="kategori" name="kategori" required>
-                                {% if kategoris %}
-                                    {% for kategori in kategoris %}
-                                        <option value="{{ kategori.id }}" title="{{ kategori.name }}" {% if (form_prefill and form_prefill.kategori|int == kategori.id) or (not form_prefill and edit_produk and kategori.id == edit_produk.kategori_id) %}selected{% endif %}>{{ kategori.name }}</option>
-                                    {% endfor %}
-                                {% else %}
-                                    <option value="" disabled selected>Belum ada data kategori</option>
-                                {% endif %}
-                            </select>
-                            <small class="form-text text-muted">Atur daftar kategori di <a href="{{ url_for('main.kategori') }}">Data Kategori</a>.</small>
-                        </div>
-                    </div>
+                            </span>
+                            <span id="productFormHeadingName"
+                                class="text-primary {% if not edit_produk %}d-none{% endif %}">
+                                {% if edit_produk %}{{ edit_produk.nama_produk }}{% endif %}
+                            </span>
+                        </h2>
+                        <p class="small text-muted">Lengkapi informasi utama untuk mempercepat proses penjualan dan
+                            analitik stok.</p>
 
-                    <div class="form-group">
-                        <label for="supplier">Supplier</label>
-                        <select class="form-select" id="supplier" name="supplier">
-                            {% for supplier in suppliers %}
-                                <option value="{{ supplier.id }}" title="{{ supplier.name }}" {% if (form_prefill and form_prefill.supplier|int == supplier.id) or (not form_prefill and edit_produk and supplier.id == edit_produk.supplier_id) %}selected{% endif %}>{{ supplier.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="row g-3">
-                        <div class="form-group col-sm-6">
-                            <label for="berat">Berat (kg)</label>
-                            <input type="number" step="0.01" class="form-control" id="berat" name="berat" placeholder="cth. 0.25" value="{% if form_prefill and form_prefill.berat is not none %}{{ form_prefill.berat }}{% elif edit_produk and edit_produk.berat is not none %}{{ edit_produk.berat }}{% else %}{% endif %}">
+                        <div id="productFormEditAlert"
+                            class="alert alert-info small {% if not edit_produk %}d-none{% endif %}" role="alert">
+                            Anda sedang mengedit produk. Simpan perubahan atau <a href="{{ url_for('main.produk') }}"
+                                class="alert-link">batalkan untuk kembali menambah produk baru</a>.
                         </div>
-                        <div class="form-group col-sm-6">
-                            <label for="stok_minimal">Stok Minimal</label>
-                            <input type="number" class="form-control" id="stok_minimal" name="stok_minimal" placeholder="cth. 10" value="{% if form_prefill and form_prefill.stok_minimal is not none %}{{ form_prefill.stok_minimal }}{% elif edit_produk and edit_produk.stok_minimal is not none %}{{ edit_produk.stok_minimal }}{% else %}{% endif %}">
-                        </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label for="tanggal_expired">Tanggal Kedaluwarsa</label>
-                        <input type="date" class="form-control" id="tanggal_expired" name="tanggal_expired" value="{% if form_prefill and form_prefill.tanggal_expired %}{{ form_prefill.tanggal_expired }}{% elif edit_produk and edit_produk.tanggal_expired %}{{ edit_produk.tanggal_expired.strftime('%Y-%m-%d') }}{% endif %}">
-                        <small class="form-text text-muted">Opsional: penting untuk produk makanan, kosmetik, dan obat.</small>
-                    </div>
-
-                    <div class="price-level-manager border rounded-3 p-3 mb-4">
-                        <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="alert alert-light border small d-flex align-items-start bg-white text-dark"
+                            role="alert" style="box-shadow: 0 4px 18px rgba(15,23,42,0.08);">
+                            <i class="fas fa-layer-group text-primary me-2 mt-1"></i>
                             <div>
-                                <h3 class="h6 fw-bold mb-1">Level harga produk</h3>
-                                <p class="small text-muted mb-0">Atur harga Retail, marketplace, dan kanal lain dengan cepat.</p>
+                                Data satuan dan kategori diambil dari master. Kelola pilihan baru melalui halaman
+                                <a href="{{ url_for('main.satuan') }}" class="fw-semibold">Data Satuan</a>
+                                atau
+                                <a href="{{ url_for('main.kategori') }}" class="fw-semibold">Data Kategori</a>.
                             </div>
-                            <a href="{{ url_for('main.harga_level') }}" class="btn btn-link btn-sm px-0">
-                                <i class="fas fa-layer-group me-1"></i>Kelola level
-                            </a>
                         </div>
-                        {% if price_levels %}
-                            <div class="row g-3 align-items-end">
-                                <div class="form-group col-sm-6 mb-3 mb-sm-0">
-                                    <label for="price_level_selector">Pilih level</label>
-                                    <select class="form-select" id="price_level_selector">
-                                        <option value="">Pilih level</option>
-                                        {% for level in price_levels %}
-                                            <option value="{{ level.id }}">{{ level.name }}</option>
+
+                        <form method="POST" id="productForm">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="produk_id"
+                                value="{% if edit_produk %}{{ edit_produk.id }}{% endif %}">
+
+                            <div class="form-group">
+                                <label for="kode_produk">Kode Produk</label>
+                                <input type="text" class="form-control" id="kode_produk" name="kode_produk"
+                                    placeholder="Contoh: C001"
+                                    value="{% if form_prefill and form_prefill.kode_produk is not none %}{{ form_prefill.kode_produk }}{% elif edit_produk %}{{ edit_produk.kode_produk }}{% else %}{% endif %}"
+                                    required>
+                            </div>
+                            <div class="form-group">
+                                <label for="sku">SKU</label>
+                                <input type="text" class="form-control" id="sku" name="sku"
+                                    placeholder="Opsional: SKU internal"
+                                    value="{% if form_prefill and form_prefill.sku is not none %}{{ form_prefill.sku }}{% elif edit_produk %}{{ edit_produk.sku }}{% else %}{% endif %}">
+                            </div>
+                            <div class="form-group">
+                                <label for="barcode">Barcode</label>
+                                <input type="text" class="form-control" id="barcode" name="barcode"
+                                    placeholder="Kode barcode"
+                                    value="{% if form_prefill and form_prefill.barcode is not none %}{{ form_prefill.barcode }}{% elif edit_produk %}{{ edit_produk.barcode }}{% else %}{% endif %}">
+                            </div>
+                            <div class="form-group">
+                                <label for="nama_produk">Nama Produk</label>
+                                <input type="text" class="form-control" id="nama_produk" name="nama_produk"
+                                    placeholder="Nama produk"
+                                    value="{% if form_prefill and form_prefill.nama_produk is not none %}{{ form_prefill.nama_produk }}{% elif edit_produk %}{{ edit_produk.nama_produk }}{% else %}{% endif %}"
+                                    required>
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="form-group col-sm-6">
+                                    <label for="satuan">Satuan</label>
+                                    <select class="form-select" id="satuan" name="satuan" required>
+                                        {% if satuans %}
+                                        {% for satuan in satuans %}
+                                        <option value="{{ satuan.id }}" title="{{ satuan.name }}" {% if (form_prefill
+                                            and form_prefill.satuan|int==satuan.id) or (not form_prefill and edit_produk
+                                            and satuan.id==edit_produk.satuan_id) %}selected{% endif %}>{{ satuan.name
+                                            }}</option>
                                         {% endfor %}
+                                        {% else %}
+                                        <option value="" disabled selected>Belum ada data satuan</option>
+                                        {% endif %}
                                     </select>
+                                    <small class="form-text text-muted">Tidak menemukan opsi? Tambahkan di <a
+                                            href="{{ url_for('main.satuan') }}">Data Satuan</a>.</small>
                                 </div>
                                 <div class="form-group col-sm-6">
-                                    <label for="price_level_value">Harga (Rp)</label>
-                                    <input type="text" class="form-control" id="price_level_value" placeholder="cth. 68.000">
+                                    <label for="kategori">Kategori</label>
+                                    <select class="form-select" id="kategori" name="kategori" required>
+                                        {% if kategoris %}
+                                        {% for kategori in kategoris %}
+                                        <option value="{{ kategori.id }}" title="{{ kategori.name }}" {% if
+                                            (form_prefill and form_prefill.kategori|int==kategori.id) or (not
+                                            form_prefill and edit_produk and kategori.id==edit_produk.kategori_id)
+                                            %}selected{% endif %}>{{ kategori.name }}</option>
+                                        {% endfor %}
+                                        {% else %}
+                                        <option value="" disabled selected>Belum ada data kategori</option>
+                                        {% endif %}
+                                    </select>
+                                    <small class="form-text text-muted">Atur daftar kategori di <a
+                                            href="{{ url_for('main.kategori') }}">Data Kategori</a>.</small>
                                 </div>
                             </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm w-100" id="add_price_level_entry">
-                                <i class="fas fa-plus-circle me-1"></i>Tambahkan level harga
+
+                            <div class="form-group">
+                                <label for="supplier">Supplier</label>
+                                <select class="form-select" id="supplier" name="supplier">
+                                    {% for supplier in suppliers %}
+                                    <option value="{{ supplier.id }}" title="{{ supplier.name }}" {% if (form_prefill
+                                        and form_prefill.supplier|int==supplier.id) or (not form_prefill and edit_produk
+                                        and supplier.id==edit_produk.supplier_id) %}selected{% endif %}>{{ supplier.name
+                                        }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="form-group col-sm-6">
+                                    <label for="berat">Berat (kg)</label>
+                                    <input type="number" step="0.01" class="form-control" id="berat" name="berat"
+                                        placeholder="cth. 0.25"
+                                        value="{% if form_prefill and form_prefill.berat is not none %}{{ form_prefill.berat }}{% elif edit_produk and edit_produk.berat is not none %}{{ edit_produk.berat }}{% else %}{% endif %}">
+                                </div>
+                                <div class="form-group col-sm-6">
+                                    <label for="stok_minimal">Stok Minimal</label>
+                                    <input type="number" class="form-control" id="stok_minimal" name="stok_minimal"
+                                        placeholder="cth. 10"
+                                        value="{% if form_prefill and form_prefill.stok_minimal is not none %}{{ form_prefill.stok_minimal }}{% elif edit_produk and edit_produk.stok_minimal is not none %}{{ edit_produk.stok_minimal }}{% else %}{% endif %}">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="tanggal_expired">Tanggal Kedaluwarsa</label>
+                                <input type="date" class="form-control" id="tanggal_expired" name="tanggal_expired"
+                                    value="{% if form_prefill and form_prefill.tanggal_expired %}{{ form_prefill.tanggal_expired }}{% elif edit_produk and edit_produk.tanggal_expired %}{{ edit_produk.tanggal_expired.strftime('%Y-%m-%d') }}{% endif %}">
+                                <small class="form-text text-muted">Opsional: penting untuk produk makanan, kosmetik,
+                                    dan obat.</small>
+                            </div>
+
+                            <div class="price-level-manager border rounded-3 p-3 mb-4">
+                                <div class="d-flex align-items-center justify-content-between mb-3">
+                                    <div>
+                                        <h3 class="h6 fw-bold mb-1">Level harga produk</h3>
+                                        <p class="small text-muted mb-0">Atur harga Retail, marketplace, dan kanal lain
+                                            dengan cepat.</p>
+                                    </div>
+                                    <a href="{{ url_for('main.harga_level') }}" class="btn btn-link btn-sm px-0">
+                                        <i class="fas fa-layer-group me-1"></i>Kelola level
+                                    </a>
+                                </div>
+                                {% if price_levels %}
+                                <div class="row g-3 align-items-end">
+                                    <div class="form-group col-sm-6 mb-3 mb-sm-0">
+                                        <label for="price_level_selector">Pilih level</label>
+                                        <select class="form-select" id="price_level_selector">
+                                            <option value="">Pilih level</option>
+                                            {% for level in price_levels %}
+                                            <option value="{{ level.id }}">{{ level.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="form-group col-sm-6">
+                                        <label for="price_level_value">Harga (Rp)</label>
+                                        <input type="text" class="form-control" id="price_level_value"
+                                            placeholder="cth. 68.000">
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-outline-primary btn-sm w-100"
+                                    id="add_price_level_entry">
+                                    <i class="fas fa-plus-circle me-1"></i>Tambahkan level harga
+                                </button>
+                                <div id="price-level-feedback" class="text-danger small mt-2 d-none"></div>
+                                <div class="table-responsive mt-3">
+                                    <table class="table table-sm mb-0" id="price-level-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Level</th>
+                                                <th class="text-end">Harga</th>
+                                                <th class="text-end">Aksi</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                                {% else %}
+                                <div class="alert alert-warning small mb-0">
+                                    Belum ada level harga. Buat minimal satu di halaman <a
+                                        href="{{ url_for('main.harga_level') }}">Level Harga</a> sebelum menyimpan
+                                    produk.
+                                </div>
+                                {% endif %}
+                                <input type="hidden" name="price_level_payload" id="price_level_payload_input"
+                                    value="[]">
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100" id="productFormSubmit"
+                                data-default-label="Simpan Produk" data-edit-label="Simpan Perubahan">
+                                {% if edit_produk %}Simpan Perubahan{% else %}Simpan Produk{% endif %}
                             </button>
-                            <div id="price-level-feedback" class="text-danger small mt-2 d-none"></div>
-                            <div class="table-responsive mt-3">
-                                <table class="table table-sm mb-0" id="price-level-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Level</th>
-                                            <th class="text-end">Harga</th>
-                                            <th class="text-end">Aksi</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
-                        {% else %}
-                            <div class="alert alert-warning small mb-0">
-                                Belum ada level harga. Buat minimal satu di halaman <a href="{{ url_for('main.harga_level') }}">Level Harga</a> sebelum menyimpan produk.
-                            </div>
-                        {% endif %}
-                        <input type="hidden" name="price_level_payload" id="price_level_payload_input" value="[]">
+                            {% if edit_produk %}
+                            <a href="{{ url_for('main.produk') }}" class="btn btn-light w-100 mt-2">Batalkan edit</a>
+                            {% else %}
+                            <button type="reset" class="btn btn-outline-secondary w-100 mt-2">Reset form</button>
+                            {% endif %}
+                            <button type="button" class="btn btn-light w-100 mt-2 d-none" id="productCancelEditButton"
+                                data-reset-url="{{ url_for('main.produk') }}">
+                                Batalkan edit
+                            </button>
+
+                            <p class="small text-muted text-center mt-3 mb-0">
+                                Gunakan kode produk unik untuk memudahkan pelacakan di laporan penjualan.
+                            </p>
+                        </form>
                     </div>
-
-                    <button type="submit" class="btn btn-primary w-100" id="productFormSubmit" data-default-label="Simpan Produk" data-edit-label="Simpan Perubahan">
-                        {% if edit_produk %}Simpan Perubahan{% else %}Simpan Produk{% endif %}
-                    </button>
-                    {% if edit_produk %}
-                        <a href="{{ url_for('main.produk') }}" class="btn btn-light w-100 mt-2">Batalkan edit</a>
-                    {% else %}
-                        <button type="reset" class="btn btn-outline-secondary w-100 mt-2">Reset form</button>
-                    {% endif %}
-                    <button type="button" class="btn btn-light w-100 mt-2 d-none" id="productCancelEditButton" data-reset-url="{{ url_for('main.produk') }}">
-                        Batalkan edit
-                    </button>
-
-                    <p class="small text-muted text-center mt-3 mb-0">
-                        Gunakan kode produk unik untuk memudahkan pelacakan di laporan penjualan.
-                    </p>
-                </form>
-            </div>
-        </div>
-
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h3 class="h6 fw-bold mb-2">Impor dari Excel</h3>
-                <p class="small text-muted mb-3">Gunakan file berekstensi .xlsx dengan kolom sesuai template berikut.</p>
-                <div class="table-responsive mb-3">
-                    <table class="table table-sm table-striped mb-0">
-                        <thead>
-                            <tr>
-                                <th>Kolom</th>
-                                <th>Wajib</th>
-                                <th>Keterangan</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for field in product_import_schema %}
-                            <tr>
-                                <td class="fw-semibold">{{ field.column }}</td>
-                                <td>
-                                    {% if field.required %}
-                                        <span class="badge bg-danger">Ya</span>
-                                    {% else %}
-                                        <span class="badge bg-light text-muted">Opsional</span>
-                                    {% endif %}
-                                </td>
-                                <td class="small text-muted">{{ field.description }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
                 </div>
-                <form action="{{ url_for('main.import_produk') }}" method="POST" enctype="multipart/form-data" id="produkImportForm">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label for="importFile" class="form-label mb-1">File Excel</label>
-                    <input type="file" class="form-control" id="importFile" name="file" accept=".xls,.xlsx" required>
-                    <small id="import-file-name" class="text-muted d-block mt-2">Belum ada file dipilih.</small>
-                    <button type="submit" class="btn btn-outline-primary w-100 mt-3" id="produkImportSubmit">
-                        <i class="fas fa-file-import me-2"></i>Impor data
-                    </button>
-                    <div class="mt-3 d-none" id="importProgressWrapper">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="small text-muted">Mengunggah & memproses file...</span>
-                            <span class="small fw-semibold" id="importProgressLabel">0%</span>
+
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h3 class="h6 fw-bold mb-2">Impor dari Excel</h3>
+                        <p class="small text-muted mb-3">Gunakan file berekstensi .xlsx dengan kolom sesuai template
+                            berikut.</p>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Kolom</th>
+                                        <th>Wajib</th>
+                                        <th>Keterangan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for field in product_import_schema %}
+                                    <tr>
+                                        <td class="fw-semibold">{{ field.column }}</td>
+                                        <td>
+                                            {% if field.required %}
+                                            <span class="badge bg-danger">Ya</span>
+                                            {% else %}
+                                            <span class="badge bg-light text-muted">Opsional</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="small text-muted">{{ field.description }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="progress" style="height: 10px;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%;" id="importProgressBar" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
-                        <small class="text-muted d-block mt-2" id="importProgressMessage">Menyiapkan import...</small>
+                        <form action="{{ url_for('main.import_produk') }}" method="POST" enctype="multipart/form-data"
+                            id="produkImportForm">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <label for="importFile" class="form-label mb-1">File Excel</label>
+                            <input type="file" class="form-control" id="importFile" name="file" accept=".xls,.xlsx"
+                                required>
+                            <small id="import-file-name" class="text-muted d-block mt-2">Belum ada file dipilih.</small>
+                            <button type="submit" class="btn btn-outline-primary w-100 mt-3" id="produkImportSubmit">
+                                <i class="fas fa-file-import me-2"></i>Impor data
+                            </button>
+                            <div class="mt-3 d-none" id="importProgressWrapper">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="small text-muted">Mengunggah & memproses file...</span>
+                                    <span class="small fw-semibold" id="importProgressLabel">0%</span>
+                                </div>
+                                <div class="progress" style="height: 10px;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                        role="progressbar" style="width: 0%;" id="importProgressBar" aria-valuemin="0"
+                                        aria-valuemax="100"></div>
+                                </div>
+                                <small class="text-muted d-block mt-2" id="importProgressMessage">Menyiapkan
+                                    import...</small>
+                            </div>
+                        </form>
+                        <a href="{{ url_for('main.export_produk') }}" class="btn btn-link btn-sm px-0 mt-3">
+                            <i class="fas fa-download me-1"></i>Unduh backup produk terbaru
+                        </a>
                     </div>
-                </form>
-                <a href="{{ url_for('main.export_produk') }}" class="btn btn-link btn-sm px-0 mt-3">
-                    <i class="fas fa-download me-1"></i>Unduh backup produk terbaru
-                </a>
+                </div>
             </div>
-        </div>
         </div>
     </div>
-</div>
 </div>
 
 <style>
@@ -420,50 +488,62 @@
         --ak-primary: #3b7ddd;
         --ak-primary-contrast: #1d4ed8;
     }
+
     .adminkit-products .ak-breadcrumb {
         background: transparent;
         padding: 0;
         font-size: 0.9rem;
     }
-    .adminkit-products .breadcrumb-item + .breadcrumb-item::before {
+
+    .adminkit-products .breadcrumb-item+.breadcrumb-item::before {
         content: "›";
         color: var(--ak-muted);
     }
+
     .adminkit-products .card {
         border-radius: 14px;
         border: 1px solid var(--ak-card-border);
         box-shadow: var(--ak-card-shadow);
     }
+
     .adminkit-products .card-header {
         background: transparent !important;
         border-bottom: 1px solid rgba(15, 23, 42, 0.08);
     }
+
     .adminkit-products .ak-actions .btn {
         border-radius: 999px;
     }
+
     .hero-card {
         border-radius: 20px;
         padding: 2.5rem 2rem;
     }
+
     .hero-card .btn {
         border-radius: 999px;
     }
+
     .hero-meta .badge {
         letter-spacing: 0.08em;
     }
+
     .text-white-75 {
         color: rgba(255, 255, 255, 0.75) !important;
     }
+
     .stat-card {
         border-radius: 14px;
         border: 1px solid rgba(15, 23, 42, 0.08);
         box-shadow: 0 0.35rem 1rem rgba(15, 23, 42, 0.08);
         transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
+
     .stat-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 0.6rem 1.4rem rgba(15, 23, 42, 0.12);
     }
+
     .stat-card .stat-icon {
         font-size: 1.4rem;
         width: 44px;
@@ -475,29 +555,36 @@
         background: rgba(15, 23, 42, 0.06);
         color: #0f172a;
     }
+
     .stat-card .stat-icon.text-primary {
         background: rgba(59, 125, 221, 0.14);
         color: #3b7ddd;
     }
+
     .stat-card .stat-icon.text-success {
         background: rgba(16, 185, 129, 0.14);
         color: #059669;
     }
+
     .stat-card .stat-icon.text-warning {
         background: rgba(245, 158, 11, 0.18);
         color: #b45309;
     }
+
     .stat-card .stat-icon.text-info {
         background: rgba(14, 165, 233, 0.14);
         color: #0284c7;
     }
+
     .stat-card .stat-value {
         font-size: 1.7rem;
         font-weight: 700;
     }
+
     .card-panel {
         border-radius: 14px;
     }
+
     .adminkit-products .ak-table thead th {
         font-size: 0.8rem;
         text-transform: uppercase;
@@ -508,12 +595,15 @@
         background: #f8fafc;
         white-space: nowrap;
     }
+
     .adminkit-products .ak-table tbody td {
         vertical-align: middle;
     }
+
     .adminkit-products .ak-table tbody tr:hover {
         background-color: rgba(59, 125, 221, 0.06);
     }
+
     .empty-icon {
         width: 72px;
         height: 72px;
@@ -523,36 +613,45 @@
         justify-content: center;
         background: rgba(37, 99, 235, 0.12);
     }
+
     .form-card {
         border-radius: 20px;
     }
+
     select.form-control,
     select.custom-select {
         min-height: 46px;
     }
+
     select.form-control option,
     select.custom-select option {
         white-space: normal;
     }
+
     .sticky-column {
         position: sticky;
         top: 1.25rem;
     }
-    .sticky-column .card + .card {
+
+    .sticky-column .card+.card {
         margin-top: 1.5rem;
     }
+
     .filter-input .input-group-text {
         padding: 0.55rem 0.75rem;
         border-radius: 12px 0 0 12px;
     }
+
     .filter-input .form-control {
         padding: 0.55rem 0.75rem;
         border-radius: 0 12px 12px 0;
         font-size: 0.95rem;
     }
+
     .filter-search-wrapper {
         position: relative;
     }
+
     .filter-suggestion-panel {
         position: absolute;
         left: 0;
@@ -567,9 +666,11 @@
         padding: 6px;
         display: none;
     }
+
     .filter-suggestion-panel.is-visible {
         display: block;
     }
+
     .filter-suggestion-item {
         width: 100%;
         text-align: left;
@@ -581,27 +682,33 @@
         font-size: 0.92rem;
         color: #0f172a;
     }
-    .filter-suggestion-item + .filter-suggestion-item {
+
+    .filter-suggestion-item+.filter-suggestion-item {
         margin-top: 4px;
     }
+
     .filter-suggestion-item:hover,
     .filter-suggestion-item:focus-visible {
         background: rgba(59, 130, 246, 0.08);
     }
+
     .filter-suggestion-item strong {
         display: block;
         font-weight: 600;
     }
+
     .filter-suggestion-item span {
         font-size: 0.82rem;
         color: #475569;
     }
+
     .filter-actions .btn {
         height: 44px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
     }
+
     .filter-actions {
         display: inline-flex;
         align-items: center;
@@ -609,19 +716,23 @@
         overflow: hidden;
         box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
     }
+
     .filter-actions .btn {
         border-radius: 0;
         box-shadow: none;
         width: 56px;
     }
+
     .filter-actions .btn:first-child {
         border-top-left-radius: 12px;
         border-bottom-left-radius: 12px;
     }
+
     .filter-actions .btn:last-child {
         border-top-right-radius: 12px;
         border-bottom-right-radius: 12px;
     }
+
     .btn-icon {
         display: inline-flex;
         align-items: center;
@@ -633,28 +744,35 @@
         box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
+
     .filter-actions .btn-icon {
         border-radius: 10px;
     }
-    .filter-actions .btn-icon + .btn-icon {
+
+    .filter-actions .btn-icon+.btn-icon {
         border-top-left-radius: 0;
         border-bottom-left-radius: 0;
     }
+
     .btn-icon:hover {
         transform: translateY(-2px);
         box-shadow: 0 14px 24px rgba(15, 23, 42, 0.16);
     }
+
     .price-level-manager {
         background: #f8fafc;
         border-radius: 16px;
     }
+
     .price-level-manager table th,
     .price-level-manager table td {
         vertical-align: middle;
     }
+
     .price-badge-stack {
         gap: 0.35rem;
     }
+
     .badge-soft-primary {
         background-color: rgba(59, 125, 221, 0.14);
         color: var(--ak-primary-contrast);
@@ -662,33 +780,57 @@
         border-radius: 999px;
         padding: 0.35rem 0.75rem;
     }
+
     @media (max-width: 992px) {
         .sticky-column {
             position: static;
             top: auto;
         }
     }
+
     @media (max-width: 576px) {
         .hero-card {
             border-radius: 16px;
             padding: 2rem 1.5rem;
         }
+
         .stat-card .stat-value {
             font-size: 1.6rem;
         }
     }
 </style>
 
+<script type="application/json" id="price-level-seed-data">
+    {{ edit_price_levels | default([], true) | tojson }}
+</script>
+<script type="application/json" id="price-level-options-data">
+    {{ price_levels_context | default([], true) | tojson }}
+</script>
+<script type="application/json" id="product-form-focus-data">
+    {{ focus_field | default('', true) | tojson }}
+</script>
 <script>
-    const PRICE_LEVEL_SEED = {{ edit_price_levels|default([], true)|tojson }};
-    const PRICE_LEVEL_OPTIONS = {{ price_levels_context|default([], true)|tojson }};
-    const PRODUCT_FORM_FOCUS = {{ focus_field|default('', true)|tojson }};
+    const readJsonData = (id, fallback) => {
+        const el = document.getElementById(id);
+        if (!el) {
+            return fallback;
+        }
+        try {
+            return JSON.parse(el.textContent || '');
+        } catch (err) {
+            return fallback;
+        }
+    };
+
+    const PRICE_LEVEL_SEED = readJsonData('price-level-seed-data', []);
+    const PRICE_LEVEL_OPTIONS = readJsonData('price-level-options-data', []);
+    const PRODUCT_FORM_FOCUS = readJsonData('product-form-focus-data', '');
 
     (function initPriceLevelManager() {
         const payloadInput = document.getElementById('price_level_payload_input');
         if (!payloadInput) {
             window.productPriceLevelManager = {
-                setRows: () => {},
+                setRows: () => { },
                 getRows: () => [],
             };
             return;
@@ -703,18 +845,18 @@
         const normalizeSeed = (seed) =>
             Array.isArray(seed)
                 ? seed
-                      .map((entry) => ({
-                          level_id: Number(entry.level_id),
-                          level_name: entry.level_name,
-                          price: Number(entry.price) || 0,
-                      }))
-                      .filter((entry) => entry.level_id && entry.price >= 0)
+                    .map((entry) => ({
+                        level_id: Number(entry.level_id),
+                        level_name: entry.level_name,
+                        price: Number(entry.price) || 0,
+                    }))
+                    .filter((entry) => entry.level_id && entry.price >= 0)
                 : [];
 
         if (!tableBody || !addButton || !levelSelect || !priceInput) {
             payloadInput.value = JSON.stringify(normalizeSeed(PRICE_LEVEL_SEED));
             window.productPriceLevelManager = {
-                setRows: () => {},
+                setRows: () => { },
                 getRows: () => [],
             };
             return;
@@ -723,10 +865,10 @@
         const currencyFormatter =
             typeof Intl !== 'undefined' && Intl.NumberFormat
                 ? new Intl.NumberFormat('id-ID', {
-                      style: 'currency',
-                      currency: 'IDR',
-                      maximumFractionDigits: 0,
-                  })
+                    style: 'currency',
+                    currency: 'IDR',
+                    maximumFractionDigits: 0,
+                })
                 : null;
 
         const getLevelName = (levelId) => {

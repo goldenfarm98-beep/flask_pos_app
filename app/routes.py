@@ -35,12 +35,14 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.engine.url import make_url
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from app import csrf
+from app import csrf, normalize_phone
 from app.forms import SalesForm
 from app.models import (
     User,
     db,
     Supplier,
+    Expedisi,
+    PaymentChannel,
     Satuan,
     Kategori,
     Produk,
@@ -1223,7 +1225,7 @@ def supplier():
         # Ambil data dari formulir
         name = request.form["name"].strip()
         address = request.form["address"].strip()
-        phone = request.form["phone"].strip()
+        phone = normalize_phone(request.form["phone"].strip())
         bank_name = request.form.get("bank_name", "").strip()
         bank_account = request.form["bank_account"].strip()
         account_name = request.form["account_name"].strip()
@@ -1293,7 +1295,7 @@ def edit_supplier(supplier_id):
     if request.method == "POST":
         supplier.name = request.form["name"].strip()
         supplier.address = request.form["address"].strip()
-        supplier.phone = request.form["phone"].strip()
+        supplier.phone = normalize_phone(request.form["phone"].strip())
         supplier.bank_name = request.form.get("bank_name", "").strip() or None
         supplier.bank_account = request.form["bank_account"].strip()
         supplier.account_name = request.form["account_name"].strip()
@@ -1369,6 +1371,185 @@ def delete_supplier(supplier_id):
     return redirect("/supplier")
 
 
+@bp.route("/expedisi", methods=["GET", "POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def expedisi():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        phone = request.form.get("phone", "").strip()
+        address = request.form.get("address", "").strip()
+        note = request.form.get("note", "").strip()
+        if not name:
+            flash("Nama expedisi wajib diisi.", "warning")
+            return redirect("/expedisi")
+        existing = Expedisi.query.filter(func.lower(Expedisi.name) == name.lower()).first()
+        if existing:
+            flash("Nama expedisi sudah terdaftar.", "warning")
+            return redirect("/expedisi")
+        new_expedisi = Expedisi(
+            name=name,
+            phone=phone or None,
+            address=address or None,
+            note=note or None,
+        )
+        db.session.add(new_expedisi)
+        db.session.commit()
+        flash("Expedisi added successfully!", "success")
+        return redirect("/expedisi")
+
+    expedisi_list = Expedisi.query.order_by(Expedisi.name.asc()).all()
+    payment_channels = PaymentChannel.query.filter(
+        PaymentChannel.channel_type == "Kartu"
+    ).order_by(PaymentChannel.name.asc()).all()
+    return render_template("data_expedisi.html", expedisi_list=expedisi_list)
+
+
+@bp.route("/expedisi/edit/<int:expedisi_id>", methods=["GET", "POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def edit_expedisi(expedisi_id):
+    expedisi_item = Expedisi.query.get_or_404(expedisi_id)
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        phone = request.form.get("phone", "").strip()
+        address = request.form.get("address", "").strip()
+        note = request.form.get("note", "").strip()
+        if not name:
+            flash("Nama expedisi wajib diisi.", "warning")
+            return redirect(url_for("main.edit_expedisi", expedisi_id=expedisi_id))
+        existing = Expedisi.query.filter(
+            func.lower(Expedisi.name) == name.lower(),
+            Expedisi.id != expedisi_item.id,
+        ).first()
+        if existing:
+            flash("Nama expedisi sudah digunakan.", "warning")
+            return redirect(url_for("main.edit_expedisi", expedisi_id=expedisi_id))
+        expedisi_item.name = name
+        expedisi_item.phone = phone or None
+        expedisi_item.address = address or None
+        expedisi_item.note = note or None
+        db.session.commit()
+        flash("Expedisi updated successfully!", "success")
+        return redirect("/expedisi")
+
+    expedisi_list = Expedisi.query.order_by(Expedisi.name.asc()).all()
+    return render_template(
+        "data_expedisi.html",
+        expedisi_list=expedisi_list,
+        edit_expedisi=expedisi_item,
+    )
+
+
+@bp.route("/expedisi/delete/<int:expedisi_id>", methods=["POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def delete_expedisi(expedisi_id):
+    expedisi_item = Expedisi.query.get_or_404(expedisi_id)
+    if Penjualan.query.filter_by(expedition_id=expedisi_item.id).count():
+        flash(
+            "Tidak dapat menghapus expedisi karena masih digunakan pada transaksi.",
+            "warning",
+        )
+        return redirect("/expedisi")
+    db.session.delete(expedisi_item)
+    db.session.commit()
+    flash("Expedisi deleted successfully!", "success")
+    return redirect("/expedisi")
+
+
+@bp.route("/metode_pembayaran", methods=["GET", "POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def metode_pembayaran():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        channel_type = request.form.get("channel_type", "Kartu").strip()
+        note = request.form.get("note", "").strip()
+        if not name:
+            flash("Nama metode pembayaran wajib diisi.", "warning")
+            return redirect("/metode_pembayaran")
+        if channel_type not in {"Kartu", "Tunai", "Tempo"}:
+            flash("Jenis metode pembayaran tidak valid.", "warning")
+            return redirect("/metode_pembayaran")
+        existing = PaymentChannel.query.filter(
+            func.lower(PaymentChannel.name) == name.lower()
+        ).first()
+        if existing:
+            flash("Nama metode pembayaran sudah terdaftar.", "warning")
+            return redirect("/metode_pembayaran")
+        new_channel = PaymentChannel(
+            name=name,
+            channel_type=channel_type,
+            note=note or None,
+        )
+        db.session.add(new_channel)
+        db.session.commit()
+        flash("Metode pembayaran added successfully!", "success")
+        return redirect("/metode_pembayaran")
+
+    channels = PaymentChannel.query.order_by(
+        PaymentChannel.channel_type.asc(), PaymentChannel.name.asc()
+    ).all()
+    return render_template("data_metode_pembayaran.html", channels=channels)
+
+
+@bp.route("/metode_pembayaran/edit/<int:channel_id>", methods=["GET", "POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def edit_metode_pembayaran(channel_id):
+    channel = PaymentChannel.query.get_or_404(channel_id)
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        channel_type = request.form.get("channel_type", "Kartu").strip()
+        note = request.form.get("note", "").strip()
+        if not name:
+            flash("Nama metode pembayaran wajib diisi.", "warning")
+            return redirect(url_for("main.edit_metode_pembayaran", channel_id=channel_id))
+        if channel_type not in {"Kartu", "Tunai", "Tempo"}:
+            flash("Jenis metode pembayaran tidak valid.", "warning")
+            return redirect(url_for("main.edit_metode_pembayaran", channel_id=channel_id))
+        existing = PaymentChannel.query.filter(
+            func.lower(PaymentChannel.name) == name.lower(),
+            PaymentChannel.id != channel.id,
+        ).first()
+        if existing:
+            flash("Nama metode pembayaran sudah digunakan.", "warning")
+            return redirect(url_for("main.edit_metode_pembayaran", channel_id=channel_id))
+        channel.name = name
+        channel.channel_type = channel_type
+        channel.note = note or None
+        db.session.commit()
+        flash("Metode pembayaran updated successfully!", "success")
+        return redirect("/metode_pembayaran")
+
+    channels = PaymentChannel.query.order_by(
+        PaymentChannel.channel_type.asc(), PaymentChannel.name.asc()
+    ).all()
+    return render_template(
+        "data_metode_pembayaran.html",
+        channels=channels,
+        edit_channel=channel,
+    )
+
+
+@bp.route("/metode_pembayaran/delete/<int:channel_id>", methods=["POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def delete_metode_pembayaran(channel_id):
+    channel = PaymentChannel.query.get_or_404(channel_id)
+    if Penjualan.query.filter_by(payment_channel_id=channel.id).count():
+        flash(
+            "Metode pembayaran tidak dapat dihapus karena sudah digunakan pada transaksi.",
+            "warning",
+        )
+        return redirect("/metode_pembayaran")
+    db.session.delete(channel)
+    db.session.commit()
+    flash("Metode pembayaran deleted successfully!", "success")
+    return redirect("/metode_pembayaran")
+
+
 @bp.route("/supplier/<int:supplier_id>", methods=["GET"])
 @login_required
 @roles_required(*INVENTORY_ROLES)
@@ -1384,16 +1565,7 @@ def export_suppliers():
     suppliers = Supplier.query.all()
 
     def _normalize_phone(value):
-        if not value:
-            return ""
-        v = str(value).replace(" ", "").replace("-", "")
-        if v.startswith("+62"):
-            v = "0" + v[3:]
-        elif v.startswith("62"):
-            v = "0" + v[2:]
-        elif not v.startswith("0"):
-            v = "0" + v
-        return v
+        return normalize_phone(value)
 
     # Data untuk Excel
     data = [
@@ -1479,19 +1651,14 @@ def import_suppliers():
         return redirect("/supplier")
 
     # Validasi kolom yang diperlukan
-    required_columns = [
-        "Nama Supplier",
-        "Alamat",
-        "No Telp",
-        "Nama Bank",
-        "No Rekening Bank",
-        "Nama Rekening",
-        "Kontak Person",
-        "Email",
-        "Website",
-    ]
-    if not all(column in df.columns for column in required_columns):
-        flash("Invalid file format! Missing required columns.", "danger")
+    required_columns = ["Nama Supplier", "Alamat"]
+    missing_columns = [column for column in required_columns if column not in df.columns]
+    if missing_columns:
+        flash(
+            "Invalid file format! Missing required columns: "
+            + ", ".join(missing_columns),
+            "danger",
+        )
         return redirect("/supplier")
 
     # Simpan data ke database
@@ -1504,7 +1671,9 @@ def import_suppliers():
         value = (value or "").strip()
         if not value:
             return ""
-        digits = re.sub(r"\\D", "", value)
+        if re.fullmatch(r"\d+\.0+", value):
+            value = value.split(".", 1)[0]
+        digits = re.sub(r"\D", "", value)
         if digits.startswith("62"):
             digits = digits[2:]
         if not digits.startswith("0"):
@@ -1515,7 +1684,9 @@ def import_suppliers():
         value = (value or "").strip()
         if not value:
             return ""
-        digits = re.sub(r"\\D", "", value)
+        if re.fullmatch(r"\d+\.0+", value):
+            value = value.split(".", 1)[0]
+        digits = re.sub(r"\D", "", value)
         return digits.lstrip("0") or digits
 
     created_count = 0
@@ -1528,21 +1699,23 @@ def import_suppliers():
             existing_bank_map.setdefault(key, s)
 
     for _, row in df.iterrows():
-        name = _clean_cell(row["Nama Supplier"])
-        address = _clean_cell(row["Alamat"])
-        phone_raw = _clean_cell(row["No Telp"])
+        name = _clean_cell(row.get("Nama Supplier", ""))
+        address = _clean_cell(row.get("Alamat", ""))
+        phone_raw = _clean_cell(row.get("No Telp", ""))
         phone = _normalize_phone(phone_raw)
-        bank_name = _clean_cell(row["Nama Bank"])
-        bank_account = _clean_cell(row["No Rekening Bank"])
+        bank_name = _clean_cell(row.get("Nama Bank", row.get("Bank", "")))
+        bank_account = _clean_cell(
+            row.get("No Rekening Bank", row.get("No Rekening", ""))
+        )
         bank_account_key = _normalize_bank_account(bank_account)
-        account_name = _clean_cell(row["Nama Rekening"])
-        contact_person = _clean_cell(row["Kontak Person"])
-        email_value = _clean_cell(row["Email"])
-        website_value = _clean_cell(row["Website"]) or None
+        account_name = _clean_cell(row.get("Nama Rekening", ""))
+        contact_person = _clean_cell(row.get("Kontak Person", ""))
+        email_value = _clean_cell(row.get("Email", ""))
+        website_value = _clean_cell(row.get("Website", "")) or None
         email = email_value or None
         phone_key = _normalize_phone(phone_raw)
 
-        if not all([name, address, phone_key, bank_name, bank_account, account_name, contact_person]):
+        if not name or not address:
             flash(
                 f'Data supplier "{name or "-"}" tidak lengkap dan dilewati.', "warning"
             )
@@ -2990,7 +3163,11 @@ def import_produk():
 
 
 def _build_customer_page_context(
-    edit_pelanggan=None, search_query="", page=1, per_page=10
+    edit_pelanggan=None,
+    search_query="",
+    page=1,
+    per_page=10,
+    show_duplicate_contacts=False,
 ):
     price_levels = PriceLevel.query.order_by(PriceLevel.name.asc()).all()
     filtered_query = Pelanggan.query.order_by(Pelanggan.id.desc())
@@ -3001,6 +3178,20 @@ def _build_customer_page_context(
                 Pelanggan.nama.ilike(like_pattern),
                 Pelanggan.pelanggan_id.ilike(like_pattern),
                 Pelanggan.kontak.ilike(like_pattern),
+                Pelanggan.email.ilike(like_pattern),
+            )
+        )
+    if show_duplicate_contacts:
+        duplicate_contact_values = (
+            db.session.query(func.lower(Pelanggan.kontak).label("kontak"))
+            .filter(Pelanggan.kontak.isnot(None), Pelanggan.kontak != "")
+            .group_by(func.lower(Pelanggan.kontak))
+            .having(func.count(Pelanggan.id) > 1)
+            .subquery()
+        )
+        filtered_query = filtered_query.filter(
+            func.lower(Pelanggan.kontak).in_(
+                db.session.query(duplicate_contact_values.c.kontak)
             )
         )
 
@@ -3085,6 +3276,10 @@ def _build_customer_page_context(
             "value": duplicate_contacts,
             "status": "secondary" if duplicate_contacts == 0 else "warning",
             "description": "Gunakan data unik supaya kampanye marketing lebih akurat.",
+            "action_label": "Lihat duplikat" if duplicate_contacts else None,
+            "action_url": url_for("main.pelanggan", duplicate=1)
+            if duplicate_contacts
+            else None,
         },
     ]
 
@@ -3107,6 +3302,7 @@ def _build_customer_page_context(
         "search_query": search_query,
         "total_customers": total_customers,
         "price_levels": price_levels,
+        "show_duplicate_contacts": show_duplicate_contacts,
     }
 
 
@@ -3118,6 +3314,9 @@ def pelanggan():
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 10, type=int)
     per_page = max(5, min(per_page, 50))
+    show_duplicate_contacts = (
+        str(request.args.get("duplicate", "")).lower() in ("1", "true", "yes")
+    )
 
     if request.method == "POST":
         # Gunakan generate_pelanggan_id jika pelanggan_id tidak diisi
@@ -3126,6 +3325,8 @@ def pelanggan():
         )
         nama = request.form["nama"].strip()
         kontak = request.form["kontak"].strip()
+        email_input = request.form.get("email", "").strip()
+        email = email_input or None
         alamat = request.form["alamat"].strip()
         price_level_raw = request.form.get("price_level_id")
         price_level_obj = None
@@ -3141,13 +3342,21 @@ def pelanggan():
         ]
         if missing_fields:
             flash(f"Kolom berikut wajib diisi: {', '.join(missing_fields)}.", "warning")
-            return redirect(url_for("main.pelanggan", search=search_query, page=page))
+            return redirect(
+                url_for(
+                    "main.pelanggan",
+                    search=search_query,
+                    page=page,
+                    duplicate=1 if show_duplicate_contacts else None,
+                )
+            )
 
         # Tambahkan pelanggan baru
         new_pelanggan = Pelanggan(
             pelanggan_id=pelanggan_id,
             nama=nama,
             kontak=kontak,
+            email=email,
             alamat=alamat,
             price_level=price_level_obj,
         )
@@ -3159,7 +3368,10 @@ def pelanggan():
     return render_template(
         "data_pelanggan.html",
         **_build_customer_page_context(
-            search_query=search_query, page=page, per_page=per_page
+            search_query=search_query,
+            page=page,
+            per_page=per_page,
+            show_duplicate_contacts=show_duplicate_contacts,
         ),
     )
 
@@ -3172,11 +3384,16 @@ def edit_pelanggan(pelanggan_id):
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 10, type=int)
     per_page = max(5, min(per_page, 50))
+    show_duplicate_contacts = (
+        str(request.args.get("duplicate", "")).lower() in ("1", "true", "yes")
+    )
     pelanggan = Pelanggan.query.get_or_404(pelanggan_id)
 
     if request.method == "POST":
         nama = request.form["nama"].strip()
         kontak = request.form["kontak"].strip()
+        email_input = request.form.get("email", "").strip()
+        email = email_input or None
         alamat = request.form["alamat"].strip()
         price_level_raw = request.form.get("price_level_id")
         price_level_obj = None
@@ -3194,11 +3411,13 @@ def edit_pelanggan(pelanggan_id):
                     pelanggan_id=pelanggan_id,
                     search=search_query,
                     page=page,
+                    duplicate=1 if show_duplicate_contacts else None,
                 )
             )
 
         pelanggan.nama = nama
         pelanggan.kontak = kontak
+        pelanggan.email = email
         pelanggan.alamat = alamat
         pelanggan.price_level = price_level_obj
         db.session.commit()
@@ -3212,6 +3431,7 @@ def edit_pelanggan(pelanggan_id):
             search_query=search_query,
             page=page,
             per_page=per_page,
+            show_duplicate_contacts=show_duplicate_contacts,
         ),
     )
 
@@ -3231,6 +3451,196 @@ def delete_pelanggan(pelanggan_id):
     db.session.delete(pelanggan)
     db.session.commit()
     flash(f"Pelanggan {pelanggan_name} deleted successfully!", "success")
+    return redirect("/pelanggan")
+
+
+@bp.route("/pelanggan/export", methods=["GET"])
+@login_required
+@roles_required(*SALES_ROLES)
+def export_pelanggan():
+    customers = Pelanggan.query.order_by(Pelanggan.nama.asc()).all()
+    data = [
+        {
+            "ID Pelanggan": customer.pelanggan_id,
+            "Nama Pelanggan": customer.nama,
+            "Kontak": customer.kontak,
+            "Email": customer.email or "",
+            "Alamat": customer.alamat,
+            "Level Harga": customer.price_level.name if customer.price_level else "",
+        }
+        for customer in customers
+    ]
+
+    df = pd.DataFrame(data)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    output.seek(0)
+
+    response = make_response(output.read())
+    response.headers["Content-Disposition"] = "attachment; filename=pelanggan.xlsx"
+    response.headers["Content-Type"] = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    return response
+
+
+@bp.route("/pelanggan/import", methods=["POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def import_pelanggan():
+    if "file" not in request.files:
+        flash("No file uploaded!", "danger")
+        return redirect("/pelanggan")
+
+    file = request.files["file"]
+    if file.filename == "":
+        flash("No selected file!", "danger")
+        return redirect("/pelanggan")
+
+    try:
+        df = pd.read_excel(file)
+    except Exception as e:
+        flash(f"Error reading file: {e}", "danger")
+        return redirect("/pelanggan")
+
+    required_columns = ["Nama Pelanggan", "Kontak", "Alamat"]
+    missing_columns = [column for column in required_columns if column not in df.columns]
+    if missing_columns:
+        flash(
+            "Invalid file format! Missing required columns: "
+            + ", ".join(missing_columns),
+            "danger",
+        )
+        return redirect("/pelanggan")
+
+    def _clean_cell(value):
+        if pd.isna(value):
+            return ""
+        text = str(value).strip()
+        if re.fullmatch(r"\d+\.0+", text):
+            text = text.split(".", 1)[0]
+        return text
+
+    price_levels = PriceLevel.query.all()
+    price_level_by_id = {level.id: level for level in price_levels}
+    price_level_by_name = {
+        level.name.lower(): level for level in price_levels if level.name
+    }
+
+    existing_ids = {
+        row[0] for row in db.session.query(Pelanggan.pelanggan_id).all() if row[0]
+    }
+    new_ids = set()
+    next_id_num = 1
+    last_customer = Pelanggan.query.order_by(Pelanggan.id.desc()).first()
+    if last_customer and last_customer.pelanggan_id:
+        match = re.match(r"(?i)^CUST(\d+)$", last_customer.pelanggan_id.strip())
+        if match:
+            next_id_num = int(match.group(1)) + 1
+
+    def _generate_id():
+        nonlocal next_id_num
+        while True:
+            candidate = f"CUST{next_id_num:03d}"
+            next_id_num += 1
+            if candidate not in existing_ids and candidate not in new_ids:
+                new_ids.add(candidate)
+                return candidate
+
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+
+    for idx, row in df.iterrows():
+        row_number = idx + 2
+        pelanggan_id = _clean_cell(row.get("ID Pelanggan", row.get("Pelanggan ID", "")))
+        nama = _clean_cell(row.get("Nama Pelanggan", ""))
+        kontak = _clean_cell(row.get("Kontak", ""))
+        email_value = _clean_cell(row.get("Email", ""))
+        email = email_value or None
+        alamat = _clean_cell(row.get("Alamat", ""))
+
+        if not nama or not kontak or not alamat:
+            skipped_count += 1
+            flash(
+                f'Baris {row_number}: Data pelanggan "{nama or "-"}" tidak lengkap dan dilewati.',
+                "warning",
+            )
+            continue
+
+        level_obj = None
+        level_id_raw = _clean_cell(row.get("Level Harga ID", ""))
+        if level_id_raw:
+            try:
+                level_id = int(level_id_raw)
+            except ValueError:
+                level_id = None
+            if level_id:
+                level_obj = price_level_by_id.get(level_id)
+        if not level_obj:
+            level_name = _clean_cell(row.get("Level Harga", ""))
+            if level_name:
+                level_obj = price_level_by_name.get(level_name.lower())
+
+        existing = None
+        if pelanggan_id:
+            existing = Pelanggan.query.filter_by(pelanggan_id=pelanggan_id).first()
+        if not existing and email:
+            existing = Pelanggan.query.filter_by(email=email).first()
+        if not existing and nama and kontak:
+            existing = Pelanggan.query.filter(
+                func.lower(Pelanggan.nama) == nama.lower(),
+                Pelanggan.kontak == kontak,
+            ).first()
+
+        if existing:
+            existing.nama = nama
+            existing.kontak = kontak
+            if email is not None:
+                existing.email = email
+            existing.alamat = alamat
+            if level_obj is not None:
+                existing.price_level = level_obj
+            updated_count += 1
+            continue
+
+        if pelanggan_id:
+            if pelanggan_id in new_ids:
+                skipped_count += 1
+                flash(
+                    f'Baris {row_number}: ID pelanggan "{pelanggan_id}" duplikat di file dan dilewati.',
+                    "warning",
+                )
+                continue
+            if pelanggan_id in existing_ids:
+                pelanggan_id = _generate_id()
+            else:
+                new_ids.add(pelanggan_id)
+        else:
+            pelanggan_id = _generate_id()
+
+        pelanggan = Pelanggan(
+            pelanggan_id=pelanggan_id,
+            nama=nama,
+            kontak=kontak,
+            email=email,
+            alamat=alamat,
+            price_level=level_obj,
+        )
+        db.session.add(pelanggan)
+        created_count += 1
+
+    db.session.commit()
+    message_parts = []
+    if created_count:
+        message_parts.append(f"{created_count} pelanggan baru")
+    if updated_count:
+        message_parts.append(f"{updated_count} pelanggan diupdate")
+    if skipped_count:
+        message_parts.append(f"{skipped_count} dilewati")
+    summary = ", ".join(message_parts) if message_parts else "Tidak ada perubahan"
+    flash(f"Import pelanggan selesai: {summary}.", "success")
     return redirect("/pelanggan")
 
 
@@ -3342,6 +3752,7 @@ def pelanggan_suggest():
                 Pelanggan.nama.ilike(like),
                 Pelanggan.pelanggan_id.ilike(like),
                 Pelanggan.kontak.ilike(like),
+                Pelanggan.email.ilike(like),
             )
         )
         .order_by(Pelanggan.nama.asc())
@@ -3912,6 +4323,7 @@ def penjualan():
             "hpp": float(produk.harga_lama or produk.harga_beli or 0.0),
             "last_cost": float(produk.harga_beli or 0.0),
             "harga_beli": float(produk.harga_beli or 0.0),
+            "weight": float(produk.berat or 0.0),
         }
         for produk in produk_records
     ]
@@ -3934,6 +4346,10 @@ def penjualan():
 
     # Load available price levels for use in the sales UI (if needed)
     price_levels = PriceLevel.query.order_by(PriceLevel.name.asc()).all()
+    expedisi_list = Expedisi.query.order_by(Expedisi.name.asc()).all()
+    payment_channels = PaymentChannel.query.filter(
+        PaymentChannel.channel_type == "Kartu"
+    ).order_by(PaymentChannel.name.asc()).all()
 
     total_orders = Penjualan.query.count()
     total_revenue = (
@@ -4075,6 +4491,15 @@ def penjualan():
             harga_list = request.form.getlist("harga[]")
             diskon_list = request.form.getlist("diskon[]")
             pajak_list = request.form.getlist("pajak[]")
+            payment_method = (request.form.get("payment_method") or "").strip()
+            due_date = _parse_date_param(request.form.get("due_date"))
+            expedition_id = _parse_int_param(request.form.get("expedition_id"))
+            payment_channel_id = _parse_int_param(
+                request.form.get("payment_channel_id")
+            )
+            shipping_fee = _parse_float_param(request.form.get("shipping_fee")) or 0.0
+            amount_paid = _parse_float_param(request.form.get("amount_paid")) or 0.0
+            change_due = _parse_float_param(request.form.get("change_due")) or 0.0
 
             line_items = []
             errors = []
@@ -4162,6 +4587,7 @@ def penjualan():
                         "tax": tax,
                         "line_total": line_total,
                         "stock_before": available_stock,
+                        "weight": float(product.berat or 0.0),
                     }
                 )
                 reserved_stock[product.id] += qty
@@ -4171,6 +4597,33 @@ def penjualan():
 
             if not line_items:
                 raise ValueError("Tambahkan minimal satu produk dengan jumlah valid.")
+
+            allowed_methods = {"Tunai", "Kartu", "Tempo"}
+            if payment_method not in allowed_methods:
+                raise ValueError("Metode pembayaran tidak valid.")
+            if payment_method == "Tempo" and not due_date:
+                raise ValueError("Tanggal jatuh tempo wajib diisi untuk pembayaran tempo.")
+            payment_channel = None
+            if payment_method == "Kartu":
+                if not payment_channel_id:
+                    raise ValueError("Pilih kartu/bank untuk pembayaran kartu.")
+                payment_channel = PaymentChannel.query.get(payment_channel_id)
+                if not payment_channel or payment_channel.channel_type != "Kartu":
+                    raise ValueError("Metode kartu tidak valid.")
+            else:
+                payment_channel_id = None
+            shipping_fee = max(0.0, shipping_fee)
+            line_items_total = sum(item["line_total"] for item in line_items)
+            grand_total = line_items_total + shipping_fee
+            if payment_method != "Tempo":
+                if amount_paid < grand_total:
+                    raise ValueError(
+                        "Jumlah bayar kurang dari grand total. Periksa kembali pembayaran."
+                    )
+                change_due = max(0.0, amount_paid - grand_total)
+            else:
+                amount_paid = max(0.0, amount_paid)
+                change_due = max(0.0, amount_paid - grand_total)
 
             hpp_total = _calculate_line_items_hpp(line_items)
             if hpp_total <= 0:
@@ -4202,6 +4655,14 @@ def penjualan():
                 price_level_id=price_level_id_value,
                 marketplace_cost_total=marketplace_cost_total_value,
                 marketplace_cost_details=marketplace_cost_details_value,
+                expedition_id=expedition_id,
+                payment_channel_id=payment_channel_id,
+                shipping_fee=shipping_fee,
+                payment_method=payment_method,
+                due_date=due_date,
+                amount_paid=amount_paid,
+                change_due=change_due,
+                total_weight=0.0,
             )
             penjualan.no_faktur = _generate_invoice_number()
             db.session.add(penjualan)
@@ -4218,9 +4679,12 @@ def penjualan():
                     harga_total=item["line_total"],
                 )
                 penjualan.total_harga += item["line_total"]
+                penjualan.total_weight += item["weight"] * item["qty"]
                 current_stock = item["product"].stok_lama or 0
                 item["product"].stok_lama = max(0, current_stock - item["qty"])
                 db.session.add(detail)
+
+            penjualan.total_harga += shipping_fee
 
             if (
                 settings
@@ -4240,7 +4704,7 @@ def penjualan():
                 f"Penjualan berhasil disimpan (total Rp {penjualan.total_harga:,.0f}).",
                 "success",
             )
-            return redirect(url_for("main.penjualan"))
+            return redirect(url_for("main.penjualan_receipt", sale_id=penjualan.id))
 
         except ValueError as exc:
             db.session.rollback()
@@ -4263,6 +4727,77 @@ def penjualan():
         draft_invoice=draft_invoice,
         sale_date_display=sale_date_display,
         price_levels=price_levels,
+        expedisi_list=expedisi_list,
+        payment_channels=payment_channels,
+    )
+
+
+@bp.route("/penjualan/receipt/<int:sale_id>")
+@login_required
+@roles_required(*SALES_ROLES)
+def penjualan_receipt(sale_id):
+    sale = (
+        Penjualan.query.options(
+            joinedload(Penjualan.detail_penjualan).joinedload(DetailPenjualan.produk),
+            joinedload(Penjualan.pelanggan),
+            joinedload(Penjualan.sales),
+            joinedload(Penjualan.expedition),
+            joinedload(Penjualan.payment_channel),
+        )
+        .filter(Penjualan.id == sale_id)
+        .first_or_404()
+    )
+
+    items = []
+    subtotal = 0.0
+    discount_total = 0.0
+    tax_total = 0.0
+
+    for detail in sale.detail_penjualan:
+        qty = detail.jumlah or 0
+        price = detail.harga_satuan or 0.0
+        discount_pct = detail.diskon or 0.0
+        tax_pct = detail.pajak or 0.0
+
+        line_subtotal = price * qty
+        line_discount = line_subtotal * (discount_pct / 100.0)
+        taxable = line_subtotal - line_discount
+        line_tax = taxable * (tax_pct / 100.0)
+        line_total = taxable + line_tax
+
+        subtotal += line_subtotal
+        discount_total += line_discount
+        tax_total += line_tax
+
+        items.append(
+            {
+                "name": detail.produk.nama_produk if detail.produk else "-",
+                "sku": detail.produk.sku if detail.produk else "-",
+                "qty": qty,
+                "price": price,
+                "discount_pct": discount_pct,
+                "tax_pct": tax_pct,
+                "total": line_total,
+            }
+        )
+
+    net_subtotal = subtotal - discount_total
+    shipping_fee = float(sale.shipping_fee or 0.0)
+    grand_total = net_subtotal + tax_total + shipping_fee
+    payment_label = sale.payment_method or "-"
+    if sale.payment_method == "Kartu" and sale.payment_channel:
+        payment_label = f"Kartu - {sale.payment_channel.name}"
+
+    return render_template(
+        "penjualan_struk.html",
+        sale=sale,
+        items=items,
+        subtotal=subtotal,
+        discount_total=discount_total,
+        tax_total=tax_total,
+        shipping_fee=shipping_fee,
+        grand_total=grand_total,
+        payment_label=payment_label,
     )
 
 
@@ -6160,6 +6695,7 @@ def laporan_penjualan_report():
             joinedload(Penjualan.detail_penjualan).joinedload(DetailPenjualan.produk),
             joinedload(Penjualan.pelanggan),
             joinedload(Penjualan.sales),
+            joinedload(Penjualan.payment_channel),
         )
         .filter(Penjualan.tanggal_penjualan >= start_date)
         .filter(Penjualan.tanggal_penjualan <= end_date)
@@ -6320,6 +6856,10 @@ def laporan_penjualan_report():
             if sale.pelanggan and sale.pelanggan.price_level
             else "Harga standar"
         )
+        payment_label = sale.payment_method or "Belum dicatat"
+        if sale.payment_method == "Kartu":
+            if sale.payment_channel and sale.payment_channel.name:
+                payment_label = f"Kartu - {sale.payment_channel.name}"
         transaction_details.append(
             {
                 "id": sale.id,
@@ -6335,7 +6875,7 @@ def laporan_penjualan_report():
                 "grand_total": net_subtotal + tax_sum,
                 "shipping_fee": 0.0,
                 "extra_fee": 0.0,
-                "payment_method": "Belum dicatat",
+                "payment_method": payment_label,
                 "price_level": price_level_name,
                 "note": "-",
                 "status": "Selesai",
@@ -6343,7 +6883,7 @@ def laporan_penjualan_report():
                 "marketplace_cost_total": cost_total,
                 "gross_profit": net_subtotal - cost_sum,
                 "net_revenue": net_invoice_revenue,
-                "print_link": url_for("main.penjualan"),
+                "print_link": url_for("main.penjualan_receipt", sale_id=sale.id),
             }
         )
 
