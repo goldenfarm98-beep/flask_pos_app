@@ -366,6 +366,88 @@ def _parse_date_param(value):
         return None
 
 
+def _get_company_profile():
+    return {
+        "name": os.environ.get("COMPANY_NAME", "GOLDEN FARM 99"),
+        "address": os.environ.get(
+            "COMPANY_ADDRESS",
+            "Jln. Mawar putih blok a18 no 8n Taman meruya ilir - Meruya utara, Kembangan",
+        ),
+        "city": os.environ.get("COMPANY_CITY", "Jakarta"),
+        "phone": os.environ.get("COMPANY_PHONE", "0877-8809-5686"),
+        "email": os.environ.get("COMPANY_EMAIL", "goldenfarm99@gmail.com"),
+        "website": os.environ.get("COMPANY_WEBSITE", "https://goldenfarm99.com"),
+        "logo_url": os.environ.get("COMPANY_LOGO_URL", ""),
+        "bank_info": os.environ.get(
+            "COMPANY_BANK_INFO",
+            "BCA 5045218560 A.n. Golden Farm 99",
+        ),
+    }
+
+
+def _build_sale_print_payload(sale):
+    items = []
+    subtotal = 0.0
+    discount_total = 0.0
+    tax_total = 0.0
+    total_weight = 0.0
+
+    for detail in sale.detail_penjualan:
+        qty = detail.jumlah or 0
+        price = detail.harga_satuan or 0.0
+        discount_pct = detail.diskon or 0.0
+        tax_pct = detail.pajak or 0.0
+        unit_weight = (
+            float(detail.produk.berat or 0.0) if detail.produk else 0.0
+        )
+
+        line_subtotal = price * qty
+        line_discount = line_subtotal * (discount_pct / 100.0)
+        taxable = line_subtotal - line_discount
+        line_tax = taxable * (tax_pct / 100.0)
+        line_total = taxable + line_tax
+        line_weight = unit_weight * qty
+
+        subtotal += line_subtotal
+        discount_total += line_discount
+        tax_total += line_tax
+        total_weight += line_weight
+
+        items.append(
+            {
+                "name": detail.produk.nama_produk if detail.produk else "-",
+                "sku": detail.produk.sku if detail.produk else "-",
+                "qty": qty,
+                "price": price,
+                "discount_pct": discount_pct,
+                "tax_pct": tax_pct,
+                "total": line_total,
+                "unit_weight": unit_weight,
+                "total_weight": line_weight,
+            }
+        )
+
+    shipping_fee = float(sale.shipping_fee or 0.0)
+    net_subtotal = subtotal - discount_total
+    grand_total = net_subtotal + tax_total + shipping_fee
+
+    payment_label = sale.payment_method or "-"
+    if sale.payment_method == "Kartu" and sale.payment_channel:
+        payment_label = f"Kartu - {sale.payment_channel.name}"
+
+    return {
+        "items": items,
+        "subtotal": subtotal,
+        "discount_total": discount_total,
+        "tax_total": tax_total,
+        "shipping_fee": shipping_fee,
+        "grand_total": grand_total,
+        "net_subtotal": net_subtotal,
+        "total_weight": total_weight,
+        "payment_label": payment_label,
+    }
+
+
 def _build_sales_filters(args):
     search_query = (args.get("search") or "").strip()
     pelanggan_id = _parse_int_param(args.get("pelanggan"))
@@ -4747,57 +4829,76 @@ def penjualan_receipt(sale_id):
         .filter(Penjualan.id == sale_id)
         .first_or_404()
     )
-
-    items = []
-    subtotal = 0.0
-    discount_total = 0.0
-    tax_total = 0.0
-
-    for detail in sale.detail_penjualan:
-        qty = detail.jumlah or 0
-        price = detail.harga_satuan or 0.0
-        discount_pct = detail.diskon or 0.0
-        tax_pct = detail.pajak or 0.0
-
-        line_subtotal = price * qty
-        line_discount = line_subtotal * (discount_pct / 100.0)
-        taxable = line_subtotal - line_discount
-        line_tax = taxable * (tax_pct / 100.0)
-        line_total = taxable + line_tax
-
-        subtotal += line_subtotal
-        discount_total += line_discount
-        tax_total += line_tax
-
-        items.append(
-            {
-                "name": detail.produk.nama_produk if detail.produk else "-",
-                "sku": detail.produk.sku if detail.produk else "-",
-                "qty": qty,
-                "price": price,
-                "discount_pct": discount_pct,
-                "tax_pct": tax_pct,
-                "total": line_total,
-            }
-        )
-
-    net_subtotal = subtotal - discount_total
-    shipping_fee = float(sale.shipping_fee or 0.0)
-    grand_total = net_subtotal + tax_total + shipping_fee
-    payment_label = sale.payment_method or "-"
-    if sale.payment_method == "Kartu" and sale.payment_channel:
-        payment_label = f"Kartu - {sale.payment_channel.name}"
+    payload = _build_sale_print_payload(sale)
 
     return render_template(
         "penjualan_struk.html",
         sale=sale,
-        items=items,
-        subtotal=subtotal,
-        discount_total=discount_total,
-        tax_total=tax_total,
-        shipping_fee=shipping_fee,
-        grand_total=grand_total,
-        payment_label=payment_label,
+        items=payload["items"],
+        subtotal=payload["subtotal"],
+        discount_total=payload["discount_total"],
+        tax_total=payload["tax_total"],
+        shipping_fee=payload["shipping_fee"],
+        grand_total=payload["grand_total"],
+        payment_label=payload["payment_label"],
+        total_weight=payload["total_weight"],
+        company_profile=_get_company_profile(),
+    )
+
+
+@bp.route("/penjualan/invoice/<int:sale_id>")
+@login_required
+@roles_required(*SALES_ROLES)
+def penjualan_invoice(sale_id):
+    sale = (
+        Penjualan.query.options(
+            joinedload(Penjualan.detail_penjualan).joinedload(DetailPenjualan.produk),
+            joinedload(Penjualan.pelanggan),
+            joinedload(Penjualan.sales),
+            joinedload(Penjualan.expedition),
+            joinedload(Penjualan.payment_channel),
+        )
+        .filter(Penjualan.id == sale_id)
+        .first_or_404()
+    )
+    payload = _build_sale_print_payload(sale)
+    return render_template(
+        "penjualan_invoice.html",
+        sale=sale,
+        items=payload["items"],
+        subtotal=payload["subtotal"],
+        discount_total=payload["discount_total"],
+        tax_total=payload["tax_total"],
+        shipping_fee=payload["shipping_fee"],
+        grand_total=payload["grand_total"],
+        net_subtotal=payload["net_subtotal"],
+        payment_label=payload["payment_label"],
+        total_weight=payload["total_weight"],
+        company_profile=_get_company_profile(),
+    )
+
+
+@bp.route("/penjualan/surat_jalan/<int:sale_id>")
+@login_required
+@roles_required(*SALES_ROLES)
+def penjualan_surat_jalan(sale_id):
+    sale = (
+        Penjualan.query.options(
+            joinedload(Penjualan.detail_penjualan).joinedload(DetailPenjualan.produk),
+            joinedload(Penjualan.pelanggan),
+            joinedload(Penjualan.sales),
+            joinedload(Penjualan.expedition),
+        )
+        .filter(Penjualan.id == sale_id)
+        .first_or_404()
+    )
+    payload = _build_sale_print_payload(sale)
+    return render_template(
+        "penjualan_surat_jalan.html",
+        sale=sale,
+        items=payload["items"],
+        total_weight=payload["total_weight"],
+        company_profile=_get_company_profile(),
     )
 
 

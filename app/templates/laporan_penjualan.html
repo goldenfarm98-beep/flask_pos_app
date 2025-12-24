@@ -161,9 +161,15 @@
                                 <tr class="sale-detail-row" id="sale-detail-{{ tx.id }}" hidden>
                                     <td colspan="7">
                                         <div class="sale-detail-card">
-                                            <div class="d-flex justify-content-end mb-2">
+                                            <div class="d-flex justify-content-end mb-2 flex-wrap" style="gap: 0.4rem;">
                                                 <a href="{{ tx.print_link }}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noreferrer">
-                                                    <i class="fas fa-print mr-1"></i>Cetak ulang struk
+                                                    <i class="fas fa-receipt mr-1"></i>Cetak ulang struk
+                                                </a>
+                                                <a href="{{ url_for('main.penjualan_invoice', sale_id=tx.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noreferrer">
+                                                    <i class="fas fa-file-invoice mr-1"></i>Cetak invoice
+                                                </a>
+                                                <a href="{{ url_for('main.penjualan_surat_jalan', sale_id=tx.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noreferrer">
+                                                    <i class="fas fa-truck-loading mr-1"></i>Surat jalan
                                                 </a>
                                             </div>
                                             <div class="detail-meta-grid">
