@@ -7,7 +7,7 @@
     <style>
         :root {
             --receipt-width: 58mm;
-            --receipt-font: 14px;
+            --receipt-font: 12.5px;
         }
 
         * {
@@ -16,12 +16,13 @@
 
         body {
             margin: 0;
-            font-family: "Lucida Console", "Consolas", "Courier New", monospace;
+            font-family: "Courier New", Courier, monospace;
             background: #f5f7fb;
             color: #000;
             -webkit-font-smoothing: none;
             text-rendering: optimizeSpeed;
-            font-weight: 700;
+            font-weight: 600;
+            -webkit-text-size-adjust: 100%;
         }
 
         .muted {
@@ -82,7 +83,6 @@
             font-size: var(--receipt-font);
             line-height: 1.25;
             font-weight: 600;
-            text-shadow: 0.2px 0 #000;
         }
 
         .receipt h1 {
@@ -136,6 +136,11 @@
         }
 
         @media print {
+            html,
+            body {
+                width: var(--receipt-width);
+                margin: 0;
+            }
             body {
                 background: #fff;
             }
@@ -154,14 +159,11 @@
                 width: var(--receipt-width);
                 box-shadow: none;
                 padding: 6px 8px;
-                font-weight: 700;
-            }
-            @page {
-                size: 58mm auto;
-                margin: 2mm;
+                font-weight: 600;
             }
         }
     </style>
+    <style id="receipt-print-size"></style>
 </head>
 <body>
     <div class="action-bar">
@@ -225,5 +227,22 @@
             <div class="footer-note">Terima kasih</div>
         </div>
     </div>
+    <script>
+        (function () {
+            const styleEl = document.getElementById('receipt-print-size');
+            const receipt = document.querySelector('.receipt');
+            if (!styleEl || !receipt) {
+                return;
+            }
+            const PX_PER_MM = 3.7795;
+            function applyPageSize() {
+                const rect = receipt.getBoundingClientRect();
+                const heightMm = Math.max(80, Math.ceil(rect.height / PX_PER_MM));
+                styleEl.textContent = `@page { size: 58mm ${heightMm}mm; margin: 2mm; }`;
+            }
+            window.addEventListener('beforeprint', applyPageSize);
+            applyPageSize();
+        })();
+    </script>
 </body>
 </html>
