@@ -7,7 +7,7 @@
     <style>
         :root {
             --receipt-width: 58mm;
-            --receipt-font: 11px;
+            --receipt-font: 12.5px;
         }
 
         * {
@@ -18,11 +18,15 @@
             margin: 0;
             font-family: "Courier New", Courier, monospace;
             background: #f5f7fb;
-            color: #111827;
+            color: #000;
+            -webkit-font-smoothing: none;
+            text-rendering: optimizeSpeed;
+            font-weight: 600;
+            -webkit-text-size-adjust: 100%;
         }
 
         .muted {
-            color: #6b7280;
+            color: #000;
         }
 
         .action-bar {
@@ -74,16 +78,19 @@
         .receipt {
             width: var(--receipt-width);
             background: #fff;
-            padding: 6px 8px;
+            padding: 8px 10px;
             box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
             font-size: var(--receipt-font);
+            line-height: 1.25;
+            font-weight: 600;
         }
 
         .receipt h1 {
-            font-size: 12px;
+            font-size: 13px;
             margin: 0 0 4px;
             text-align: center;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.4px;
+            font-weight: 700;
         }
 
         .receipt .center {
@@ -108,8 +115,14 @@
         }
 
         .receipt .item-name {
-            font-weight: 600;
-            margin-top: 4px;
+            font-weight: 700;
+            margin-top: 6px;
+        }
+
+        .receipt .meta-line,
+        .receipt .item-line,
+        .receipt .total-line {
+            letter-spacing: 0.2px;
         }
 
         .receipt .total-line strong {
@@ -123,8 +136,18 @@
         }
 
         @media print {
+            html,
+            body {
+                width: var(--receipt-width);
+                margin: 0;
+            }
             body {
                 background: #fff;
+            }
+            * {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                color: #000 !important;
             }
             .action-bar {
                 display: none !important;
@@ -135,14 +158,12 @@
             .receipt {
                 width: var(--receipt-width);
                 box-shadow: none;
-                padding: 4px 6px;
-            }
-            @page {
-                size: 58mm auto;
-                margin: 2mm;
+                padding: 6px 8px;
+                font-weight: 600;
             }
         }
     </style>
+    <style id="receipt-print-size"></style>
 </head>
 <body>
     <div class="action-bar">
@@ -206,5 +227,22 @@
             <div class="footer-note">Terima kasih</div>
         </div>
     </div>
+    <script>
+        (function () {
+            const styleEl = document.getElementById('receipt-print-size');
+            const receipt = document.querySelector('.receipt');
+            if (!styleEl || !receipt) {
+                return;
+            }
+            const PX_PER_MM = 3.7795;
+            function applyPageSize() {
+                const rect = receipt.getBoundingClientRect();
+                const heightMm = Math.max(80, Math.ceil(rect.height / PX_PER_MM));
+                styleEl.textContent = `@page { size: 58mm ${heightMm}mm; margin: 2mm; }`;
+            }
+            window.addEventListener('beforeprint', applyPageSize);
+            applyPageSize();
+        })();
+    </script>
 </body>
 </html>
