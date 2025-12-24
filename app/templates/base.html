@@ -1,120 +1,609 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}My Flask App{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/adminkit/app.css') }}">
+    {% block extra_head %}{% endblock %}
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f8f9fa;
+        /* Bootstrap 4 compatibility layer (minimal) so existing templates keep working on Bootstrap 5/AdminKit. */
+        .mr-0 { margin-right: 0 !important; } .mr-1 { margin-right: .25rem !important; } .mr-2 { margin-right: .5rem !important; } .mr-3 { margin-right: 1rem !important; } .mr-4 { margin-right: 1.5rem !important; } .mr-5 { margin-right: 3rem !important; }
+        .ml-0 { margin-left: 0 !important; } .ml-1 { margin-left: .25rem !important; } .ml-2 { margin-left: .5rem !important; } .ml-3 { margin-left: 1rem !important; } .ml-4 { margin-left: 1.5rem !important; } .ml-5 { margin-left: 3rem !important; }
+        .mr-auto { margin-right: auto !important; }
+        .ml-auto { margin-left: auto !important; }
+        .pr-0 { padding-right: 0 !important; } .pr-1 { padding-right: .25rem !important; } .pr-2 { padding-right: .5rem !important; } .pr-3 { padding-right: 1rem !important; } .pr-4 { padding-right: 1.5rem !important; } .pr-5 { padding-right: 3rem !important; }
+        .pl-0 { padding-left: 0 !important; } .pl-1 { padding-left: .25rem !important; } .pl-2 { padding-left: .5rem !important; } .pl-3 { padding-left: 1rem !important; } .pl-4 { padding-left: 1.5rem !important; } .pl-5 { padding-left: 3rem !important; }
+        .text-left { text-align: left !important; } .text-right { text-align: right !important; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+        .badge-pill { border-radius: 50rem !important; }
+        .btn-block { display: block; width: 100%; }
+        .font-weight-bold { font-weight: 700 !important; }
+        .font-weight-semibold { font-weight: 600 !important; }
+        .font-weight-normal { font-weight: 400 !important; }
+        .no-gutters { margin-right: 0; margin-left: 0; }
+        .no-gutters > .col, .no-gutters > [class*="col-"] { padding-right: 0; padding-left: 0; }
+        .form-row { display: flex; flex-wrap: wrap; margin-right: -0.5rem; margin-left: -0.5rem; }
+        .form-row > .col, .form-row > [class*="col-"] { padding-right: 0.5rem; padding-left: 0.5rem; }
+        .input-group-prepend, .input-group-append { display: flex; }
+        .border-left-0 { border-left: 0 !important; } .border-right-0 { border-right: 0 !important; } .border-top-0 { border-top: 0 !important; } .border-bottom-0 { border-bottom: 0 !important; }
+        .dropdown-menu-right { right: 0; left: auto; }
+        .badge-primary { background-color: var(--bs-primary) !important; color: #fff !important; }
+        .badge-secondary { background-color: var(--bs-secondary) !important; color: #fff !important; }
+        .badge-success { background-color: var(--bs-success) !important; color: #fff !important; }
+        .badge-danger { background-color: var(--bs-danger) !important; color: #fff !important; }
+        .badge-warning { background-color: var(--bs-warning) !important; color: #111827 !important; }
+        .badge-info { background-color: var(--bs-info) !important; color: #fff !important; }
+        .badge-light { background-color: var(--bs-light) !important; color: #111827 !important; }
+        .badge-dark { background-color: var(--bs-dark) !important; color: #fff !important; }
+        .badge-soft-primary { background: rgba(59, 125, 221, 0.16) !important; color: #2f64b1 !important; font-weight: 600; }
+        /* Pagination (AdminKit build doesn't ship Bootstrap pagination styles). */
+        .pagination {
             display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            margin: 0;
+            flex-wrap: wrap;
+            padding-left: 0;
+            margin-bottom: 0;
+            list-style: none;
+            gap: 0.25rem;
         }
-        header {
-            background-color:rgb(8, 143, 233);
-            color: rgb(255, 255, 255);
-            /*padding: 5px 10px;*/
-            
-            position: sticky;
-            top: 0;
-            z-index: 1030;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            width: 100%;
+        .page-item {
+            display: block;
         }
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        nav a {
-            color: white;
-            margin: 0 10px;
+        .page-link {
+            position: relative;
+            display: block;
+            padding: 0.375rem 0.75rem;
+            color: var(--bs-link-color);
+            background-color: #fff;
+            border: 1px solid var(--bs-border-color);
+            border-radius: var(--bs-border-radius);
             text-decoration: none;
         }
-        nav a:hover {
-            text-decoration: underline;
+        .page-link:hover {
+            color: var(--bs-link-hover-color);
+            background-color: rgba(59, 125, 221, 0.06);
+            border-color: rgba(59, 125, 221, 0.35);
         }
-        .sidebar {
-            height: 100vh;
+        .page-item.active .page-link {
+            z-index: 3;
+            color: #fff;
+            background-color: var(--bs-primary);
+            border-color: var(--bs-primary);
+        }
+        .page-item.disabled .page-link {
+            color: rgba(73, 80, 87, 0.55);
+            pointer-events: none;
+            background-color: #fff;
+            border-color: var(--bs-border-color);
+            opacity: 0.75;
+        }
+        .pagination-sm .page-link {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            border-radius: var(--bs-border-radius-sm);
+        }
+        /* Breadcrumb (AdminKit build doesn't ship Bootstrap breadcrumb styles). */
+        .breadcrumb {
+            display: flex;
+            flex-wrap: wrap;
+            padding: 0;
+            margin: 0;
+            list-style: none;
+        }
+        .breadcrumb-item {
+            display: inline-flex;
+            align-items: center;
+            color: rgba(73, 80, 87, 0.85);
+        }
+        .breadcrumb-item + .breadcrumb-item::before {
+            content: "/";
+            padding: 0 0.5rem;
+            color: rgba(73, 80, 87, 0.55);
+        }
+        .breadcrumb-item.active {
+            color: rgba(73, 80, 87, 0.7);
+        }
+        .custom-select {
+            display: block;
+            width: 100%;
+            padding: 0.375rem 2.25rem 0.375rem 0.75rem;
+            line-height: 1.5;
+            color: var(--bs-body-color);
+            background-color: var(--bs-body-bg);
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 16px 12px;
+            border: 1px solid var(--bs-border-color);
+            border-radius: var(--bs-border-radius);
+            appearance: none;
+        }
+        .custom-select:focus {
+            border-color: rgba(59, 125, 221, 0.6);
+            outline: 0;
+            box-shadow: 0 0 0 0.25rem rgba(59, 125, 221, 0.18);
+        }
+        .custom-select-lg {
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            padding-left: 1rem;
+            border-radius: var(--bs-border-radius-lg);
+        }
+        .custom-file { position: relative; display: block; width: 100%; }
+        .custom-file-input { width: 100%; }
+        .custom-file-label { display: block; padding: .375rem .75rem; border: 1px solid rgba(0,0,0,.15); border-radius: .25rem; background: #fff; }
+        .close { background: transparent; border: 0; font-size: 1.25rem; line-height: 1; opacity: .5; }
+        .close:hover { opacity: .75; }
+
+        /* Modern toast flash notifications */
+        .flash-toast-container {
             position: fixed;
-            top: 60px; /* Adjust for header height */
+            top: 1rem;
+            right: 1rem;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            width: min(420px, calc(100vw - 2rem));
+            pointer-events: none;
+        }
+        .flash-toast {
+            pointer-events: auto;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.85rem 0.95rem;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+            backdrop-filter: blur(10px);
+            transform: translateY(-6px);
+            opacity: 0;
+            transition: transform 180ms ease, opacity 180ms ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .flash-toast.is-visible {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .flash-toast.is-hiding {
+            transform: translateY(-6px);
+            opacity: 0;
+        }
+        .flash-toast .toast-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            color: #0f172a;
+            background: rgba(15, 23, 42, 0.06);
+        }
+        .flash-toast .toast-body {
+            min-width: 0;
+            flex: 1 1 auto;
+            color: #0f172a;
+            line-height: 1.35;
+            font-size: 0.95rem;
+        }
+        .flash-toast .toast-title {
+            font-weight: 700;
+            margin-bottom: 0.1rem;
+            font-size: 0.95rem;
+        }
+        .flash-toast .toast-message {
+            opacity: 0.9;
+            word-break: break-word;
+        }
+        .flash-toast .toast-close {
+            pointer-events: auto;
+            border: 0;
+            background: transparent;
+            padding: 0.15rem 0.25rem;
+            color: rgba(15, 23, 42, 0.55);
+            position: absolute;
+            top: 0.35rem;
+            right: 0.4rem;
+        }
+        .flash-toast .toast-close:hover {
+            color: rgba(15, 23, 42, 0.9);
+        }
+        .flash-toast .toast-progress {
+            position: absolute;
             left: 0;
-            overflow-x: hidden;
-            padding-top: 20px;
-            width: 200px;
-            background-color: #f8f9fa;
-            border-right: 1px solid #ddd;
-            z-index: 1020;
+            bottom: 0;
+            height: 3px;
+            width: 100%;
+            background: rgba(15, 23, 42, 0.06);
         }
-        main {
-            flex: 1;
-            margin-left: 200px; /* Sidebar width */
-            margin-top: 20px; /* Header height */
-            padding: 20px;
+        .flash-toast .toast-progress > span {
+            display: block;
+            height: 100%;
+            width: 100%;
+            transform-origin: left;
+            background: rgba(59, 125, 221, 0.55);
         }
-        footer {
-            background-color: rgb(26, 127, 194);
-            color: white;
-            text-align: center;
-            padding: 10px 0;
-        }
-        @media (max-width: 768px) {
-            nav {
-                flex-direction: column;
-                text-align: center;
-            }
-            nav a {
-                margin: 5px 0;
-            }
-            .sidebar {
-                width: 100%;
-                height: auto;
-                position: relative;
-                top: 0;
-                border-right: none;
-            }
-            main {
-                margin-left: 0;
-                margin-top: 120px; /* Adjust for combined header and sidebar */
-            }
-        }
+        .flash-toast.toast-success .toast-icon { background: rgba(28, 187, 140, 0.14); color: #0b4b38; }
+        .flash-toast.toast-success .toast-progress > span { background: rgba(28, 187, 140, 0.65); }
+        .flash-toast.toast-danger .toast-icon { background: rgba(220, 53, 69, 0.12); color: #58151c; }
+        .flash-toast.toast-danger .toast-progress > span { background: rgba(220, 53, 69, 0.65); }
+        .flash-toast.toast-warning .toast-icon { background: rgba(252, 185, 44, 0.18); color: #654a12; }
+        .flash-toast.toast-warning .toast-progress > span { background: rgba(252, 185, 44, 0.75); }
+        .flash-toast.toast-info .toast-icon { background: rgba(23, 162, 184, 0.14); color: #09414a; }
+        .flash-toast.toast-info .toast-progress > span { background: rgba(23, 162, 184, 0.65); }
     </style>
 </head>
 <body>
-    <header>
-        <nav>
-            <div>
-                <h1><i class="fas fa-leaf"></i> # aplikasi penjualan </h1>
-            </div>
-            <div>
-                {% if session.get('user_id') %}
-                    <span class="mr-3"><i class="fas fa-user"></i> {{ session.get('username') }}</span>
-                    <a href="/logout" class="btn btn-sm btn-light"><i class="fas fa-sign-out-alt"></i> Logout</a>
-                {% else %}
-                    <a href="/login" class="btn btn-sm btn-light"><i class="fas fa-sign-in-alt"></i> Login</a>
-                    <a href="/register" class="btn btn-sm btn-light"><i class="fas fa-user-plus"></i> Register</a>
-                {% endif %}
+    {% set current = request.endpoint or '' %}
+    {% if session.get('user_id') %}
+        {% set primary_links = [
+            {'label': 'Dashboard', 'endpoint': 'main.dashboard', 'icon': 'fa-tachometer-alt', 'active_prefix': 'main.dashboard'},
+            {'label': 'Penjualan', 'endpoint': 'main.penjualan', 'icon': 'fa-cash-register', 'active_prefix': 'main.penjualan'},
+            {'label': 'Pembelian', 'endpoint': 'main.pembelian', 'icon': 'fa-shopping-cart', 'active_prefix': 'main.pembelian'}
+        ] %}
+        {% set grouped_links = [
+            {
+                'label': 'Master Data',
+                'icon': 'fa-database',
+                'links': [
+                    {'label': 'Produk', 'endpoint': 'main.produk', 'active_prefix': 'main.produk'},
+                    {'label': 'Pelanggan', 'endpoint': 'main.pelanggan', 'active_prefix': 'main.pelanggan'},
+                    {'label': 'Supplier', 'endpoint': 'main.supplier', 'active_prefix': 'main.supplier'},
+                    {'label': 'Expedisi', 'endpoint': 'main.expedisi', 'active_prefix': 'main.expedisi'},
+                    {'label': 'Metode Pembayaran', 'endpoint': 'main.metode_pembayaran', 'active_prefix': 'main.metode_pembayaran'},
+                    {'label': 'Satuan', 'endpoint': 'main.satuan', 'active_prefix': 'main.satuan'},
+                    {'label': 'Kategori', 'endpoint': 'main.kategori', 'active_prefix': 'main.kategori'},
+                    {'label': 'Level Harga', 'endpoint': 'main.harga_level', 'active_prefix': 'main.harga_level'}
+                ]
+            },
+            {
+                'label': 'Laporan',
+                'icon': 'fa-chart-pie',
+                'links': [
+                    {'label': 'Laporan Supplier', 'endpoint': 'main.laporan_supplier', 'active_prefix': 'main.laporan_supplier'},
+                    {'label': 'Laporan Penjualan', 'endpoint': 'main.laporan_penjualan_report', 'active_prefix': 'main.laporan_penjualan_report'},
+                    {'label': 'Laporan Pembelian', 'endpoint': 'main.laporan_pembelian', 'active_prefix': 'main.laporan_pembelian'},
+                    {'label': 'Laporan Stok Opname', 'endpoint': 'main.laporan_stok_opname', 'active_prefix': 'main.laporan_stok_opname'},
+                    {'label': 'Laporan Stok Barang', 'endpoint': 'main.laporan_stok_barang', 'active_prefix': 'main.laporan_stok_barang'},
+                    {'label': 'Laporan Laba Rugi', 'endpoint': 'main.laporan_laba_rugi', 'active_prefix': 'main.laporan_laba_rugi'}
+                ]
+            },
+            {
+                'label': 'Maintenance',
+                'icon': 'fa-tools',
+                'links': [
+                    {'label': 'Update Harga', 'endpoint': 'main.update_harga', 'active_prefix': 'main.update_harga'},
+                    {'label': 'Stok Opname', 'endpoint': 'main.stok_opname', 'active_prefix': 'main.stok_opname'},
+                    {'label': 'Status Server', 'endpoint': 'main.status', 'active_prefix': 'main.status'}
+                ]
+            },
+            {
+                'label': 'Keuangan',
+                'icon': 'fa-wallet',
+                'links': [
+                    {'label': 'Data Akun', 'endpoint': 'main.akun', 'active_prefix': 'main.akun'},
+                    {'label': 'Jurnal Umum', 'endpoint': 'main.jurnal', 'active_prefix': 'main.jurnal'},
+                    {'label': 'COGS Otomatis', 'endpoint': 'main.accounting_settings', 'active_prefix': 'main.accounting_settings'},
+                    {'label': 'Tutup Buku', 'endpoint': 'main.close_books', 'active_prefix': 'main.close_books'}
+                ]
+            },
+            {
+                'label': 'Tim',
+                'icon': 'fa-users-cog',
+                'links': [
+                    {'label': 'Sales & Kasir', 'endpoint': 'main.sales_staff', 'active_prefix': 'main.sales_staff'}
+                ]
+            }
+        ] %}
+    {% else %}
+        {% set primary_links = [
+            {'label': 'Beranda', 'endpoint': 'main.index', 'icon': 'fa-home', 'active_prefix': 'main.index'},
+            {'label': 'Tentang', 'endpoint': 'main.about', 'icon': 'fa-info-circle', 'active_prefix': 'main.about'}
+        ] %}
+        {% set grouped_links = [] %}
+    {% endif %}
+
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar js-sidebar">
+            <div class="sidebar-content js-simplebar">
+                <a class="sidebar-brand" href="{{ url_for('main.dashboard') if session.get('user_id') else url_for('main.index') }}">
+                    <span class="align-middle">Kasir Pintar</span>
+                </a>
+
+                <ul class="sidebar-nav">
+                    <li class="sidebar-header">Menu</li>
+
+                    {% for item in primary_links %}
+                        {% set is_active = current.startswith(item.active_prefix) %}
+                        <li class="sidebar-item {% if is_active %}active{% endif %}">
+                            <a class="sidebar-link" href="{{ url_for(item.endpoint) }}">
+                                <i class="align-middle fas {{ item.icon }}"></i> <span class="align-middle">{{ item.label }}</span>
+                            </a>
+                        </li>
+                    {% endfor %}
+
+                    {% for group in grouped_links %}
+                        {% set ns = namespace(group_active=false) %}
+                        {% for entry in group.links %}
+                            {% if current.startswith(entry.active_prefix) %}
+                                {% set ns.group_active = true %}
+                            {% endif %}
+                        {% endfor %}
+                        {% set collapse_id = "sidebar-group-" ~ loop.index %}
+                        <li class="sidebar-item {% if ns.group_active %}active{% endif %}">
+                            <a class="sidebar-link {% if not ns.group_active %}collapsed{% endif %}" data-bs-toggle="collapse" href="#{{ collapse_id }}" role="button" aria-expanded="{{ 'true' if ns.group_active else 'false' }}" aria-controls="{{ collapse_id }}">
+                                <i class="align-middle fas {{ group.icon }}"></i> <span class="align-middle">{{ group.label }}</span>
+                            </a>
+                            <div class="collapse {% if ns.group_active %}show{% endif %}" id="{{ collapse_id }}">
+                                <ul class="sidebar-dropdown list-unstyled">
+                                    {% for entry in group.links %}
+                                        <li class="sidebar-item {% if current.startswith(entry.active_prefix) %}active{% endif %}">
+                                            <a class="sidebar-link" href="{{ url_for(entry.endpoint) }}">{{ entry.label }}</a>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
             </div>
         </nav>
-    </header>
 
-    <main class="container">
-        {% block content %}
-        <!-- Konten halaman akan diisi di sini -->
-        {% endblock %}
-    </main>
+        <div class="main">
+            <nav class="navbar navbar-expand navbar-light navbar-bg">
+                <a class="sidebar-toggle js-sidebar-toggle">
+                    <i class="hamburger align-self-center"></i>
+                </a>
 
-    <footer>
-        <p>&copy; 2025 Aplikasi Kasir Terkini. Powered by <i class="fas fa-code"></i> Flask</p>
-    </footer>
+                <div class="navbar-collapse collapse">
+                    <ul class="navbar-nav navbar-align">
+                        {% if session.get('user_id') %}
+                            {% set display_name = session.get('username', 'User') %}
+                            {% set display_name_short = display_name if display_name|length <= 18 else display_name[:15] ~ '...' %}
+                            {% set display_email = session.get('email', '') %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle d-none d-sm-inline-block" href="#" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <span class="text-dark align-middle">{{ display_name_short }}</span>
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <div class="px-3 py-2">
+                                        <div class="fw-semibold text-dark">{{ display_name }}</div>
+                                        {% if display_email %}
+                                            <div class="small text-muted">{{ display_email }}</div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item" href="{{ url_for('main.profile') }}">
+                                        <i class="align-middle me-1 fas fa-user-cog"></i> Profil
+                                    </a>
+                                    <a class="dropdown-item" href="{{ url_for('main.dashboard') }}">
+                                        <i class="align-middle me-1 fas fa-tachometer-alt"></i> Dashboard
+                                    </a>
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item text-danger" href="{{ url_for('main.logout') }}">
+                                        <i class="align-middle me-1 fas fa-sign-out-alt"></i> Keluar
+                                    </a>
+                                </div>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.login') }}">Masuk</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('main.register') }}">Daftar</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </nav>
 
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+            <main class="content">
+                <div class="container-fluid p-0">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            <div class="flash-toast-container" id="flashToasts" aria-live="polite" aria-relevant="additions text">
+                                {% for category, message in messages %}
+                                    {% set category_map = {
+                                        'message': 'info',
+                                        'error': 'danger',
+                                        'danger': 'danger',
+                                        'warning': 'warning',
+                                        'success': 'success',
+                                        'info': 'info'
+                                    } %}
+                                    {% set tone = category_map.get(category, 'info') %}
+                                    {% set toast_meta = {
+                                        'success': {'title': 'Berhasil', 'icon': 'fa-check-circle'},
+                                        'danger': {'title': 'Gagal', 'icon': 'fa-exclamation-triangle'},
+                                        'warning': {'title': 'Perhatian', 'icon': 'fa-exclamation-circle'},
+                                        'info': {'title': 'Info', 'icon': 'fa-info-circle'}
+                                    } %}
+                                    {% set meta = toast_meta.get(tone, toast_meta['info']) %}
+                                    <div class="flash-toast toast-{{ tone }}" role="alert" data-timeout="4500">
+                                        <div class="toast-icon" aria-hidden="true">
+                                            <i class="fas {{ meta.icon }}"></i>
+                                        </div>
+                                        <div class="toast-body">
+                                            <div class="toast-title">{{ meta.title }}</div>
+                                            <div class="toast-message">{{ message }}</div>
+                                        </div>
+                                        <button type="button" class="toast-close" aria-label="Tutup notifikasi">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                        <div class="toast-progress" aria-hidden="true"><span></span></div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% endwith %}
+
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
+
+            <footer class="footer">
+                <div class="container-fluid">
+                    <div class="row text-muted">
+                        <div class="col-6 text-start">
+                            <p class="mb-0">
+                                <span class="text-muted">&copy; {{ current_year }} Kasir Pintar</span>
+                            </p>
+                        </div>
+                        <div class="col-6 text-end">
+                            <p class="mb-0">
+                                <span class="text-muted">Powered by Flask</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='vendor/adminkit/app.js') }}"></script>
+    <script>
+        (function persistSidebarCollapsedState() {
+            const STORAGE_KEY = "adminkit.sidebarCollapsed";
+            const MOBILE_MEDIA = "(max-width: 991.98px)";
+
+            function safeGet(key) {
+                try {
+                    return window.localStorage.getItem(key);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function safeSet(key, value) {
+                try {
+                    window.localStorage.setItem(key, value);
+                } catch (e) {}
+            }
+
+            function isMobile() {
+                return window.matchMedia && window.matchMedia(MOBILE_MEDIA).matches;
+            }
+
+            function applyPreference() {
+                const sidebar = document.querySelector(".js-sidebar");
+                if (!sidebar) return;
+
+                const stored = safeGet(STORAGE_KEY);
+                if (stored === null) {
+                    if (isMobile()) sidebar.classList.add("collapsed");
+                    return;
+                }
+                if (stored === "1") sidebar.classList.add("collapsed");
+                else sidebar.classList.remove("collapsed");
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                applyPreference();
+
+                const sidebar = document.querySelector(".js-sidebar");
+                const toggle = document.querySelector(".js-sidebar-toggle");
+                if (sidebar && toggle) {
+                    toggle.addEventListener("click", function () {
+                        window.setTimeout(function () {
+                            safeSet(
+                                STORAGE_KEY,
+                                sidebar.classList.contains("collapsed") ? "1" : "0"
+                            );
+                        }, 0);
+                    });
+                }
+            });
+        })();
+    </script>
+    <script>
+        (function bootstrap4Compat() {
+            document.addEventListener("DOMContentLoaded", function () {
+                document.querySelectorAll("[data-toggle]").forEach((el) => {
+                    if (!el.hasAttribute("data-bs-toggle")) {
+                        el.setAttribute("data-bs-toggle", el.getAttribute("data-toggle"));
+                    }
+                });
+                document.querySelectorAll("[data-target]").forEach((el) => {
+                    if (!el.hasAttribute("data-bs-target")) {
+                        el.setAttribute("data-bs-target", el.getAttribute("data-target"));
+                    }
+                });
+                document.querySelectorAll("[data-dismiss]").forEach((el) => {
+                    if (!el.hasAttribute("data-bs-dismiss")) {
+                        el.setAttribute("data-bs-dismiss", el.getAttribute("data-dismiss"));
+                    }
+                });
+                document.querySelectorAll("[data-parent]").forEach((el) => {
+                    if (!el.hasAttribute("data-bs-parent")) {
+                        el.setAttribute("data-bs-parent", el.getAttribute("data-parent"));
+                    }
+                });
+
+                if (window.bootstrap && bootstrap.Tooltip) {
+                    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+                        try {
+                            new bootstrap.Tooltip(el);
+                        } catch (e) {}
+                    });
+                }
+            });
+        })();
+    </script>
+    <script>
+        (function flashToastNotifications() {
+            const HIDE_ANIMATION_MS = 220;
+
+            function hideToast(toast) {
+                if (!toast || toast.dataset.hiding === "1") return;
+                toast.dataset.hiding = "1";
+                toast.classList.remove("is-visible");
+                toast.classList.add("is-hiding");
+                window.setTimeout(() => toast.remove(), HIDE_ANIMATION_MS);
+            }
+
+            function initToast(toast) {
+                const timeoutMs = Math.max(0, parseInt(toast.getAttribute("data-timeout") || "0", 10) || 0);
+                const closeButton = toast.querySelector(".toast-close");
+                const progress = toast.querySelector(".toast-progress > span");
+
+                if (closeButton) {
+                    closeButton.addEventListener("click", (e) => {
+                        e.preventDefault();
+                        hideToast(toast);
+                    });
+                }
+
+                requestAnimationFrame(() => {
+                    toast.classList.add("is-visible");
+                });
+
+                if (progress && timeoutMs > 0) {
+                    progress.style.transform = "scaleX(1)";
+                    progress.style.transition = "none";
+                    requestAnimationFrame(() => {
+                        progress.style.transition = `transform ${timeoutMs}ms linear`;
+                        progress.style.transform = "scaleX(0)";
+                    });
+                }
+
+                if (timeoutMs > 0) {
+                    window.setTimeout(() => hideToast(toast), timeoutMs);
+                }
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                document.querySelectorAll(".flash-toast").forEach(initToast);
+            });
+        })();
+    </script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,878 @@
+{% extends "base.html" %}
+
+{% block title %}Level Harga{% endblock %}
+
+{% block content %}
+<section class="price-levels">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+        <div>
+            <h1 class="h4 font-weight-bold mb-1">Level Harga</h1>
+            <p class="text-muted mb-0">{{ price_levels|length }} level aktif. Atur level dan harga produk di bawah.</p>
+        </div>
+        <div class="btn-group mt-2 mt-md-0">
+            <a href="#price-level-form" class="btn btn-sm btn-primary"><i class="fas fa-tag mr-1"></i>Atur harga</a>
+            <a href="#price-level-form" class="btn btn-sm btn-outline-primary"><i class="fas fa-layer-group mr-1"></i>Tambah level</a>
+        </div>
+    </div>
+
+    <div class="row align-items-start">
+        <div class="col-xl-5">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Tambah level harga</h2>
+                    <form method="POST" autocomplete="off">
+                        <input type="hidden" name="action" value="create_level">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Nama level</label>
+                            <input type="text" name="level_name" class="form-control form-control-lg" placeholder="Contoh: Grosir A" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Deskripsi</label>
+                            <textarea name="description" class="form-control" rows="3" placeholder="Catatan (opsional)"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-lg btn-block">
+                            <i class="fas fa-layer-group mr-2"></i>Simpan level
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3">Ringkasan level</h3>
+                    {% if level_summary %}
+                        <ul class="list-group list-group-flush">
+                            {% for level in level_summary %}
+                                <li class="list-group-item px-0">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="font-weight-semibold">{{ level.name }}</div>
+                                            <small class="text-muted">{{ level.description or 'Tanpa deskripsi' }}</small>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="small text-muted">Pelanggan: {{ level.customer_count }}</div>
+                                            <div class="small text-muted">Produk khusus: {{ level.price_count }}</div>
+                                        </div>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="small text-muted mb-0">Belum ada level harga yang dibuat.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Cari produk & status level harga</h2>
+                    <div class="form-group position-relative">
+                        <label class="sr-only" for="level-price-global-search">Cari produk</label>
+                        <input type="text"
+                               id="level-price-global-search"
+                               class="form-control form-control-lg"
+                               placeholder="Ketik nama, kode, SKU, atau barcode…"
+                               autocomplete="off">
+                        <small class="form-text text-muted" id="level-price-global-helper">
+                            Autocomplete menampilkan status level harga untuk setiap produk.
+                        </small>
+                        <div class="suggestion-box mt-2" id="level-price-global-panel" hidden></div>
+                        <div class="search-result mt-3" id="level-price-global-result" hidden></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Atur harga per level</h2>
+                    <form method="POST" class="form-inline flex-wrap" id="price-level-form">
+                        <input type="hidden" name="action" value="set_price">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group mr-3 mb-2 flex-fill">
+                            <label class="sr-only">Level</label>
+                            <select name="level_id" class="custom-select" required>
+                                <option value="">Pilih level</option>
+                                {% for level in price_levels %}
+                                    <option value="{{ level.id }}">{{ level.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group mr-3 mb-2 flex-fill">
+                            <label class="sr-only">Produk</label>
+                            <div class="position-relative">
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="product_search_input"
+                                    placeholder="Cari nama atau kode produk"
+                                    autocomplete="off"
+                                    required
+                                >
+                                <input type="hidden" name="product_id" id="product_id_input">
+                                <div
+                                    class="product-suggestion-panel shadow-sm"
+                                    id="product_search_suggestions"
+                                    role="listbox"
+                                    aria-label="Saran produk"
+                                ></div>
+                            </div>
+                            <small class="form-text text-muted" id="product-search-helper">
+                                Ketik nama atau kode lalu pilih produk dari daftar.
+                            </small>
+                        </div>
+                        <div class="form-group mr-3 mb-2">
+                            <label class="sr-only">Harga</label>
+                            <input type="number" name="price" class="form-control" step="0.01" min="0" placeholder="Harga" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary mb-2">
+                            <i class="fas fa-save mr-1"></i>Simpan harga
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3">Profil biaya per level</h3>
+                    <form method="POST" class="form-row align-items-end" id="price-level-cost-form">
+                        <input type="hidden" name="action" value="create_cost">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group col-md-3">
+                            <label class="sr-only">Level</label>
+                            <select name="cost_level_id" class="form-control form-control-sm" required>
+                                <option value="">Pilih level</option>
+                                {% for level in price_levels %}
+                                    <option value="{{ level.id }}">{{ level.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Level yang akan diberi biaya.</small>
+                        </div>
+                        <div class="form-group col-md-3">
+                            <label class="sr-only">Nama biaya</label>
+                            <input type="text" class="form-control form-control-sm" name="cost_name" placeholder="Contoh: Komisi Shopee" required>
+                        </div>
+                        <div class="form-group col-md-2">
+                            <label class="sr-only">Tipe nilai</label>
+                            <select name="cost_type" class="form-control form-control-sm">
+                                <option value="percent">Persentase (%)</option>
+                                <option value="nominal">Nominal (Rp)</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-2">
+                            <label class="sr-only">Nilai</label>
+                            <input type="number" class="form-control form-control-sm" name="cost_value" min="0" step="0.01" placeholder="Nilai">
+                        </div>
+                        <div class="form-group col-md-2 d-flex align-items-center">
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="costActive" name="cost_active" value="1" checked>
+                                <label class="custom-control-label" for="costActive">Aktif</label>
+                            </div>
+                        </div>
+                        <div class="form-group col-12">
+                            <button type="submit" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-plus mr-1"></i>Tambah biaya otomatis
+                            </button>
+                        </div>
+                    </form>
+                    <div class="table-responsive mt-3">
+                        <table class="table table-sm table-hover mb-0 text-nowrap">
+                            <thead>
+                                <tr>
+                                    <th>Level harga</th>
+                                    <th>Nama biaya</th>
+                                    <th>Tipe</th>
+                                    <th>Nilai</th>
+                                    <th>Status</th>
+                                    <th class="text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for level in price_levels %}
+                                    {% set costs = price_level_costs.get(level.id, []) %}
+                                    {% if costs %}
+                                        {% for cost in costs %}
+                                            <tr>
+                                                <td>{{ level.name }}</td>
+                                                <td>{{ cost.name }}</td>
+                                                <td>{{ "Persen" if cost.type == "percent" else "Nominal" }}</td>
+                                                <td>{{ cost.formatted_value() }}</td>
+                                                <td>
+                                                    <span class="badge badge-{{ "success" if cost.is_active else "secondary" }}">
+                                                        {{ "Aktif" if cost.is_active else "Nonaktif" }}
+                                                    </span>
+                                                </td>
+                                                <td class="text-right">
+                                                    <form method="POST" class="d-inline mr-2">
+                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                        <input type="hidden" name="action" value="toggle_cost">
+                                                        <input type="hidden" name="cost_id" value="{{ cost.id }}">
+                                                        <button type="submit" class="btn btn-link btn-sm text-primary">
+                                                            {{ "Nonaktifkan" if cost.is_active else "Aktifkan" }}
+                                                        </button>
+                                                    </form>
+                                                    <form method="POST" class="d-inline">
+                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                        <input type="hidden" name="action" value="delete_cost">
+                                                        <input type="hidden" name="cost_id" value="{{ cost.id }}">
+                                                        <button type="submit" class="btn btn-link btn-sm text-danger">
+                                                            Hapus
+                                                        </button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="6" class="text-muted small">
+                                                Belum ada biaya otomatis untuk <strong>{{ level.name }}</strong>.
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3">Daftar harga khusus</h3>
+                    {% if price_table %}
+                        {% for level in price_levels %}
+                            {% set entries = price_table.get(level.id) %}
+                            {% set page_info = price_table_pages.get(level.id) if price_table_pages else None %}
+                            <div class="mb-4 level-price-block" data-level-price-container data-level-id="{{ level.id }}">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <div>
+                                        <h4 class="h6 mb-0">{{ level.name }}</h4>
+                                        <small class="text-muted">{{ level.description or 'Tanpa deskripsi' }}</small>
+                                    </div>
+                                    {% if page_info and page_info.total %}
+                                        <span class="badge badge-light">{{ page_info.total }} item</span>
+                                    {% endif %}
+                                </div>
+                                <div class="level-price-content" data-level-id="{{ level.id }}">
+                                    {% include 'partials/level_price_table.html' with context %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="small text-muted mb-0">Belum ada harga khusus yang tercatat.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .price-levels .card {
+        border-radius: 16px;
+    }
+    .price-levels table th {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #475569;
+        border-top: none;
+        background: #f8fafc;
+    }
+    .product-suggestion-panel {
+        position: absolute;
+        inset: auto 0 0;
+        margin-top: 0.55rem;
+        background: #fff;
+        border-radius: 0.9rem;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        max-height: 260px;
+        overflow-y: auto;
+        width: 100%;
+        z-index: 1050;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.15);
+        padding: 0.35rem;
+        display: none;
+    }
+    .product-suggestion-panel.is-visible {
+        display: block;
+    }
+    .product-suggestion-item {
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: transparent;
+        padding: 0.65rem 0.75rem;
+        border-radius: 0.75rem;
+        transition: background 0.2s ease;
+        font-size: 0.95rem;
+        color: #0f172a;
+        cursor: pointer;
+    }
+    .product-suggestion-item + .product-suggestion-item {
+        margin-top: 0.2rem;
+    }
+    .product-suggestion-item:hover,
+    .product-suggestion-item:focus-visible {
+        background: rgba(59, 130, 246, 0.1);
+    }
+    .product-suggestion-item strong {
+        display: block;
+        font-weight: 600;
+    }
+    .product-suggestion-item span {
+        font-size: 0.85rem;
+        color: #475569;
+    }
+    .suggestion-box {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 30;
+        background: #fff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 12px;
+        box-shadow: 0 18px 30px rgba(15, 23, 42, 0.1);
+        max-height: 260px;
+        overflow-y: auto;
+        padding: 0.25rem;
+    }
+    .suggestion-item {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        font-size: 0.9rem;
+        color: #0f172a;
+        cursor: pointer;
+    }
+    .suggestion-item:hover,
+    .suggestion-item:focus {
+        background: rgba(59, 130, 246, 0.08);
+        outline: none;
+    }
+    .suggestion-item small {
+        color: #94a3b8;
+        margin-left: 0.5rem;
+    }
+    .suggestion-item:active {
+        transform: translateY(0.5px);
+    }
+    .badge-soft {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        background: rgba(99, 102, 241, 0.12);
+        color: #312e81;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .badge-soft-primary {
+        background-color: rgba(37, 99, 235, 0.12);
+        color: #1d4ed8;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.65rem;
+    }
+    .search-result {
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 14px;
+        padding: 0.9rem 1rem;
+        background: #fff;
+        box-shadow: 0 12px 22px rgba(15, 23, 42, 0.08);
+    }
+    .search-result .title {
+        font-weight: 700;
+        font-size: 1rem;
+        margin-bottom: 0.1rem;
+    }
+    .search-result .meta {
+        color: #64748b;
+        font-size: 0.9rem;
+    }
+    .search-result .action-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+    .level-price-content.is-loading {
+        position: relative;
+        opacity: 0.6;
+        pointer-events: none;
+    }
+    .level-price-content.is-loading::after {
+        content: 'Memuat...';
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.7);
+        color: #64748b;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+</style>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const PRODUCT_SEARCH_URL = "{{ url_for('main.get_products') }}";
+        const searchInput = document.getElementById("product_search_input");
+        const hiddenInput = document.getElementById("product_id_input");
+        const suggestionsPanel = document.getElementById("product_search_suggestions");
+        const helperText = document.getElementById("product-search-helper");
+        const form = document.getElementById("price-level-form");
+
+        if (!searchInput || !hiddenInput || !suggestionsPanel || !helperText || !form) {
+            return;
+        }
+
+        let debounceTimer = null;
+        let lastFetchController = null;
+
+        const getHelperClass = (tone) => {
+            const base = ["text-muted", "text-danger", "text-success"];
+            helperText.classList.remove(...base);
+            if (tone === "danger") {
+                helperText.classList.add("text-danger");
+            } else if (tone === "success") {
+                helperText.classList.add("text-success");
+            } else {
+                helperText.classList.add("text-muted");
+            }
+        };
+
+        const setHelperMessage = (message, tone = "muted") => {
+            helperText.textContent = message;
+            getHelperClass(tone);
+        };
+
+        const hideSuggestions = () => {
+            suggestionsPanel.classList.remove("is-visible");
+        };
+
+        const showSuggestions = () => {
+            suggestionsPanel.classList.add("is-visible");
+        };
+
+        const clearSuggestions = () => {
+            suggestionsPanel.innerHTML = "";
+            hideSuggestions();
+        };
+
+        const selectProduct = (product) => {
+            if (!product) {
+                return;
+            }
+            searchInput.value = `${product.nama_produk} (${product.kode_produk})`;
+            hiddenInput.value = product.id;
+            setHelperMessage(`Produk "${product.nama_produk}" siap disimpan.`, "success");
+            clearSuggestions();
+        };
+
+        const renderSuggestions = (items) => {
+            suggestionsPanel.innerHTML = "";
+            if (!items.length) {
+                suggestionsPanel.innerHTML = '<div class="px-2 py-3 text-muted small">Tidak ada produk yang cocok.</div>';
+                showSuggestions();
+                return;
+            }
+            items.forEach((item) => {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "product-suggestion-item";
+                button.dataset.productId = item.id;
+                const titleNode = document.createElement("strong");
+                titleNode.textContent = item.nama_produk;
+                const codeNode = document.createElement("span");
+                codeNode.textContent = item.kode_produk;
+                button.appendChild(titleNode);
+                button.appendChild(codeNode);
+                button.setAttribute(
+                    "aria-label",
+                    `${item.nama_produk} (${item.kode_produk})`
+                );
+                button.addEventListener("click", function () {
+                    selectProduct(item);
+                });
+                suggestionsPanel.appendChild(button);
+            });
+            showSuggestions();
+        };
+
+        const fetchProducts = (term) => {
+            if (!term) {
+                clearSuggestions();
+                return;
+            }
+            if (lastFetchController) {
+                lastFetchController.abort();
+            }
+            lastFetchController = new AbortController();
+            const signal = lastFetchController.signal;
+            fetch(
+                `${PRODUCT_SEARCH_URL}?q=${encodeURIComponent(term)}`,
+                { headers: { Accept: "application/json" }, signal }
+            )
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error("Gagal mengambil data.");
+                    }
+                    return response.json();
+                })
+                .then((data) => {
+                    const allItems = Array.isArray(data.products) ? data.products : [];
+                    const displayItems = allItems.slice(0, 12);
+                    renderSuggestions(displayItems);
+                })
+                .catch((error) => {
+                    if (error.name === "AbortError") {
+                        return;
+                    }
+                    suggestionsPanel.innerHTML =
+                        '<div class="px-2 py-3 text-danger small">Tidak dapat mengambil produk saat ini.</div>';
+                    showSuggestions();
+                });
+        };
+
+        searchInput.addEventListener("input", function () {
+            const term = this.value.trim();
+            hiddenInput.value = "";
+            setHelperMessage("Ketik nama/kode lalu pilih produk dari daftar.", "muted");
+            if (!term) {
+                clearSuggestions();
+                return;
+            }
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                fetchProducts(term);
+            }, 250);
+        });
+
+        searchInput.addEventListener("focus", function () {
+            if (suggestionsPanel.innerHTML.trim()) {
+                showSuggestions();
+            }
+        });
+
+        document.addEventListener("click", function (event) {
+            if (
+                !suggestionsPanel.contains(event.target) &&
+                event.target !== searchInput
+            ) {
+                hideSuggestions();
+            }
+        });
+
+        form.addEventListener("submit", function (event) {
+            if (!hiddenInput.value) {
+                event.preventDefault();
+                setHelperMessage("Pilih produk dari daftar agar harga tersimpan.", "danger");
+                showSuggestions();
+                searchInput.focus();
+            }
+        });
+    });
+</script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const globalSearchInput = document.getElementById("level-price-global-search");
+        const globalPanel = document.getElementById("level-price-global-panel");
+        const globalHelper = document.getElementById("level-price-global-helper");
+        const globalResult = document.getElementById("level-price-global-result");
+
+        const setHelper = (message, tone = "muted") => {
+            if (!globalHelper) return;
+            globalHelper.textContent = message;
+            globalHelper.classList.remove("text-muted", "text-danger", "text-success");
+            if (tone === "danger") {
+                globalHelper.classList.add("text-danger");
+            } else if (tone === "success") {
+                globalHelper.classList.add("text-success");
+            } else {
+                globalHelper.classList.add("text-muted");
+            }
+        };
+
+        if (globalSearchInput && globalPanel) {
+            let debounceTimer = null;
+            let abortCtrl = null;
+            const productCache = new Map();
+
+            const clearPanel = () => {
+                globalPanel.innerHTML = "";
+                globalPanel.hidden = true;
+            };
+
+            const showPanel = () => {
+                globalPanel.hidden = false;
+            };
+
+            const clearResult = () => {
+                if (!globalResult) return;
+                globalResult.innerHTML = "";
+                globalResult.hidden = true;
+            };
+
+            const formatPrice = (value) => {
+                try {
+                    return (
+                        "Rp " +
+                        (Number(value) || 0).toLocaleString("id-ID", {
+                            maximumFractionDigits: 0,
+                        })
+                    );
+                } catch (e) {
+                    return "Rp " + (value || 0);
+                }
+            };
+
+            const renderSelectedProduct = (prod) => {
+                if (!globalResult) {
+                    return;
+                }
+                if (!prod) {
+                    clearResult();
+                    return;
+                }
+                const badges = Array.isArray(prod.price_levels) && prod.price_levels.length
+                    ? prod.price_levels
+                          .map(
+                              (pl) =>
+                                  `<span class="badge badge-soft-primary">${pl.level_name || "Level"}: ${formatPrice(pl.price)}</span>`
+                          )
+                          .join("")
+                    : '<span class="badge badge-secondary">Belum ada level harga</span>';
+
+                globalResult.innerHTML = `
+                    <div class="action-row">
+                        <div style="min-width: 0;">
+                            <div class="title">${prod.nama_produk || "-"}</div>
+                            <div class="meta">
+                                ${prod.kode_produk || "-"} · ${prod.sku || "SKU ?"} · ${prod.barcode || "Barcode ?"}
+                            </div>
+                        </div>
+                        <span class="badge badge-soft">${prod.kategori || "Kategori ?"}</span>
+                    </div>
+                    <div class="mt-3 d-flex flex-wrap" style="gap: 0.35rem;">
+                        ${badges}
+                    </div>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-sm btn-primary" id="jump-to-price-form">
+                            <i class="fas fa-tag mr-1"></i>Atur harga level
+                        </button>
+                    </div>
+                `;
+                globalResult.hidden = false;
+
+                const jumpBtn = document.getElementById("jump-to-price-form");
+                jumpBtn?.addEventListener("click", function () {
+                    const targetForm = document.getElementById("price-level-form");
+                    if (targetForm && typeof targetForm.scrollIntoView === "function") {
+                        targetForm.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                    const formPriceInput = document.querySelector(
+                        '#price-level-form input[name="price"]'
+                    );
+                    formPriceInput?.focus();
+                });
+            };
+
+            const renderRows = (products) => {
+                productCache.clear();
+                globalPanel.innerHTML = "";
+                if (!products.length) {
+                    globalPanel.innerHTML =
+                        '<div class="px-2 py-3 text-muted small">Produk tidak ditemukan.</div>';
+                    showPanel();
+                    return;
+                }
+                products.slice(0, 12).forEach((prod) => {
+                    if (prod && (prod.id || prod.id === 0)) {
+                        productCache.set(String(prod.id), prod);
+                    }
+                    const row = document.createElement("button");
+                    row.type = "button";
+                    row.className = "suggestion-item";
+                    row.dataset.productId = String(prod.id || "");
+                    row.dataset.productName = String(prod.nama_produk || "");
+                    row.dataset.productCode = String(prod.kode_produk || "");
+                    row.innerHTML = `
+                        <div style="min-width: 0;">
+                            <div class="fw-semibold">${prod.kode_produk || "-"} — ${prod.nama_produk}</div>
+                            <div class="small text-muted">
+                                <span>${prod.sku || "SKU ?"}</span>
+                                <span class="mx-1">•</span>
+                                <span>${prod.barcode || "Barcode ?"}</span>
+                            </div>
+                            <div class="mt-2 d-flex flex-wrap" style="gap: 0.35rem;">
+                                ${
+                                    Array.isArray(prod.price_levels) && prod.price_levels.length
+                                        ? prod.price_levels
+                                              .slice(0, 4)
+                                              .map(
+                                                  (pl) =>
+                                                      `<span class="badge badge-soft-primary">${pl.level_name || "Level"}: ${formatPrice(pl.price)}</span>`
+                                              )
+                                              .join("")
+                                        : '<span class="badge badge-secondary">Belum ada level harga</span>'
+                                }
+                            </div>
+                        </div>
+                        <span class="badge badge-soft">${prod.kategori || "Kategori ?"}</span>
+                    `;
+                    globalPanel.appendChild(row);
+                });
+                showPanel();
+            };
+
+            const fetchProducts = (term) => {
+                if (abortCtrl) {
+                    abortCtrl.abort();
+                }
+                abortCtrl = new AbortController();
+                fetch(
+                    `{{ url_for('main.get_products') }}?q=${encodeURIComponent(term)}`,
+                    {
+                        headers: { Accept: "application/json" },
+                        signal: abortCtrl.signal,
+                    }
+                )
+                    .then((res) => {
+                        if (!res.ok) throw new Error("fail");
+                        return res.json();
+                    })
+                    .then((data) => {
+                        const products = Array.isArray(data.products)
+                            ? data.products
+                            : [];
+                        renderRows(products);
+                        setHelper("Klik produk untuk menyiapkan form set harga.", "muted");
+                    })
+                    .catch((err) => {
+                        if (err.name === "AbortError") return;
+                        setHelper("Gagal memuat produk.", "danger");
+                    });
+            };
+
+            globalSearchInput.addEventListener("input", function () {
+                const term = this.value.trim();
+                if (!term) {
+                    clearPanel();
+                    clearResult();
+                    setHelper(
+                        "Autocomplete menampilkan status level harga untuk setiap produk.",
+                        "muted"
+                    );
+                    return;
+                }
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    fetchProducts(term);
+                }, 250);
+            });
+
+            document.addEventListener("click", function (event) {
+                if (
+                    !globalPanel.contains(event.target) &&
+                    event.target !== globalSearchInput
+                ) {
+                    globalPanel.hidden = true;
+                }
+            });
+
+            globalPanel.addEventListener("click", function (event) {
+                const item = event.target.closest(".suggestion-item");
+                if (!item) {
+                    return;
+                }
+                const productId = item.dataset.productId || "";
+                const productName = item.dataset.productName || "";
+                const productCode = item.dataset.productCode || "";
+
+                if (productName) {
+                    globalSearchInput.value = productCode
+                        ? `${productName} (${productCode})`
+                        : productName;
+                }
+                clearPanel();
+
+                const formProductInput = document.getElementById("product_search_input");
+                const formProductId = document.getElementById("product_id_input");
+
+                if (formProductInput) {
+                    formProductInput.value = productName
+                        ? productCode
+                            ? `${productName} (${productCode})`
+                            : productName
+                        : "";
+                }
+                if (formProductId) {
+                    formProductId.value = productId;
+                }
+
+                renderSelectedProduct(productCache.get(productId));
+                setHelper("Produk dipilih. Status level harga ditampilkan di bawah.", "success");
+            });
+        }
+    });
+</script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const blocks = document.querySelectorAll("[data-level-price-container]");
+        if (!blocks.length) {
+            return;
+        }
+
+        const toggleLoading = (contentEl, active) => {
+            if (!contentEl) {
+                return;
+            }
+            contentEl.classList.toggle("is-loading", !!active);
+        };
+
+        blocks.forEach((block) => {
+            const contentEl = block.querySelector(".level-price-content");
+            block.addEventListener("click", function (event) {
+                const link = event.target.closest(".level-price-page-link");
+                if (!link) {
+                    return;
+                }
+                event.preventDefault();
+                const fragmentUrl = link.dataset.fragmentUrl || link.getAttribute("href");
+                if (!fragmentUrl || !contentEl) {
+                    return;
+                }
+                toggleLoading(contentEl, true);
+                fetch(fragmentUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+                    .then((response) => {
+                        if (!response.ok) {
+                            throw new Error("Gagal memuat data.");
+                        }
+                        return response.text();
+                    })
+                    .then((html) => {
+                        contentEl.innerHTML = html;
+                    })
+                    .catch(() => {
+                        // Silent fail to avoid mengganggu user
+                    })
+                    .finally(() => {
+                        toggleLoading(contentEl, false);
+                    });
+            });
+        });
+    });
+</script>
+{% endblock %}

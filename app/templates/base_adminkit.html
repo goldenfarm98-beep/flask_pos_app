@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Aplikasi Kasir Pintar{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/adminkit/app.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="wrapper">
+    <nav id="sidebar" class="sidebar js-sidebar">
+        <div class="sidebar-content js-simplebar">
+            <a class="sidebar-brand" href="{{ url_for('main.dashboard') }}">
+                <span class="align-middle">Kasir Pintar</span>
+            </a>
+
+            <ul class="sidebar-nav">
+                <li class="sidebar-header">Menu</li>
+                <li class="sidebar-item">
+                    <a class="sidebar-link" href="{{ url_for('main.dashboard') }}">
+                        <i class="align-middle" data-feather="grid"></i> <span class="align-middle">Dashboard</span>
+                    </a>
+                </li>
+                <li class="sidebar-item">
+                    <a class="sidebar-link" href="{{ url_for('main.produk') }}">
+                        <i class="align-middle" data-feather="box"></i> <span class="align-middle">Produk</span>
+                    </a>
+                </li>
+                <li class="sidebar-item">
+                    <a class="sidebar-link" href="{{ url_for('main.supplier') }}">
+                        <i class="align-middle" data-feather="truck"></i> <span class="align-middle">Supplier</span>
+                    </a>
+                </li>
+                <li class="sidebar-item">
+                    <a class="sidebar-link" href="{{ url_for('main.penjualan') }}">
+                        <i class="align-middle" data-feather="shopping-cart"></i> <span class="align-middle">Penjualan</span>
+                    </a>
+                </li>
+                <li class="sidebar-item">
+                    <a class="sidebar-link" href="{{ url_for('main.pembelian') }}">
+                        <i class="align-middle" data-feather="clipboard"></i> <span class="align-middle">Pembelian</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="main">
+        <nav class="navbar navbar-expand navbar-light navbar-bg">
+            <a class="sidebar-toggle js-sidebar-toggle">
+                <i class="hamburger align-self-center"></i>
+            </a>
+
+            <div class="navbar-collapse collapse">
+                <ul class="navbar-nav navbar-align">
+                    {% if session.get('user_id') %}
+                        {% set display_name = session.get('username', 'User') %}
+                        {% set display_name_short = display_name if display_name|length <= 18 else display_name[:15] ~ '...' %}
+                        {% set display_email = session.get('email', '') %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-icon dropdown-toggle d-inline-block d-sm-none" href="#" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="align-middle" data-feather="user"></i>
+                            </a>
+                            <a class="nav-link dropdown-toggle d-none d-sm-inline-block" href="#" data-bs-toggle="dropdown" aria-expanded="false">
+                                <span class="text-dark align-middle">{{ display_name_short }}</span>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <div class="px-3 py-2">
+                                    <div class="fw-semibold text-dark">{{ display_name }}</div>
+                                    {% if display_email %}
+                                        <div class="small text-muted">{{ display_email }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="dropdown-divider"></div>
+                                <a class="dropdown-item" href="{{ url_for('main.profile') }}">
+                                    <i class="align-middle me-1" data-feather="settings"></i> Profil
+                                </a>
+                                <a class="dropdown-item" href="{{ url_for('main.dashboard') }}">
+                                    <i class="align-middle me-1" data-feather="home"></i> Dashboard
+                                </a>
+                                <div class="dropdown-divider"></div>
+                                <a class="dropdown-item text-danger" href="{{ url_for('main.logout') }}">
+                                    <i class="align-middle me-1" data-feather="log-out"></i> Keluar
+                                </a>
+                            </div>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('main.login') }}">Masuk</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('main.register') }}">Daftar</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </nav>
+
+        <main class="content">
+            <div class="container-fluid p-0">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="flash-stack mb-3">
+                            {% for category, message in messages %}
+                                {% set category_map = {
+                                    'message': 'info',
+                                    'error': 'danger',
+                                    'danger': 'danger',
+                                    'warning': 'warning',
+                                    'success': 'success',
+                                    'info': 'info'
+                                } %}
+                                {% set alert_class = category_map.get(category, 'info') %}
+                                <div class="alert alert-{{ alert_class }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+
+        <footer class="footer">
+            <div class="container-fluid">
+                <div class="row text-muted">
+                    <div class="col-6 text-start">
+                        <p class="mb-0">
+                            <span class="text-muted">&copy; {{ current_year }} Kasir Pintar</span>
+                        </p>
+                    </div>
+                    <div class="col-6 text-end">
+                        <p class="mb-0">
+                            <span class="text-muted">Powered by Flask</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='vendor/adminkit/app.js') }}"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        if (typeof bootstrap !== "undefined" && bootstrap.Tooltip) {
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+                try {
+                    new bootstrap.Tooltip(el);
+                } catch (e) {}
+            });
+        }
+    });
+</script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

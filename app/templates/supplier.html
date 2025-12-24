@@ -2,155 +2,737 @@
 
 {% block title %}Data Supplier{% endblock %}
 
-{% block content %}
-<div class="container mt-2">
-    <h2 class="text-center text-primary"><i class="fas fa-truck"></i> Data Supplier</h2>
-    <p class="text-center text-muted">Manage supplier information</p>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    <div class="mt-3">
-        {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-    {% endwith %}
+{% block extra_head %}
+<style>
+    .autocomplete-panel {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        max-height: 320px;
+        overflow-y: auto;
+        z-index: 20;
+        margin-top: 0.25rem;
+    }
+    .autocomplete-panel[hidden] {
+        display: none;
+    }
+    .autocomplete-item {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+        cursor: pointer;
+    }
+    .autocomplete-item:last-child {
+        border-bottom: none;
+    }
+    .autocomplete-item:hover,
+    .autocomplete-item:focus {
+        background: rgba(37, 99, 235, 0.08);
+        outline: none;
+    }
+    .autocomplete-item .name {
+        font-weight: 600;
+        color: #0f172a;
+        display: block;
+    }
+    .autocomplete-item .meta {
+        font-size: 0.85rem;
+        color: #475569;
+    }
+</style>
+{% endblock %}
 
-    <div class="row mt-6">
-        <!-- Form Input Supplier -->
-        <div class="col-md-6">
-            <div class="card shadow-sm border-primary">
-                <div class="card-body">
-                    <h5 class="card-title text-center text-primary"><i class="fas fa-pencil-alt"></i> Input Supplier</h5>
-                    <form id="supplierForm" method="POST" action="{% if edit_supplier %}/supplier/edit/{{ edit_supplier.id }}{% else %}/supplier{% endif %}">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="form-group">
-                            <label for="name"><i class="fas fa-user"></i> Nama Supplier</label>
-                            <input type="text" class="form-control" id="name" name="name" placeholder="Nama Supplier" value="{% if edit_supplier %}{{ edit_supplier.name }}{% endif %}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="address"><i class="fas fa-map-marker-alt"></i> Alamat</label>
-                            <input type="text" class="form-control" id="address" name="address" placeholder="Alamat" value="{% if edit_supplier %}{{ edit_supplier.address }}{% endif %}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="phone"><i class="fas fa-phone"></i> No Telp</label>
-                            <input type="text" class="form-control" id="phone" name="phone" placeholder="No Telp" value="{% if edit_supplier %}{{ edit_supplier.phone }}{% endif %}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="bank_account"><i class="fas fa-university"></i> No Rekening Bank</label>
-                            <input type="text" class="form-control" id="bank_account" name="bank_account" placeholder="No Rekening Bank" value="{% if edit_supplier %}{{ edit_supplier.bank_account }}{% endif %}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="account_name"><i class="fas fa-user-circle"></i> Nama Rekening</label>
-                            <input type="text" class="form-control" id="account_name" name="account_name" placeholder="Nama Rekening" value="{% if edit_supplier %}{{ edit_supplier.account_name }}{% endif %}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="contact_person"><i class="fas fa-user-tie"></i> Kontak Person</label>
-                            <input type="text" class="form-control" id="contact_person" name="contact_person" placeholder="Kontak Person" value="{% if edit_supplier %}{{ edit_supplier.contact_person }}{% endif %}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="email"><i class="fas fa-envelope"></i> Email</label>
-                            <input type="email" class="form-control" id="email" name="email" placeholder="Email" value="{% if edit_supplier %}{{ edit_supplier.email }}{% endif %}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="website"><i class="fas fa-globe"></i> Website</label>
-                            <input type="text" class="form-control" id="website" name="website" placeholder="Website" value="{% if edit_supplier %}{{ edit_supplier.website }}{% endif %}">
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-block">
-                            {% if edit_supplier %}<i class="fas fa-save"></i> Update Supplier {% else %}<i class="fas fa-save"></i> Simpan {% endif %}
-                        </button>
-                    </form>
+{% block content %}
+{% set is_editing = edit_supplier is not none %}
+{% set form_action = url_for('main.edit_supplier', supplier_id=edit_supplier.id) if is_editing else
+url_for('main.supplier') %}
+{% set total_suppliers = supplier_stat_cards[0].value if supplier_stat_cards else suppliers|length %}
+
+<div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+    <div class="mb-2">
+        <h1 class="h4 font-weight-bold mb-1">Data Supplier</h1>
+        <p class="text-muted mb-0">Supplier aktif: {{ '{:,}'.format(total_suppliers).replace(',', '.') }}. Tambah/ubah data di bawah.</p>
+    </div>
+    <div class="btn-group">
+        <a href="#supplier-form" class="btn btn-sm btn-primary"><i class="fas fa-user-plus mr-1"></i>Tambah/ubah</a>
+        <a href="{{ url_for('main.pembelian') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-file-invoice mr-1"></i>Pembelian</a>
+        <a href="{{ url_for('main.export_suppliers') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-file-excel mr-1"></i>Export</a>
+    </div>
+</div>
+
+{% if supplier_stat_cards %}
+<div class="row stat-grid mb-4">
+    {% for card in supplier_stat_cards %}
+    <div class="col-sm-6 col-xl-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="stat-icon {{ card.accent }}">
+                        <i class="fas {{ card.icon }}"></i>
+                    </span>
+                    <span class="badge badge-pill badge-soft-primary text-uppercase font-weight-semibold px-3">{{ card.label }}</span>
                 </div>
+                <div class="stat-value mb-1">
+                    {% if card.type == 'currency' %}
+                    {{ ('Rp {:,.0f}'.format(card.value)).replace(',', '.') }}
+                    {% else %}
+                    {{ '{:,}'.format(card.value).replace(',', '.') }}
+                    {% endif %}
+                </div>
+                <p class="small text-muted mb-0">{{ card.description }}</p>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="row align-items-start" id="supplier-form">
+    <div class="col-lg-8">
+        <div class="card shadow-lg form-card mb-4">
+            <div class="card-body">
+                <span class="badge badge-pill badge-primary text-uppercase px-3 py-2">
+                    {% if is_editing %}Perbarui Supplier{% else %}Tambah Supplier{% endif %}
+                </span>
+                <h2 class="h5 font-weight-bold mt-3 mb-2">
+                    {% if is_editing %}
+                    Ubah data <span class="text-primary">{{ edit_supplier.name }}</span>
+                    {% else %}
+                    Input supplier baru
+                    {% endif %}
+                </h2>
+                <p class="small text-muted mb-3">Lengkapi detail kontak, rekening, dan website agar tim pembelian mudah
+                    berkoordinasi.</p>
+
+                <form method="POST" action="{{ form_action }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="name">Nama Supplier</label>
+                            <input type="text" class="form-control" id="name" name="name" placeholder="Nama pemasok"
+                                value="{{ edit_supplier.name if is_editing else '' }}" required>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="contact_person">Kontak Person</label>
+                            <input type="text" class="form-control" id="contact_person" name="contact_person"
+                                placeholder="Nama PIC" value="{{ edit_supplier.contact_person if is_editing else '' }}"
+                                required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="phone">Nomor Telepon</label>
+                            <input type="text" class="form-control" id="phone" name="phone" placeholder="0812-XXXX-XXXX"
+                                value="{{ (edit_supplier.phone | normalize_phone) if is_editing else '' }}" required>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="bank_name">Nama Bank</label>
+                            <input type="text" class="form-control" id="bank_name" name="bank_name" placeholder="Nama bank"
+                                value="{{ edit_supplier.bank_name if is_editing else '' }}" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="bank_account">No. Rekening Bank</label>
+                            <input type="text" class="form-control" id="bank_account" name="bank_account"
+                                placeholder="1234567890" value="{{ edit_supplier.bank_account if is_editing else '' }}"
+                                required>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="account_name">Nama Rekening</label>
+                            <input type="text" class="form-control" id="account_name" name="account_name"
+                                placeholder="PT Nama Rekening"
+                                value="{{ edit_supplier.account_name if is_editing else '' }}" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email (opsional)</label>
+                        <input type="email" class="form-control" id="email" name="email"
+                            placeholder="email@pemasok.com" value="{{ edit_supplier.email if is_editing else '' }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="address">Alamat Lengkap</label>
+                        <textarea class="form-control" id="address" name="address" rows="2"
+                            placeholder="Alamat kantor / gudang"
+                            required>{{ edit_supplier.address if is_editing else '' }}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="website">Website (opsional)</label>
+                        <input type="text" class="form-control" id="website" name="website"
+                            placeholder="https://www.nama-pemasok.com"
+                            value="{{ edit_supplier.website if is_editing else '' }}">
+                    </div>
+
+                    <div class="d-flex justify-content-between flex-wrap">
+                        {% if is_editing %}
+                        <a href="{{ url_for('main.supplier') }}" class="btn btn-light mb-2">Batalkan edit</a>
+                        {% else %}
+                        <button type="reset" class="btn btn-outline-secondary mb-2">Reset form</button>
+                        {% endif %}
+                        <button type="submit" class="btn btn-primary mb-2">
+                            <i class="fas fa-save mr-2"></i>{% if is_editing %}Simpan Perubahan{% else %}Simpan
+                            Supplier{% endif %}
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
 
-        <!-- Tampil Data Supplier -->
-        <div class="col-md-6">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title"><i class="fas fa-list"></i> Data Supplier</h5>
-                    <div class="form-group">
-                        <input type="text" class="form-control" id="searchSupplier" placeholder="Cari Data Supplier">
+        <div class="card card-panel shadow-sm mb-4">
+            <div
+                class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
+                <div>
+                    <h2 class="h5 font-weight-bold mb-1">Daftar supplier</h2>
+                    <p class="small text-muted mb-0">
+                        Menampilkan {{ suppliers|length }} pemasok pada halaman ini dari {{ filtered_count }} hasil
+                        pencarian. Total pemasok: {{ '{:,}'.format(total_suppliers).replace(',', '.') }}.
+                    </p>
+                </div>
+                <form class="mt-3 mt-md-0 position-relative supplier-search-form" method="GET" action="{{ url_for('main.supplier') }}" autocomplete="off">
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="search" class="form-control" placeholder="Cari nama supplier"
+                            value="{{ search_query }}" id="supplier-search-input">
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-primary" type="submit">Cari</button>
+                        </div>
                     </div>
-                    <div>
-                        <a href="/supplier/export" class="btn btn-success mb-3"><i class="fas fa-file-excel"></i> Export to Excel</a>
-                    </div>
-                    <div>
-                        <form action="/supplier/import" method="POST" enctype="multipart/form-data" class="mb-3">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <div class="form-group">
-                                <label for="file"><i class="fas fa-file-excel"></i> Import from Excel</label>
-                                <input type="file" class="form-control-file" id="file" name="file" accept=".xlsx, .xls" required>
-                            </div>
-                            <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Import</button>
-                        </form>
-                    </div>                    
-                    <table class="table table-bordered table-hover">
-                        <thead class="thead-light">
+                </form>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-modern mb-0">
+                        <thead>
                             <tr>
-                                <th>Nama</th>
-                                <th>Kontak</th>
-                                <th>Aksi</th>
+                                <th>Nama & Kontak</th>
+                                <th>No. Telepon</th>
+                                <th>Email</th>
+                                <th>Website</th>
+                                <th class="text-right">Aksi</th>
                             </tr>
                         </thead>
-                        <!-- Data will be dynamically added here -->
-                        <tbody id="supplierTable">
-                            <!-- Data will be dynamically added here -->
+                        <tbody id="supplier-table-body" data-csrf="{{ csrf_token() }}">
                             {% for supplier in suppliers %}
-                            <tr>
-                                <td><a href="/supplier/{{ supplier.id }}" class="text-primary">{{ supplier.name }}</a></td>
-                                <td>{{ supplier.contact_person }}</td>
+                            <tr data-filter-text="{{ (supplier.name or '') | lower }}">
                                 <td>
-                                    <a href="/supplier/edit/{{ supplier.id }}" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i> Edit</a>
-                                    <form action="/supplier/delete/{{ supplier.id }}" method="POST" style="display:inline;">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Delete</button>
-                                    </form>
-                                    
+                                    <div class="font-weight-semibold">{{ supplier.name }}</div>
+                                    <small class="text-muted d-block">PIC: {{ supplier.contact_person or '-' }}</small>
+                                    <small class="text-muted d-block">Alamat: {{ supplier.address or '-' }}</small>
                                 </td>
+                                <td>
+                                    {% set display_phone = supplier.phone | normalize_phone %}
+                                    {% if display_phone and display_phone|length > 1 %}
+                                    <div class="d-flex align-items-center">
+                                        <i class="fas fa-phone-alt text-success mr-2"></i>
+                                        <a href="https://wa.me/62{{ display_phone[1:] }}" class="text-dark font-weight-semibold" target="_blank" rel="noreferrer">
+                                            {{ display_phone }}
+                                        </a>
+                                    </div>
+                                    {% else %}
+                                    <span class="badge badge-pill badge-warning text-dark">Belum ada</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if supplier.email %}
+                                    <div class="d-flex align-items-center">
+                                        <i class="fas fa-envelope text-info mr-2"></i>
+                                        <a href="mailto:{{ supplier.email }}" class="text-dark font-weight-semibold">
+                                            {{ supplier.email }}
+                                        </a>
+                                    </div>
+                                    {% else %}
+                                    <span class="badge badge-pill badge-warning text-dark">Belum ada</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if supplier.website %}
+                                    <a href="{{ supplier.website }}" target="_blank" rel="noreferrer"
+                                        class="badge badge-pill badge-light text-primary">
+                                        <i class="fas fa-globe mr-1"></i>Website
+                                    </a>
+                                    {% else %}
+                                    <span class="badge badge-pill badge-light text-muted">Tidak tersedia</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-right">
+                                    <div class="btn-group" role="group">
+                                        <a href="{{ url_for('main.supplier_detail', supplier_id=supplier.id) }}"
+                                            class="btn btn-sm btn-outline-info" title="Detail">
+                                            <i class="fas fa-info-circle"></i>
+                                        </a>
+                                        <a href="{{ url_for('main.edit_supplier', supplier_id=supplier.id) }}"
+                                            class="btn btn-sm btn-outline-secondary" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <form action="{{ url_for('main.delete_supplier', supplier_id=supplier.id) }}"
+                                            method="POST" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus"
+                                                onclick="return confirm('Hapus supplier ini?')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">Belum ada supplier sesuai filter.
+                            Tambahkan supplier baru atau ubah pencarian.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
-                        
                     </table>
-                    <button class="btn btn-secondary" onclick="window.location.href='/dashboard'"><i
-                            class="fas fa-arrow-left"></i> Back to Dashboard</button>
                 </div>
+            </div>
+            {% if pagination and pagination.pages > 1 %}
+            <div class="card-footer bg-white border-top-0">
+                <nav aria-label="Navigasi halaman supplier">
+                    <ul class="pagination pagination-sm justify-content-end mb-0">
+                        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                            <a class="page-link"
+                                href="{{ url_for('main.supplier', page=pagination.prev_num, search=search_query, per_page=per_page) }}"
+                                aria-label="Sebelumnya">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        {% for page_number in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                            {% if page_number %}
+                                <li class="page-item {% if page_number == page %}active{% endif %}">
+                                    <a class="page-link"
+                                        href="{{ url_for('main.supplier', page=page_number, search=search_query, per_page=per_page) }}">
+                                        {{ page_number }}
+                                    </a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled"><span class="page-link">…</span></li>
+                            {% endif %}
+                        {% endfor %}
+                        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                            <a class="page-link"
+                                href="{{ url_for('main.supplier', page=pagination.next_num, search=search_query, per_page=per_page) }}"
+                                aria-label="Berikutnya">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h3 class="h6 font-weight-bold mb-3">Insight supplier</h3>
+                {% set badge_map = {'warning': 'badge-warning', 'info': 'badge-info', 'success': 'badge-success',
+                'secondary': 'badge-secondary'} %}
+                <ul class="list-unstyled mb-0">
+                    {% for insight in supplier_insights %}
+                    <li class="mb-3">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span class="font-weight-semibold">{{ insight.title }}</span>
+                            <span class="badge badge-pill {{ badge_map.get(insight.status, 'badge-secondary') }}">
+                                {% if insight.type == 'count' %}
+                                {{ '{:,}'.format(insight.value).replace(',', '.') }}
+                                {% else %}
+                                {{ insight.value }}
+                                {% endif %}
+                            </span>
+                        </div>
+                        <p class="small text-muted mb-0">{{ insight.description }}</p>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h3 class="h6 font-weight-bold mb-3">Faktur terbaru per supplier</h3>
+                {% if recent_purchases %}
+                <div class="purchase-list">
+                    {% for purchase in recent_purchases %}
+                    <div class="purchase-entry">
+                            {% set item_count = purchase["items"] %}
+                            <div class="d-flex justify-content-between flex-wrap mb-2">
+                                <div>
+                                    <div class="font-weight-semibold text-navy">{{ purchase.no_faktur }}</div>
+                                    <small class="text-muted">{{ purchase.tanggal }} • {{ purchase.supplier }}</small>
+                                </div>
+                                <div class="text-right mt-2 mt-md-0">
+                                    <div class="badge badge-pill badge-soft-primary">{{ item_count }} item</div>
+                                    <div class="text-primary font-weight-semibold mt-1">
+                                        {{ ('Rp {:,.0f}'.format(purchase.total)).replace(',', '.') }}
+                                    </div>
+                                </div>
+                            </div>
+                            {% set bar_width = item_count * 5 %}
+                            <div class="progress purchase-progress">
+                                <div class="progress-bar" role="progressbar"
+                                     style="width: {{ 100 if bar_width > 100 else bar_width }}%"
+                                     aria-valuenow="{{ item_count }}"
+                                     aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="small text-muted mb-0">Belum ada pembelian yang tercatat.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h3 class="h6 font-weight-bold mb-3">Import / Export</h3>
+                <p class="small text-muted">Gunakan template Excel untuk mempercepat pengisian banyak supplier
+                    sekaligus. Pastikan kolom sesuai format.</p>
+                <form action="{{ url_for('main.import_suppliers') }}" method="POST" enctype="multipart/form-data"
+                    class="mb-3" id="supplierImportForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="custom-file">
+                        <input type="file" class="custom-file-input" id="importFile" name="file" accept=".xlsx,.xls"
+                            required>
+                        <label class="custom-file-label" for="importFile">Pilih file Excel</label>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary btn-block mt-3" id="supplierImportButton">
+                        <i class="fas fa-upload mr-2"></i>Import data
+                    </button>
+                    <div class="mt-3 d-none" id="supplierImportProgress">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small text-muted" id="supplierImportStatus">Mengunggah file...</span>
+                            <span class="small font-weight-semibold" id="supplierImportPercent">0%</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100"
+                                id="supplierImportBar"></div>
+                        </div>
+                    </div>
+                </form>
+                <a href="{{ url_for('main.export_suppliers') }}" class="btn btn-link btn-sm px-0">
+                    <i class="fas fa-download mr-1"></i>Unduh data supplier saat ini
+                </a>
             </div>
         </div>
     </div>
 </div>
 
-<script>
-    document.getElementById('searchSupplier').addEventListener('input', function () {
-        const query = this.value.toLowerCase();
-        const rows = document.querySelectorAll('#supplierTable tr');
-        rows.forEach(row => {
-            const cells = row.querySelectorAll('td');
-            const match = Array.from(cells).some(cell => cell.textContent.toLowerCase().includes(query));
-            row.style.display = match ? '' : 'none';
-        });
-    });
-</script>
-
 <style>
-    h2 {
-        font-weight: bold;
-        color: #007bff;
+    .hero-card {
+        border-radius: 20px;
+        padding: 2.5rem 2rem;
     }
 
-    .card {
-        border: none;
-        border-radius: 10px;
+    .hero-card .btn {
+        border-radius: 999px;
     }
 
-    .btn {
-        margin-top: 10px;
+    .hero-meta .badge {
+        letter-spacing: 0.08em;
+    }
+
+    .text-white-75 {
+        color: rgba(255, 255, 255, 0.75) !important;
+    }
+
+    .font-weight-semibold {
+        font-weight: 600;
+    }
+
+    .stat-card {
+        border-radius: 18px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 18px 35px rgba(15, 23, 42, 0.12);
+    }
+
+    .stat-card .stat-icon {
+        font-size: 1.75rem;
+    }
+
+    .stat-card .stat-value {
+        font-size: 1.85rem;
+        font-weight: 700;
+    }
+
+    .card-panel {
+        border-radius: 18px;
+    }
+
+    .table-modern thead th {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        border-bottom: 2px solid rgba(15, 23, 42, 0.08);
+        white-space: nowrap;
+    }
+
+    .table-modern tbody td {
+        vertical-align: middle;
+    }
+
+    .table-modern tbody tr:hover {
+        background-color: rgba(37, 99, 235, 0.04);
+    }
+
+    .form-card {
+        border-radius: 20px;
+    }
+
+    .purchase-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .purchase-entry {
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        padding-bottom: 1rem;
+    }
+
+    .purchase-entry:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    .badge-soft-primary {
+        background: rgba(37, 99, 235, 0.12);
+        color: #1d4ed8;
+        font-weight: 600;
+    }
+
+    .purchase-progress {
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.06);
+        margin-top: 0.5rem;
+    }
+
+    .purchase-progress .progress-bar {
+        border-radius: inherit;
+        background: linear-gradient(90deg, #6366f1, #8b5cf6);
+    }
+
+    .custom-file-label {
+        border-radius: 12px;
+    }
+
+    .custom-file-input:focus~.custom-file-label {
+        box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.25);
+        border-color: rgba(37, 99, 235, 0.4);
+    }
+
+    @media (max-width: 576px) {
+        .hero-card {
+            border-radius: 16px;
+            padding: 2rem 1.5rem;
+        }
+
+        .stat-card .stat-value {
+            font-size: 1.6rem;
+        }
     }
 </style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const importInput = document.getElementById('importFile');
+        const importForm = document.getElementById('supplierImportForm');
+        const importButton = document.getElementById('supplierImportButton');
+        const importProgress = document.getElementById('supplierImportProgress');
+        const importBar = document.getElementById('supplierImportBar');
+        const importPercent = document.getElementById('supplierImportPercent');
+        const importStatus = document.getElementById('supplierImportStatus');
+        let importTimer = null;
+        if (importInput) {
+            importInput.addEventListener('change', function () {
+                const label = importInput.nextElementSibling;
+                if (label && importInput.files && importInput.files.length > 0) {
+                    label.textContent = importInput.files[0].name;
+                }
+            });
+        }
+
+        function setImportProgress(value, message) {
+            if (!importBar || !importPercent) return;
+            const safe = Math.max(0, Math.min(100, Math.round(value)));
+            importBar.style.width = `${safe}%`;
+            importBar.setAttribute('aria-valuenow', String(safe));
+            importPercent.textContent = `${safe}%`;
+            if (importStatus && message) {
+                importStatus.textContent = message;
+            }
+            if (importProgress) {
+                importProgress.classList.remove('d-none');
+            }
+        }
+
+        if (importForm && importButton) {
+            importForm.addEventListener('submit', function () {
+                if (!importInput || !importInput.files || !importInput.files.length) {
+                    return;
+                }
+                importButton.disabled = true;
+                importButton.innerHTML = '<span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>Memproses import...';
+                setImportProgress(5, 'Mengunggah file...');
+                if (importTimer) {
+                    clearInterval(importTimer);
+                }
+                let current = 5;
+                importTimer = setInterval(() => {
+                    current = Math.min(current + Math.random() * 12 + 8, 90);
+                    setImportProgress(current, 'Memproses data...');
+                    if (current >= 90) {
+                        clearInterval(importTimer);
+                    }
+                }, 400);
+            });
+        }
+
+        const searchInput = document.getElementById('supplier-search-input');
+        const tableBody = document.getElementById('supplier-table-body');
+        const tableRows = Array.from(document.querySelectorAll('#supplier-table-body tr[data-filter-text]'));
+        const form = document.querySelector('.supplier-search-form');
+        const pagination = document.querySelector('.pagination');
+        const csrfToken = tableBody ? tableBody.dataset.csrf : '';
+        const originalHTML = tableBody ? tableBody.innerHTML : '';
+        const originalPaginationDisplay = pagination ? pagination.style.display : '';
+
+        function applyFilter(term) {
+            const q = (term || '').toLowerCase();
+            tableRows.forEach((row) => {
+                const text = row.dataset.filterText || '';
+                row.style.display = text.includes(q) ? '' : 'none';
+            });
+        }
+
+        function normalizePhone(raw) {
+            let v = (raw || '').toString().trim();
+            if (!v) return '';
+            if (/^\d+\.0+$/.test(v)) v = v.split('.')[0];
+            v = v.replace(/\D/g, '');
+            if (v.startsWith('62')) v = '0' + v.slice(2);
+            else if (!v.startsWith('0')) v = '0' + v;
+            return v;
+        }
+
+        function buildRow(item) {
+            const phone = normalizePhone(item.phone);
+            return `
+                <tr data-filter-text="${(item.name || '').toLowerCase()}">
+                    <td>
+                        <div class="font-weight-semibold">${item.name || '-'}</div>
+                        <small class="text-muted d-block">PIC: ${item.contact_person || '-'}</small>
+                        <small class="text-muted d-block">Alamat: ${item.address || '-'}</small>
+                    </td>
+                    <td>
+                        ${phone ? `<div class="d-flex align-items-center">
+                            <i class="fas fa-phone-alt text-success mr-2"></i>
+                            <a href="https://wa.me/62${phone.slice(1)}" class="text-dark font-weight-semibold" target="_blank" rel="noreferrer">${phone}</a>
+                        </div>` : '<span class="badge badge-pill badge-warning text-dark">Belum ada</span>'}
+                    </td>
+                    <td>
+                        ${item.email ? `<div class="d-flex align-items-center">
+                            <i class="fas fa-envelope text-info mr-2"></i>
+                            <a href="mailto:${item.email}" class="text-dark font-weight-semibold">${item.email}</a>
+                        </div>` : '<span class="badge badge-pill badge-warning text-dark">Belum ada</span>'}
+                    </td>
+                    <td>
+                        ${item.website ? `<a href="${item.website}" target="_blank" rel="noreferrer" class="badge badge-pill badge-light text-primary"><i class="fas fa-globe mr-1"></i>Website</a>` : '<span class="badge badge-pill badge-light text-muted">Tidak tersedia</span>'}
+                    </td>
+                    <td class="text-right">
+                        <div class="btn-group" role="group">
+                            <a href="/supplier/${item.id}" class="btn btn-sm btn-outline-info" title="Detail">
+                                <i class="fas fa-info-circle"></i>
+                            </a>
+                            <a href="/supplier/edit/${item.id}" class="btn btn-sm btn-outline-secondary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <form action="/supplier/delete/${item.id}" method="POST" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="${csrfToken}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus"
+                                    onclick="return confirm('Hapus supplier ini?')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function renderFetched(list) {
+            if (!tableBody) return;
+            tableBody.innerHTML = list.map(buildRow).join('') || '<tr><td colspan="5" class="text-center text-muted py-4">Tidak ada hasil</td></tr>';
+        }
+
+        function restoreOriginal() {
+            if (tableBody) {
+                tableBody.innerHTML = originalHTML;
+            }
+            if (pagination) {
+                pagination.style.display = originalPaginationDisplay || '';
+            }
+        }
+
+        function fetchAll(term) {
+            if (!term) {
+                restoreOriginal();
+                return;
+            }
+            if (pagination) {
+                pagination.style.display = 'none';
+            }
+            const params = new URLSearchParams({ q: term, limit: 500 });
+            fetch(`{{ url_for('main.get_suppliers') }}?${params.toString()}`, {
+                headers: { Accept: 'application/json' },
+            })
+                .then((res) => {
+                    if (!res.ok) throw new Error('failed');
+                    return res.json();
+                })
+                .then((data) => {
+                    renderFetched(data.suppliers || []);
+                })
+                .catch(() => {
+                    restoreOriginal();
+                });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', function () {
+                const term = this.value;
+                applyFilter(term);
+                fetchAll(term);
+            });
+            applyFilter(searchInput.value);
+            if (searchInput.value) {
+                fetchAll(searchInput.value);
+            }
+        }
+
+        if (form) {
+            form.addEventListener('submit', function (e) {
+                // tetap biarkan server-side, tapi kita sudah fetch semua supaya hasil lintas halaman muncul
+                e.preventDefault();
+                const term = searchInput ? searchInput.value : '';
+                applyFilter(term);
+                fetchAll(term);
+            });
+        }
+    });
+</script>
 {% endblock %}

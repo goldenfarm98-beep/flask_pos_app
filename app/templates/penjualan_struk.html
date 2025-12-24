@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Struk Penjualan{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-print-none d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1"><i class="fas fa-receipt mr-2"></i>Struk Penjualan</h2>
+            <small class="text-muted">Preview transaksi yang baru disimpan.</small>
+        </div>
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" onclick="window.print()">
+                <i class="fas fa-print mr-2"></i>Cetak Struk
+            </button>
+            <a href="{{ url_for('main.penjualan') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-times mr-2"></i>Batal
+            </a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm receipt-card">
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="text-muted small text-uppercase">No Faktur</div>
+                    <div class="h5 mb-2">{{ sale.no_faktur }}</div>
+                    <div class="text-muted small text-uppercase">Tanggal</div>
+                    <div>{{ sale.tanggal_penjualan.strftime('%d %b %Y') if sale.tanggal_penjualan else '-' }}</div>
+                </div>
+                <div class="col-md-6 text-md-right">
+                    <div class="text-muted small text-uppercase">Pelanggan</div>
+                    <div class="h6 mb-2">{{ sale.pelanggan.nama if sale.pelanggan else 'Umum' }}</div>
+                    <div class="text-muted small text-uppercase">Kasir / Sales</div>
+                    <div>{{ sale.sales.username if sale.sales else '-' }}</div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Produk</th>
+                            <th class="text-center">Qty</th>
+                            <th class="text-right">Harga</th>
+                            <th class="text-center">Diskon</th>
+                            <th class="text-center">Pajak</th>
+                            <th class="text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>
+                                <div class="font-weight-semibold">{{ item.name }}</div>
+                                <small class="text-muted">{{ item.sku }}</small>
+                            </td>
+                            <td class="text-center">{{ item.qty }}</td>
+                            <td class="text-right">{{ ('Rp {:,.0f}'.format(item.price)).replace(',', '.') }}</td>
+                            <td class="text-center">{{ item.discount_pct }}%</td>
+                            <td class="text-center">{{ item.tax_pct }}%</td>
+                            <td class="text-right font-weight-semibold">{{ ('Rp {:,.0f}'.format(item.total)).replace(',', '.') }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if not items %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted">Tidak ada item.</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <div class="text-muted small text-uppercase">Metode Pembayaran</div>
+                    <div class="mb-2">{{ payment_label }}</div>
+                    {% if sale.due_date %}
+                    <div class="text-muted small text-uppercase">Jatuh Tempo</div>
+                    <div class="mb-2">{{ sale.due_date.strftime('%d %b %Y') }}</div>
+                    {% endif %}
+                    {% if sale.expedition %}
+                    <div class="text-muted small text-uppercase">Expedisi</div>
+                    <div class="mb-2">{{ sale.expedition.name }}</div>
+                    {% endif %}
+                    <div class="text-muted small text-uppercase">Total Berat</div>
+                    <div>{{ '{:.2f}'.format(sale.total_weight or 0) }} kg</div>
+                </div>
+                <div class="col-md-6">
+                    <table class="table table-borderless table-sm mb-0">
+                        <tr>
+                            <td class="text-muted">Subtotal</td>
+                            <td class="text-right">{{ ('Rp {:,.0f}'.format(subtotal)).replace(',', '.') }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Diskon</td>
+                            <td class="text-right text-danger">-{{ ('Rp {:,.0f}'.format(discount_total)).replace(',', '.') }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Pajak</td>
+                            <td class="text-right text-info">{{ ('Rp {:,.0f}'.format(tax_total)).replace(',', '.') }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Ongkos Kirim</td>
+                            <td class="text-right">{{ ('Rp {:,.0f}'.format(shipping_fee)).replace(',', '.') }}</td>
+                        </tr>
+                        <tr class="border-top">
+                            <th>Grand Total</th>
+                            <th class="text-right text-primary">{{ ('Rp {:,.0f}'.format(grand_total)).replace(',', '.') }}</th>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Jumlah Bayar</td>
+                            <td class="text-right">{{ ('Rp {:,.0f}'.format(sale.amount_paid or 0)).replace(',', '.') }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Kembali</td>
+                            <td class="text-right text-success">{{ ('Rp {:,.0f}'.format(sale.change_due or 0)).replace(',', '.') }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .receipt-card {
+        border-radius: 16px;
+        border: none;
+    }
+
+    @media print {
+        .d-print-none {
+            display: none !important;
+        }
+        .receipt-card {
+            box-shadow: none !important;
+            border: none !important;
+        }
+        body {
+            background: #fff !important;
+        }
+    }
+</style>
+{% endblock %}

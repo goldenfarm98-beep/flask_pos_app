@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Jurnal Umum{% endblock %}
+
+{% block content %}
+<section class="journal-module">
+    <div class="card shadow-sm border-0 mb-4 hero-card">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Jurnal Umum</p>
+                <h1 class="display-5 mb-2 text-navy">Catat pemasukan & pengeluaran dengan rapi</h1>
+                <p class="mb-0 text-muted">Masukkan jurnal debit/kredit untuk setiap transaksi keuangan agar laporan laba rugi dan neraca tetap akurat.</p>
+            </div>
+            <div class="mt-4 mt-lg-0 text-lg-right">
+                <small class="text-uppercase text-muted d-block">Jurnal terakhir</small>
+                <div class="h4 font-weight-bold mb-0">{{ recent_entries|length }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-7 mb-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Input jurnal</p>
+                    <h3 class="h5 mb-3">Form entri</h3>
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>Tanggal</label>
+                            <input type="date" id="journal-date" class="form-control" value="{{ default_date }}">
+                        </div>
+                        <div class="form-group col-md-8">
+                            <label>Memo / deskripsi</label>
+                            <input type="text" id="journal-memo" class="form-control" placeholder="Catatan transaksi">
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover" id="journal-table">
+                            <thead class="text-uppercase small text-muted">
+                                <tr>
+                                    <th style="width: 35%;">Akun</th>
+                                    <th style="width: 25%;">Keterangan</th>
+                                    <th class="text-right" style="width: 15%;">Debit</th>
+                                    <th class="text-right" style="width: 15%;">Kredit</th>
+                                    <th class="text-center" style="width: 10%;">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="journal-lines">
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="5">
+                                        <button class="btn btn-outline-primary btn-sm" id="add-line">
+                                            <i class="fas fa-plus mr-1"></i>Tambah baris
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <div>
+                            <small class="text-muted d-block">Total debit</small>
+                            <strong id="total-debit">0</strong>
+                        </div>
+                        <div>
+                            <small class="text-muted d-block">Total kredit</small>
+                            <strong id="total-credit">0</strong>
+                        </div>
+                        <button class="btn btn-success" id="submit-journal">
+                            <i class="fas fa-save mr-1"></i>Simpan Jurnal
+                        </button>
+                    </div>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" id="csrf-token">
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Jurnal terbaru</p>
+                    <h3 class="h5 mb-3">Riwayat</h3>
+                    {% if recent_entries %}
+                    <div class="history-list">
+                        {% for entry in recent_entries %}
+                        <div class="history-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="font-weight-semibold">{{ entry.reference }}</div>
+                                    <small class="text-muted">{{ entry.date.strftime('%d %b %Y') }} • {{ entry.memo or 'Tanpa memo' }}</small>
+                                </div>
+                                <span class="badge badge-light">{{ entry.lines|length }} baris</span>
+                            </div>
+                            <table class="table table-sm mt-2">
+                                <tbody>
+                                    {% for line in entry.lines %}
+                                    <tr>
+                                        <td>{{ line.account.code }} - {{ line.account.name }}</td>
+                                        <td class="text-right">{{ line.debit or '' }}</td>
+                                        <td class="text-right">{{ line.credit or '' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada jurnal yang tercatat.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if net_revenue_total is not none and marketplace_cost_total is not none %}
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Pendapatan Bersih</p>
+                    <h3 class="h4 font-weight-bold mb-1">Rp {{ ('{:,.0f}'.format(net_revenue_total)).replace(',', '.') }}</h3>
+                    <p class="small text-muted mb-0">Sudah dikurangi biaya marketplace otomatis per transaksi.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Biaya Marketplace</p>
+                    <h3 class="h4 font-weight-bold text-danger mb-1">Rp {{ ('{:,.0f}'.format(marketplace_cost_total)).replace(',', '.') }}</h3>
+                    <p class="small text-muted mb-0">Komisi, cashback, ongkos gratis yang tercatat.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+<script type="application/json" id="account-data">{{ accounts_for_js|tojson }}</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const accountData = JSON.parse(document.getElementById('account-data').textContent || '[]');
+        const linesBody = document.getElementById('journal-lines');
+        const addLineBtn = document.getElementById('add-line');
+        const totalDebitNode = document.getElementById('total-debit');
+        const totalCreditNode = document.getElementById('total-credit');
+        const submitBtn = document.getElementById('submit-journal');
+        const csrfToken = document.getElementById('csrf-token')?.value || '';
+
+        function formatNumber(value) {
+            return Number(value).toLocaleString('id-ID');
+        }
+
+        function updateTotals() {
+            let totalDebit = 0;
+            let totalCredit = 0;
+            linesBody.querySelectorAll('tr[data-line="true"]').forEach(row => {
+                totalDebit += parseFloat(row.querySelector('.debit-input').value || 0);
+                totalCredit += parseFloat(row.querySelector('.credit-input').value || 0);
+            });
+            totalDebitNode.textContent = formatNumber(totalDebit);
+            totalCreditNode.textContent = formatNumber(totalCredit);
+        }
+
+        function removeLine(row) {
+            row.remove();
+            updateTotals();
+        }
+
+        function addLine() {
+            const row = document.createElement('tr');
+            row.dataset.line = 'true';
+            row.innerHTML = `
+                <td>
+                    <select class="custom-select account-select">
+                        <option value="">Pilih akun</option>
+                        ${accountData.map(acc => `<option value="${acc.id}">${acc.code} — ${acc.name}</option>`).join('')}
+                    </select>
+                </td>
+                <td><input type="text" class="form-control form-control-sm desc-input" placeholder="Keterangan"></td>
+                <td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-right debit-input"></td>
+                <td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-right credit-input"></td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-outline-danger remove-line"><i class="fas fa-times"></i></button>
+                </td>
+            `;
+            row.querySelector('.debit-input').addEventListener('input', () => updateTotals());
+            row.querySelector('.credit-input').addEventListener('input', () => updateTotals());
+            row.querySelector('.remove-line').addEventListener('click', () => removeLine(row));
+            linesBody.appendChild(row);
+        }
+
+        if (addLineBtn) addLineBtn.addEventListener('click', addLine);
+        addLine(); addLine(); // default dua baris
+
+        if (submitBtn) {
+            submitBtn.addEventListener('click', () => {
+                const lines = [];
+                let valid = true;
+                linesBody.querySelectorAll('tr[data-line="true"]').forEach(row => {
+                    const accountId = row.querySelector('.account-select').value;
+                    const description = row.querySelector('.desc-input').value;
+                    const debit = parseFloat(row.querySelector('.debit-input').value || 0);
+                    const credit = parseFloat(row.querySelector('.credit-input').value || 0);
+                    if (!accountId || (debit === 0 && credit === 0)) {
+                        valid = false;
+                    }
+                    lines.push({ account_id: accountId, description, debit, credit });
+                });
+                if (!valid) {
+                    alert('Pastikan setiap baris memiliki akun dan salah satu nominal.');
+                    return;
+                }
+                submitBtn.disabled = true;
+                fetch('{{ url_for("main.jurnal") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({
+                        date: document.getElementById('journal-date').value,
+                        memo: document.getElementById('journal-memo').value,
+                        lines
+                    })
+                })
+                    .then(res => res.json().then(body => ({ ok: res.ok, body })))
+                    .then(({ ok, body }) => {
+                        if (ok && body.success) {
+                            alert(body.message || 'Jurnal tersimpan.');
+                            window.location.reload();
+                        } else {
+                            alert(body.message || 'Gagal menyimpan jurnal.');
+                        }
+                    })
+                    .catch(() => alert('Terjadi kesalahan jaringan.'))
+                    .finally(() => { submitBtn.disabled = false; });
+            });
+        }
+    });
+</script>
+
+<style>
+    .journal-module .eyebrow { letter-spacing:0.25em; font-size:0.75rem; color:#94a3b8; }
+    .journal-module .text-navy { color:#0f172a; }
+    .hero-card { border-radius:22px; }
+    #journal-table tbody td { vertical-align: middle; }
+    .history-item { border-bottom:1px solid rgba(15,23,42,0.08); padding:0.75rem 0; }
+    .history-item:last-child { border-bottom:none; }
+</style>
+{% endblock %}

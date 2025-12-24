@@ -1,0 +1,523 @@
+{% extends "base.html" %}
+
+{% block title %}Data Penjualan{% endblock %}
+
+{% block content %}
+<section class="sales-management">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+        <div>
+            <h1 class="h4 font-weight-bold mb-1">Data Penjualan</h1>
+            <p class="text-muted mb-0">Total faktur: {{ pagination.total_records }} • Halaman {{ pagination.page }}/{{ pagination.total_pages }} ({{ per_page }} per halaman).</p>
+        </div>
+        <div class="btn-group mt-2 mt-md-0">
+            <a href="#filter-panel" class="btn btn-sm btn-primary"><i class="fas fa-filter mr-1"></i>Filter</a>
+            <a href="{{ url_for('main.data_penjualan') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-sync-alt mr-1"></i>Reset</a>
+            <a href="{{ url_for('main.penjualan') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-cash-register mr-1"></i>Tambah penjualan</a>
+        </div>
+    </div>
+
+    {% if stats_cards %}
+    <div class="row stat-grid mb-4">
+        {% for card in stats_cards %}
+            <div class="col-sm-6 col-xl-3 mb-3">
+                <div class="card stat-card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <span class="stat-icon {{ card.accent }}"><i class="fas {{ card.icon }}"></i></span>
+                            <span class="badge badge-pill badge-soft-primary text-uppercase font-weight-semibold px-3">{{ card.label }}</span>
+                        </div>
+                        <div class="stat-value mb-1">
+                            {% if card.type == 'currency' %}
+                                {{ ('Rp {:,.0f}'.format(card.value)).replace(',', '.') }}
+                            {% else %}
+                                {{ '{:,}'.format(card.value).replace(',', '.') }}
+                            {% endif %}
+                        </div>
+                        <p class="small text-muted mb-0">{{ card.description }}</p>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card filter-card shadow-sm mb-4" id="filter-panel">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+                <div>
+                    <h2 class="h5 font-weight-bold mb-1">Filter dan pencarian</h2>
+                    <p class="small text-muted mb-0">Sesuaikan rentang tanggal, pelanggan, sales, atau nilai faktur.</p>
+                </div>
+                <div class="mt-3 mt-md-0">
+                    <a href="{{ url_for('main.data_penjualan') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-sync-alt mr-1"></i>Reset filter
+                    </a>
+                </div>
+            </div>
+            <form method="GET" class="filter-form">
+                <div class="form-row">
+                    <div class="form-group col-md-4">
+                        <label class="font-weight-semibold">Cari faktur / pelanggan / sales</label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            </div>
+                            <input type="text" class="form-control" name="search" placeholder="Contoh: F2024 / Andi" value="{{ filter_values.search }}">
+                        </div>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label class="font-weight-semibold">Tanggal mulai</label>
+                        <input type="date" class="form-control" name="start_date" value="{{ filter_values.start_date }}">
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label class="font-weight-semibold">Tanggal akhir</label>
+                        <input type="date" class="form-control" name="end_date" value="{{ filter_values.end_date }}">
+                    </div>
+                    <div class="form-group col-md-2">
+                        <label class="font-weight-semibold">Sortir</label>
+                        <select name="sort" class="custom-select">
+                            <option value="date_desc" {% if sort_option == 'date_desc' %}selected{% endif %}>Tanggal terbaru</option>
+                            <option value="date_asc" {% if sort_option == 'date_asc' %}selected{% endif %}>Tanggal terlama</option>
+                            <option value="total_desc" {% if sort_option == 'total_desc' %}selected{% endif %}>Nilai tertinggi</option>
+                            <option value="total_asc" {% if sort_option == 'total_asc' %}selected{% endif %}>Nilai terendah</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-3">
+                        <label class="font-weight-semibold">Pelanggan</label>
+                        <select class="custom-select" name="pelanggan">
+                            <option value="">Semua pelanggan</option>
+                            {% for pelanggan in customer_options %}
+                                <option value="{{ pelanggan.id }}" {% if filter_values.pelanggan == pelanggan.id %}selected{% endif %}>
+                                    {{ pelanggan.nama }} ({{ pelanggan.pelanggan_id }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label class="font-weight-semibold">Sales</label>
+                        <select class="custom-select" name="sales">
+                            <option value="">Semua pengguna</option>
+                            {% for sales in sales_options %}
+                                <option value="{{ sales.id }}" {% if filter_values.sales == sales.id %}selected{% endif %}>
+                                    {{ sales.username }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group col-md-2">
+                        <label class="font-weight-semibold">Min total (Rp)</label>
+                        <input type="number" class="form-control" name="min_total" step="1000" min="0" value="{{ filter_values.min_total }}">
+                    </div>
+                    <div class="form-group col-md-2">
+                        <label class="font-weight-semibold">Max total (Rp)</label>
+                        <input type="number" class="form-control" name="max_total" step="1000" min="0" value="{{ filter_values.max_total }}">
+                    </div>
+                    <div class="form-group col-md-2">
+                        <label class="font-weight-semibold">Per halaman</label>
+                        <select name="per_page" class="custom-select">
+                            {% for candidate in [10, 20, 30, 50] %}
+                                <option value="{{ candidate }}" {% if per_page == candidate %}selected{% endif %}>{{ candidate }} data</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-filter mr-1"></i>Terapkan filter
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row align-items-start">
+        <div class="col-xl-8">
+            <div class="card table-card shadow-sm mb-4">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap">
+                    <div>
+                        <h3 class="h5 font-weight-bold mb-1">Daftar penjualan</h3>
+                        {% set start_record = ((pagination.page - 1) * pagination.per_page + 1) if pagination.total_records else 0 %}
+                        {% set end_record = [pagination.total_records, pagination.page * pagination.per_page]|min %}
+                        <p class="small text-muted mb-0">
+                            Menampilkan {{ start_record }}-{{ end_record }} dari {{ pagination.total_records }} transaksi.
+                        </p>
+                    </div>
+                    <a href="{{ url_for('main.penjualan') }}" class="btn btn-outline-primary btn-sm mt-3 mt-md-0">
+                        <i class="fas fa-cash-register mr-1"></i>Input penjualan baru
+                    </a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover sales-data-table mb-0">
+                        <thead>
+                            <tr>
+                                <th class="text-center" style="width: 60px;">#</th>
+                                <th>No Faktur</th>
+                                <th>Tanggal</th>
+                                <th>Pelanggan</th>
+                                <th>Sales</th>
+                                <th class="text-center">Item</th>
+                                <th class="text-right">Total</th>
+                                <th class="text-right">Biaya MP</th>
+                                <th class="text-right">Net</th>
+                                <th class="text-center">Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if penjualan_records %}
+                                {% for sale in penjualan_records %}
+                                    {% set collapse_id = 'sale-' ~ sale.id %}
+                                    {% set qty_total = sale.detail_penjualan | sum(attribute='jumlah') %}
+                                    <tr>
+                                        <td class="text-center align-middle">{{ (pagination.page - 1) * pagination.per_page + loop.index }}</td>
+                                        <td class="align-middle">
+                                            <span class="font-weight-semibold">{{ sale.no_faktur }}</span>
+                                        </td>
+                                        <td class="align-middle">{{ format_date(sale.tanggal_penjualan) }}</td>
+                                        <td class="align-middle">
+                                            <div class="font-weight-semibold">{{ sale.pelanggan.nama if sale.pelanggan else 'Umum' }}</div>
+                                            <small class="text-muted">
+                                                {{ sale.pelanggan.pelanggan_id if sale.pelanggan else '-' }}
+                                            </small>
+                                        </td>
+                                        <td class="align-middle">{{ sale.sales.username if sale.sales else '-' }}</td>
+                                        <td class="align-middle text-center">
+                                            <span class="badge badge-soft">{{ qty_total }}</span>
+                                        </td>
+                                        <td class="align-middle text-right font-weight-semibold">
+                                            {{ ('Rp {:,.0f}'.format(sale.total_harga)).replace(',', '.') }}
+                                        </td>
+                                        <td class="align-middle text-right text-danger">
+                                            {{ ('Rp {:,.0f}'.format(sale.marketplace_cost_total)).replace(',', '.') }}
+                                        </td>
+                                        <td class="align-middle text-right font-weight-bold text-primary">
+                                            {{ ('Rp {:,.0f}'.format(sale.net_revenue)).replace(',', '.') }}
+                                        </td>
+                                        <td class="align-middle text-center">
+                                            <button class="btn btn-link btn-sm text-primary" data-toggle="collapse" data-target="#{{ collapse_id }}" aria-expanded="false" aria-controls="{{ collapse_id }}">
+                                                <i class="fas fa-chevron-down mr-1"></i>Lihat
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr class="detail-row">
+                                        <td colspan="10" class="p-0 border-0">
+                                            <div id="{{ collapse_id }}" class="collapse" data-parent=".sales-data-table">
+                                                <div class="sale-detail">
+                                                    <div class="detail-meta">
+                                                        <div>
+                                                            <span class="label">No Faktur</span>
+                                                            <span class="value">{{ sale.no_faktur }}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="label">Tanggal</span>
+                                                            <span class="value">{{ format_date(sale.tanggal_penjualan) }}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="label">Pelanggan</span>
+                                                            <span class="value">{{ sale.pelanggan.nama if sale.pelanggan else 'Umum' }}</span>
+                                                        </div>
+                                                    <div>
+                                                        <span class="label">Grand total</span>
+                                                        <span class="value text-primary">{{ ('Rp {:,.0f}'.format(sale.total_harga)).replace(',', '.') }}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="label">Biaya marketplace</span>
+                                                        <span class="value text-danger">-{{ ('Rp {:,.0f}'.format(sale.marketplace_cost_total or 0)).replace(',', '.') }}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="label">Pendapatan bersih</span>
+                                                        <span class="value text-success">{{ ('Rp {:,.0f}'.format(sale.net_revenue)).replace(',', '.') }}</span>
+                                                    </div>
+                                                    </div>
+                                                    <div class="d-flex justify-content-end mb-2">
+                                                        <a href="{{ url_for('main.penjualan_receipt', sale_id=sale.id) }}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noreferrer">
+                                                            <i class="fas fa-print mr-1"></i>Cetak ulang struk
+                                                        </a>
+                                                    </div>
+                                                    <div class="table-responsive">
+                                                        <table class="table table-sm mb-0">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Produk</th>
+                                                                    <th class="text-center">Qty</th>
+                                                                    <th class="text-right">Harga</th>
+                                                                    <th class="text-center">Diskon</th>
+                                                                    <th class="text-center">Pajak</th>
+                                                                    <th class="text-right">Subtotal</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for item in sale.detail_penjualan %}
+                                                                    <tr>
+                                                                        <td>
+                                                                            <div class="font-weight-semibold">
+                                                                                {{ item.produk.nama_produk if item.produk else 'Produk dihapus' }}
+                                                                            </div>
+                                                                            <small class="text-muted">
+                                                                                {{ item.produk.kode_produk if item.produk else '-' }}
+                                                                            </small>
+                                                                        </td>
+                                                                        <td class="text-center">{{ item.jumlah }}</td>
+                                                                        <td class="text-right">
+                                                                            {{ ('Rp {:,.0f}'.format(item.harga_satuan)).replace(',', '.') }}
+                                                                        </td>
+                                                                        <td class="text-center">{{ item.diskon }}%</td>
+                                                                        <td class="text-center">{{ item.pajak }}%</td>
+                                                                        <td class="text-right font-weight-semibold">
+                                                                            {{ ('Rp {:,.0f}'.format(item.harga_total)).replace(',', '.') }}
+                                                                        </td>
+                                                                    </tr>
+                                                                {% else %}
+                                                                    <tr>
+                                                                        <td colspan="6" class="text-center text-muted">Tidak ada detail penjualan.</td>
+                                                                    </tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="8" class="text-center py-5 text-muted">
+                                        <i class="fas fa-inbox fa-2x mb-3"></i>
+                                        <div>Belum ada data penjualan yang cocok dengan filter.</div>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                <p class="small text-muted mb-3 mb-md-0">
+                    Total {{ pagination.total_records }} transaksi · Halaman {{ pagination.page }} dari {{ pagination.total_pages }}
+                </p>
+                <nav>
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                            <a class="page-link" href="{{ pagination.prev_url if pagination.prev_url else '#' }}">&laquo;</a>
+                        </li>
+                        {% for link in pagination.page_links %}
+                            <li class="page-item {% if link.current %}active{% endif %}">
+                                <a class="page-link" href="{{ link.url }}">{{ link.number }}</a>
+                            </li>
+                        {% endfor %}
+                        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                            <a class="page-link" href="{{ pagination.next_url if pagination.next_url else '#' }}">&raquo;</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3 text-primary" style="font-size: 1.05rem;">Insight periode ini</h3>
+                    <ul class="list-unstyled mb-0">
+                        {% for insight in insight_cards %}
+                            <li class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="font-weight-semibold" style="font-size: 1.05rem;">{{ insight.title }}</span>
+                                    <span class="badge badge-pill badge-soft-primary px-3 py-2" style="font-size: 0.95rem;">
+                                        {% if insight.type == 'currency' %}
+                                            {{ ('Rp {:,.0f}'.format(insight.value)).replace(',', '.') }}
+                                        {% elif insight.type == 'text' %}
+                                            {{ insight.value }}
+                                        {% else %}
+                                            {{ '{:,}'.format(insight.value).replace(',', '.') }}
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                <p class="small text-muted mb-0">{{ insight.description }}</p>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3 text-success" style="font-size: 1.05rem;">Performa sales</h3>
+                    {% if top_sales %}
+                        <ul class="list-group list-group-flush">
+                            {% for sales in top_sales %}
+                                <li class="list-group-item px-0">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="font-weight-semibold" style="font-size: 1.05rem;">{{ sales.name }}</div>
+                                            <small class="text-muted">{{ sales.orders }} transaksi</small>
+                                        </div>
+                                        <span class="badge badge-pill badge-soft-success px-3 py-2" style="font-size: 0.95rem;">
+                                            {{ ('Rp {:,.0f}'.format(sales.total)).replace(',', '.') }}
+                                        </span>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="small text-muted mb-0">Belum ada data sales pada rentang ini.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3 text-warning" style="font-size: 1.05rem;">Produk terlaris</h3>
+                    {% if top_products %}
+                        <ul class="list-group list-group-flush">
+                            {% for product in top_products %}
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="font-weight-semibold" style="font-size: 1.05rem;">{{ product.name }}</div>
+                                        <small class="text-muted">{{ product.qty }} unit</small>
+                                    </div>
+                                    <span class="badge badge-pill badge-soft-warning px-3 py-2" style="font-size: 0.95rem;">
+                                        {{ ('Rp {:,.0f}'.format(product.total)).replace(',', '.') }}
+                                    </span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="small text-muted mb-0">Belum ada rekap produk terlaris.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3 text-info" style="font-size: 1.05rem;">Ringkasan harian</h3>
+                    {% if daily_summary %}
+                        <ul class="list-unstyled mb-0">
+                            {% for day in daily_summary %}
+                                <li class="mb-3">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="font-weight-semibold" style="font-size: 1.05rem;">{{ day.label }}</div>
+                                            <small class="text-muted">{{ day.orders }} transaksi</small>
+                                        </div>
+                                        <span class="badge badge-pill badge-soft-info px-3 py-2" style="font-size: 0.95rem;">
+                                            {{ ('Rp {:,.0f}'.format(day.total)).replace(',', '.') }}
+                                        </span>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="small text-muted mb-0">Belum ada transaksi pada rentang hari terbaru.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .stat-card {
+        border-radius: 18px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .stat-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+    }
+    .stat-card .stat-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+    }
+    .filter-card {
+        border-radius: 18px;
+    }
+    .filter-form label {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #475569;
+    }
+    .table-card {
+        border-radius: 18px;
+    }
+    .sales-data-table thead th {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #475569;
+        border-top: none;
+        background: #f8fafc;
+    }
+    .sales-data-table tbody tr:hover {
+        background: rgba(37, 99, 235, 0.04);
+    }
+    .badge-soft {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.2rem 0.65rem;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.12);
+        color: #1d4ed8;
+        font-weight: 600;
+    }
+    .badge-soft-success {
+        background: rgba(22, 163, 74, 0.14);
+        color: #15803d;
+        font-weight: 650;
+    }
+    .badge-soft-warning {
+        background: rgba(234, 179, 8, 0.16);
+        color: #b45309;
+        font-weight: 650;
+    }
+    .badge-soft-info {
+        background: rgba(14, 165, 233, 0.14);
+        color: #0ea5e9;
+        font-weight: 650;
+    }
+    .sale-detail {
+        background: #f8fafc;
+        padding: 1.5rem;
+        border-top: 1px solid rgba(15, 23, 42, 0.08);
+    }
+    .sale-detail .detail-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    .sale-detail .label {
+        font-size: 0.75rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .sale-detail .value {
+        font-weight: 600;
+        color: #0f172a;
+    }
+    .pagination .page-link {
+        border-radius: 999px;
+        margin: 0 0.1rem;
+    }
+    .pagination .page-item.active .page-link {
+        background: #2563eb;
+        border-color: #2563eb;
+    }
+    @media (max-width: 576px) {
+        .filter-form .form-row {
+            flex-direction: column;
+        }
+        .filter-form .form-group {
+            width: 100%;
+        }
+        .sale-detail {
+            padding: 1rem;
+        }
+    }
+</style>
+{% endblock %}

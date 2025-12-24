@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan Stok Opname{% endblock %}
+
+{% block content %}
+<section class="opname-report">
+    <div class="card shadow-sm border-0 mb-4 report-hero">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Laporan Stok Opname</p>
+                <h1 class="display-5 mb-2 text-navy">Audit stok dan selisih dalam sekali pandang</h1>
+                <p class="mb-0 text-muted">Pantau jumlah sesi, selisih plus/minus, dan produk dengan deviasi terbesar selama periode yang dipilih.</p>
+            </div>
+            <div class="mt-4 mt-lg-0">
+                <small class="text-uppercase text-muted d-block">Periode</small>
+                <div class="h4 font-weight-bold mb-0">{{ range_label }}</div>
+            </div>
+        </div>
+        <div class="card-footer bg-transparent">
+            <form class="form-row" method="get">
+                <div class="form-group col-md-4 mb-0">
+                    <label class="small text-uppercase text-muted">Mulai</label>
+                    <input type="date" class="form-control form-control-lg" name="start_date" value="{{ filter_values.start_date }}">
+                </div>
+                <div class="form-group col-md-4 mb-0">
+                    <label class="small text-uppercase text-muted">Sampai</label>
+                    <input type="date" class="form-control form-control-lg" name="end_date" value="{{ filter_values.end_date }}">
+                </div>
+                <div class="form-group col-md-4 mb-0 d-flex align-items-end">
+                    <button class="btn btn-primary btn-lg btn-block" type="submit">
+                        <i class="fas fa-sync mr-2"></i>Terapkan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row summary-grid">
+        {% for card in summary_cards %}
+        <div class="col-sm-6 col-xl-3 mb-3">
+            <div class="metric-card shadow-sm h-100">
+                <div class="metric-icon {{ card.accent }}">
+                    <i class="fas {{ card.icon }}"></i>
+                </div>
+                <div class="metric-body">
+                    <small class="text-muted text-uppercase">{{ card.label }}</small>
+                    <div class="metric-value">{{ '{:,}'.format(card.value).replace(',', '.') }}</div>
+                    <p class="small text-muted mb-0">{{ card.subtitle }}</p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <p class="eyebrow text-uppercase mb-1">Aktivitas harian</p>
+                            <h3 class="h5 mb-0">Jumlah sesi & selisih</h3>
+                        </div>
+                        <span class="badge badge-light">{{ daily_points|length }} hari</span>
+                    </div>
+                    {% if daily_points %}
+                    <div class="chart-shell">
+                        <canvas id="opnameChart"></canvas>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada data stok opname pada rentang ini.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Produk dengan deviasi terbesar</p>
+                    <h3 class="h5 mb-3">Top variance</h3>
+                    {% if top_variances %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless align-middle mb-0">
+                            <thead class="text-muted text-uppercase small">
+                                <tr>
+                                    <th>Produk</th>
+                                    <th class="text-right">Selisih total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in top_variances %}
+                                <tr>
+                                    <td class="font-weight-semibold">{{ item.name or 'Produk dihapus' }}</td>
+                                    <td class="text-right">
+                                        <span class="badge {% if item.diff > 0 %}badge-success{% elif item.diff < 0 %}badge-danger{% else %}badge-secondary{% endif %}">
+                                            {{ item.diff }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Tidak ada variance yang tercatat.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Sesi terbaru</p>
+                    <h3 class="h5 mb-3">Riwayat terakhir</h3>
+                    {% if recent_sessions %}
+                    <ul class="list-group list-group-flush">
+                        {% for entry in recent_sessions %}
+                        <li class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="font-weight-semibold">{{ entry.reference }}</div>
+                                    <small class="text-muted d-block">{{ entry.date }} • {{ entry.user }}</small>
+                                    <small class="text-muted">Lokasi: {{ entry.location }}</small>
+                                </div>
+                                <div class="text-right">
+                                    <div class="font-weight-semibold">{{ entry.items }} item</div>
+                                    <small class="text-muted">Selisih {{ entry.diff }}</small>
+                                </div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada sesi dalam rentang ini.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Catatan</p>
+                    {% if not opname_ready %}
+                    <div class="alert alert-warning">
+                        Tabel stok opname belum siap. Jalankan <code>flask db upgrade</code> dan muat ulang server untuk menampilkan laporan ini.
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Gunakan laporan ini saat audit berkala untuk melihat pola selisih dan produk yang sering bermasalah.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if daily_points %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script type="application/json" id="opname-chart-data">{{ daily_points|tojson }}</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const dataScript = document.getElementById('opname-chart-data');
+        const dataset = dataScript ? JSON.parse(dataScript.textContent || '[]') : [];
+        const canvas = document.getElementById('opnameChart');
+        if (!canvas || !dataset.length) return;
+        const labels = dataset.map(item => item.label);
+        const sessionData = dataset.map(item => item.sessions);
+        const overData = dataset.map(item => item.over);
+        const shortData = dataset.map(item => item.short);
+        new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Sesi',
+                        data: sessionData,
+                        backgroundColor: 'rgba(37, 99, 235, 0.6)'
+                    },
+                    {
+                        label: 'Selisih +',
+                        data: overData,
+                        backgroundColor: 'rgba(16, 185, 129, 0.6)'
+                    },
+                    {
+                        label: 'Selisih -',
+                        data: shortData,
+                        backgroundColor: 'rgba(248, 113, 113, 0.6)'
+                    }
+                ]
+            },
+            options: {
+                responsive: false,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endif %}
+
+<style>
+    .opname-report .eyebrow { letter-spacing: 0.25em; font-size: 0.75rem; color: #94a3b8; }
+    .opname-report .text-navy { color: #0f172a; }
+    .report-hero { border-radius: 22px; }
+    .summary-grid .metric-card {
+        border-radius: 18px;
+        padding: 1.25rem;
+        display: flex;
+        align-items: center;
+        background: #fff;
+    }
+    .metric-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        margin-right: 1rem;
+    }
+    .metric-body .metric-value { font-size: 1.6rem; font-weight: 700; }
+    .chart-shell {
+        height: 260px;
+    }
+
+    .chart-shell canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+    }
+</style>
+{% endblock %}

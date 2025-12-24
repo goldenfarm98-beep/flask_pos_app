@@ -25,6 +25,7 @@
     <div class="card shadow-sm mt-4" style="max-width: 600px; margin: auto;">
         <div class="card-body">
             <form action="/profile" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="username"><i class="fas fa-user"></i> Username</label>
                     <input type="text" class="form-control" id="username" name="username" value="{{ username }}" required>

@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Data Akun{% endblock %}
+
+{% block content %}
+<section class="account-module">
+    <div class="card shadow-sm border-0 mb-4 hero-card">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Chart of Accounts</p>
+                <h1 class="display-5 mb-2 text-navy">Kelola struktur akun keuangan</h1>
+                <p class="mb-0 text-muted">Tambahkan akun baru, kelompokkan berdasarkan tipe, dan gunakan untuk jurnal umum serta laporan keuangan.</p>
+            </div>
+            <div class="mt-4 mt-lg-0 text-lg-right">
+                <small class="text-uppercase text-muted d-block">Total akun aktif</small>
+                <div class="h4 font-weight-bold mb-0">{{ accounts|length }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row summary-grid mb-4">
+        {% for card in summary_cards %}
+        <div class="col-sm-6 col-xl-3 mb-3">
+            <div class="metric-card shadow-sm h-100">
+                <div class="metric-icon {{ card.accent }}">
+                    <i class="fas {{ card.icon }}"></i>
+                </div>
+                <div class="metric-body">
+                    <small class="text-muted text-uppercase">{{ card.label }}</small>
+                    <div class="metric-value">{{ card.value }}</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="row">
+        <div class="col-lg-7 mb-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <p class="eyebrow text-uppercase mb-1">Daftar akun</p>
+                            <h3 class="h5 mb-0">Chart of Accounts</h3>
+                        </div>
+                        <span class="badge badge-light">{{ accounts|length }} item</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="text-muted text-uppercase small">
+                                <tr>
+                                    <th>Kode</th>
+                                    <th>Nama</th>
+                                    <th>Tipe</th>
+                                    <th>Induk</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for account in accounts %}
+                                <tr>
+                                    <td class="font-weight-semibold">{{ account.code }}</td>
+                                    <td>{{ account.name }}</td>
+                                    <td>{{ type_labels.get(account.type, account.type.title()) }}</td>
+                                    <td>{{ account.parent.name if account.parent else '-' }}</td>
+                                    <td>
+                                        {% if account.is_active %}
+                                            <span class="badge badge-success">Aktif</span>
+                                        {% else %}
+                                            <span class="badge badge-secondary">Nonaktif</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Tambah akun</p>
+                    <h3 class="h5 mb-3">Form akun baru</h3>
+                    <form method="POST" action="{{ url_for('main.akun') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label>Kode akun</label>
+                            <input type="text" name="code" class="form-control" placeholder="Misal: 1101" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Nama akun</label>
+                            <input type="text" name="name" class="form-control" placeholder="Nama akun" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Tipe akun</label>
+                            <select name="type" class="custom-select" required>
+                                <option value="asset">Aset</option>
+                                <option value="liability">Liabilitas</option>
+                                <option value="equity">Ekuitas</option>
+                                <option value="income">Pendapatan</option>
+                                <option value="expense">Beban</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Akun induk (opsional)</label>
+                            <select name="parent_id" class="custom-select">
+                                <option value="">Tidak ada</option>
+                                {% for account in accounts %}
+                                <option value="{{ account.id }}">{{ account.code }} — {{ account.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Status</label>
+                            <select name="is_active" class="custom-select">
+                                <option value="1">Aktif</option>
+                                <option value="0">Nonaktif</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary btn-block" type="submit">
+                            <i class="fas fa-save mr-2"></i>Simpan Akun
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .account-module .eyebrow { letter-spacing: 0.25em; font-size: 0.75rem; color: #94a3b8; }
+    .account-module .text-navy { color: #0f172a; }
+    .hero-card { border-radius: 22px; }
+    .summary-grid .metric-card { border-radius: 18px; padding: 1rem; display:flex; align-items:center; background:#fff; }
+    .metric-icon { width:48px; height:48px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; margin-right:1rem; }
+    .metric-body .metric-value { font-size:1.6rem; font-weight:700; }
+</style>
+{% endblock %}

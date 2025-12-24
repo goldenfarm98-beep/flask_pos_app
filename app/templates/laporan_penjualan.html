@@ -1,0 +1,956 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan Penjualan{% endblock %}
+
+{% macro format_currency(value) -%}
+    {{ ('Rp {:,.0f}'.format(value or 0)).replace(',', '.') }}
+{%- endmacro %}
+{% macro format_number(value) -%}
+    {{ '{:,}'.format(value or 0).replace(',', '.') }}
+{%- endmacro %}
+
+{% block content %}
+<section class="sales-report">
+    <div class="card shadow-sm border-0 mb-4 report-hero">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Laporan Penjualan</p>
+                <h1 class="display-5 mb-2 text-navy">Pantau performa revenue</h1>
+                <p class="mb-0 text-muted">Visualisasikan pendapatan, laba kotor, serta pelanggan teratas untuk mengambil keputusan lebih cepat.</p>
+            </div>
+            <div class="report-period text-lg-right mt-4 mt-lg-0">
+                <small class="text-uppercase text-muted d-block">Periode aktif</small>
+                <div class="h4 font-weight-bold mb-1">{{ range_label }}</div>
+                <span class="badge badge-pill badge-soft-success">Margin {{ '%.1f'|format(margin_percent) }}%</span>
+            </div>
+        </div>
+        <div class="card-footer bg-transparent">
+            <form class="report-filter" method="get">
+                <div class="form-row">
+                    <div class="form-group col-lg-3 col-md-6 mb-3 mb-lg-0">
+                        <label for="start_date" class="text-muted small text-uppercase">Mulai</label>
+                        <input type="date" id="start_date" name="start_date" class="form-control form-control-lg" value="{{ filter_values.start_date }}">
+                    </div>
+                    <div class="form-group col-lg-3 col-md-6 mb-3 mb-lg-0">
+                        <label for="end_date" class="text-muted small text-uppercase">Sampai</label>
+                        <input type="date" id="end_date" name="end_date" class="form-control form-control-lg" value="{{ filter_values.end_date }}">
+                    </div>
+                    <div class="form-group col-lg-3 col-md-6">
+                        <label for="sales" class="text-muted small text-uppercase">Sales/Kasir</label>
+                        <select id="sales" name="sales" class="custom-select custom-select-lg">
+                            <option value="">Semua staf</option>
+                            {% for sales in sales_options %}
+                                <option value="{{ sales.id }}" {% if filter_values.sales == sales.id %}selected{% endif %}>{{ sales.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group col-lg-3 col-md-6">
+                        <label for="customer" class="text-muted small text-uppercase">Pelanggan</label>
+                        <select id="customer" name="customer" class="custom-select custom-select-lg">
+                            <option value="">Semua pelanggan</option>
+                            {% for cust in customer_options %}
+                                <option value="{{ cust.id }}" {% if filter_values.customer == cust.id %}selected{% endif %}>{{ cust.nama }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-lg-6 col-md-8">
+                        <label for="search" class="text-muted small text-uppercase">Cari faktur / pelanggan / sales</label>
+                        <div class="position-relative" id="salesReportSearchWrapper">
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                </div>
+                                <input type="text" id="search" name="search" class="form-control" placeholder="Misal: F2025 / Andi" value="{{ filter_values.search }}" autocomplete="off">
+                            </div>
+                            <div class="suggestion-box mt-2" id="sales-report-suggestions" hidden></div>
+                        </div>
+                    </div>
+                    <div class="form-group col-lg-3 col-md-4 ml-auto">
+                        <button class="btn btn-primary btn-lg btn-block mt-4 mt-md-0" type="submit">
+                            <i class="fas fa-sync-alt mr-2"></i>Perbarui Laporan
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row summary-grid">
+        {% for card in summary_cards %}
+        <div class="col-md-6 col-xl-3 mb-4">
+            <div class="metric-card shadow-sm h-100">
+                <div class="metric-icon {{ card.accent }}">
+                    <i class="fas {{ card.icon }}"></i>
+                </div>
+                <div class="metric-body">
+                    <small class="text-uppercase text-muted">{{ card.label }}</small>
+                    {% if card.label == 'Transaksi' %}
+                        <div class="metric-value">{{ format_number(card.value) }}</div>
+                    {% else %}
+                        <div class="metric-value">{{ format_currency(card.value) }}</div>
+                    {% endif %}
+                    <p class="mb-0 text-muted small">{{ card.subtitle }}</p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <p class="eyebrow text-uppercase mb-1">Detail transaksi</p>
+                    <h3 class="h5 mb-0">Daftar faktur penjualan</h3>
+                </div>
+                <span class="badge badge-pill badge-light">
+                    {{ transaction_details|length }} faktur terfilter
+                </span>
+            </div>
+            {% if filter_active %}
+                <div class="alert alert-info py-2 px-3 small mb-3">
+                    Filter aktif: periode {{ range_label }}
+                    {% if filter_values.sales %}
+                        • Sales tertentu
+                    {% endif %}
+                    {% if filter_values.customer %}
+                        • Pelanggan tertentu
+                    {% endif %}
+                    {% if filter_values.search %}
+                        • Kata kunci “{{ filter_values.search }}”
+                    {% endif %}
+                </div>
+            {% endif %}
+            {% if transaction_details %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle sales-table mb-0">
+                        <thead class="text-uppercase small text-muted">
+                            <tr>
+                                <th>Faktur</th>
+                                <th>Pelanggan</th>
+                                <th>Sales</th>
+                                <th>Tanggal</th>
+                                <th class="text-center">Item</th>
+                                <th class="text-right">Total</th>
+                                <th class="text-right">Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tx in transaction_details %}
+                                <tr>
+                                    <td>
+                                        <div class="font-weight-semibold text-navy">{{ tx.invoice }}</div>
+                                        <small class="text-muted">ID #{{ tx.id }}</small>
+                                    </td>
+                                    <td>
+                                        <div class="font-weight-semibold">{{ tx.customer.name }}</div>
+                                        <small class="text-muted">ID: {{ tx.customer.code }}</small>
+                                    </td>
+                                    <td>{{ tx.staff }}</td>
+                                    <td>{{ tx.timestamp }}</td>
+                                    <td class="text-center font-weight-semibold">{{ format_number(tx.items_count) }}</td>
+                                    <td class="text-right font-weight-semibold text-success">{{ format_currency(tx.grand_total) }}</td>
+                                    <td class="text-right">
+                                        <button type="button" class="btn btn-link btn-sm detail-toggle" data-target="sale-detail-{{ tx.id }}">
+                                            Lihat detail
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr class="sale-detail-row" id="sale-detail-{{ tx.id }}" hidden>
+                                    <td colspan="7">
+                                        <div class="sale-detail-card">
+                                            <div class="d-flex justify-content-end mb-2">
+                                                <a href="{{ tx.print_link }}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noreferrer">
+                                                    <i class="fas fa-print mr-1"></i>Cetak ulang struk
+                                                </a>
+                                            </div>
+                                            <div class="detail-meta-grid">
+                                                <div>
+                                                    <small class="label text-uppercase">Faktur</small>
+                                                    <div class="value">{{ tx.invoice }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label text-uppercase">Kasir/Sales</small>
+                                                    <div class="value">{{ tx.staff }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label text-uppercase">Pelanggan</small>
+                                                    <div class="value">{{ tx.customer.name }} ({{ tx.customer.code }})</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label text-uppercase">Price level</small>
+                                                    <div class="value">{{ tx.price_level }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label text-uppercase">Metode bayar</small>
+                                                    <div class="value">{{ tx.payment_method }}</div>
+                                                </div>
+                                            </div>
+                                            <div class="table-responsive">
+                                                <table class="table table-sm mb-3">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Produk</th>
+                                                            <th>SKU</th>
+                                                            <th class="text-center">Qty</th>
+                                                            <th class="text-right">Harga</th>
+                                                            <th class="text-right">Diskon</th>
+                                                            <th class="text-right">Pajak</th>
+                                                            <th class="text-right">Total</th>
+                                                            <th class="text-right">Cost</th>
+                                                            <th class="text-right">Gross</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for item in tx.line_items %}
+                                                            <tr>
+                                                                <td>{{ item.product_name }}</td>
+                                                                <td>{{ item.sku }}</td>
+                                                                <td class="text-center">{{ format_number(item.qty) }}</td>
+                                                                <td class="text-right">{{ format_currency(item.unit_price) }}</td>
+                                                                <td class="text-right text-danger">-{{ format_currency(item.discount_value) }}</td>
+                                                                <td class="text-right text-info">{{ format_currency(item.tax_value) }}</td>
+                                                                <td class="text-right font-weight-semibold">{{ format_currency(item.line_total) }}</td>
+                                                                <td class="text-right text-muted">{{ format_currency(item.cost_value) }}</td>
+                                                                <td class="text-right text-success">{{ format_currency(item.gross_value) }}</td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <div class="sale-summary-grid">
+                                                <div>
+                                                    <small class="label">Subtotal Brut</small>
+                                                    <div class="value">{{ format_currency(tx.subtotal_before_discount) }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label">Diskon</small>
+                                                    <div class="value text-danger">-{{ format_currency(tx.total_discount) }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label">Subtotal Bersih</small>
+                                                    <div class="value">{{ format_currency(tx.net_subtotal) }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label">Pajak</small>
+                                                    <div class="value text-info">{{ format_currency(tx.tax_total) }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label">Biaya Marketplace</small>
+                                                    <div class="value text-danger">-{{ format_currency(tx.marketplace_cost_total) }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label">Pendapatan Bersih</small>
+                                                    <div class="value">{{ format_currency(tx.net_revenue) }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label">Gross Profit</small>
+                                                    <div class="value text-success">{{ format_currency(tx.gross_profit) }}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-clipboard-list fa-2x mb-3"></i>
+                    <p class="mb-0">Tidak ada transaksi pada filter ini.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <p class="eyebrow text-uppercase mb-1">Tren harian</p>
+                            <h3 class="h5 mb-0">Revenue vs Laba Kotor</h3>
+                        </div>
+                        <span class="badge badge-pill badge-light">{{ daily_points|length }} hari dianalisis</span>
+                    </div>
+                    <div class="chart-shell">
+                        <canvas id="salesChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <p class="eyebrow text-uppercase mb-1">Ringkasan Bulanan</p>
+                            <h3 class="h5 mb-0">Performa periodik</h3>
+                        </div>
+                    </div>
+                    {% if monthly_breakdown %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless align-middle mb-0">
+                            <thead class="text-uppercase small text-muted">
+                                <tr>
+                                    <th>Bulan</th>
+                                    <th class="text-right">Penjualan bersih</th>
+                                    <th class="text-right">Laba kotor</th>
+                                    <th class="text-right">Avg Order</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in monthly_breakdown %}
+                                {% set margin = (row.gross / row.revenue * 100) if row.revenue else 0 %}
+                                <tr>
+                                    <td class="font-weight-semibold">{{ row.label }}</td>
+                                    <td class="text-right">{{ format_currency(row.revenue) }}</td>
+                                    <td class="text-right text-success">{{ format_currency(row.gross) }}</td>
+                                    <td class="text-right text-muted">{{ format_currency(row.avg_order) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada penjualan pada periode ini.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-2">Insight utama</p>
+                    <h3 class="h5 mb-3">Kesehatan penjualan</h3>
+                    <ul class="list-unstyled mb-0 insight-list">
+                        {% for insight in insight_cards %}
+                        <li class="mb-3 pb-3 border-bottom">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <span class="font-weight-semibold">{{ insight.title }}</span>
+                                    <p class="text-muted small mb-0">{{ insight.description }}</p>
+                                </div>
+                                <div class="text-right">
+                                    {% if insight.type == 'currency' %}
+                                        <div class="h5 mb-0">{{ format_currency(insight.value) }}</div>
+                                    {% else %}
+                                        <div class="h5 mb-0">{{ format_number(insight.value) }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-2">Pelanggan terbaik</p>
+                    <h3 class="h5 mb-3">Top Customer</h3>
+                    {% if top_customers %}
+                    <div class="top-list">
+                        {% for customer in top_customers %}
+                        <div class="top-item">
+                            <div>
+                                <div class="font-weight-semibold">{{ customer.name }}</div>
+                                <small class="text-muted">{{ format_number(customer.orders) }} transaksi</small>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-primary font-weight-semibold">{{ format_currency(customer.revenue) }}</div>
+                                <small class="text-muted">Nilai order</small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada data pelanggan.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-2">Kontribusi sales</p>
+                    <h3 class="h5 mb-3">Performa tim</h3>
+                    {% if sales_breakdown %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-borderless mb-0">
+                                <thead class="text-uppercase small text-muted">
+                                    <tr>
+                                        <th>Sales</th>
+                                        <th class="text-right">Faktur</th>
+                                        <th class="text-right">Penjualan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for sales in sales_breakdown %}
+                                        <tr>
+                                            <td>{{ sales.name }}</td>
+                                            <td class="text-right">{{ format_number(sales.orders) }}</td>
+                                            <td class="text-right font-weight-semibold">{{ format_currency(sales.revenue) }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">Belum ada data sales pada filter ini.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-2">Produk terlaris</p>
+                    <h3 class="h5 mb-3">Top Produk</h3>
+                    {% if top_products %}
+                    <div class="top-list">
+                        {% for product in top_products %}
+                        <div class="top-item">
+                            <div>
+                                <div class="font-weight-semibold">{{ product.name }}</div>
+                                <small class="text-muted">{{ format_number(product.units) }} unit</small>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-success font-weight-semibold">{{ format_currency(product.gross) }}</div>
+                                <small class="text-muted">{{ format_currency(product.revenue) }} revenue</small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada data produk pada rentang ini.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-2">Ringkasan pelanggan</p>
+                    <h3 class="h5 mb-3">Semua pelanggan terfilter</h3>
+                    {% if customer_breakdown %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-borderless mb-0">
+                                <thead class="text-uppercase small text-muted">
+                                    <tr>
+                                        <th>Pelanggan</th>
+                                        <th class="text-right">Faktur</th>
+                                        <th class="text-right">Penjualan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for customer in customer_breakdown %}
+                                        <tr>
+                                            <td>{{ customer.name }}</td>
+                                            <td class="text-right">{{ format_number(customer.orders) }}</td>
+                                            <td class="text-right font-weight-semibold">{{ format_currency(customer.revenue) }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">Belum ada pelanggan untuk filter ini.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-2">Faktur terbesar</p>
+                    <div class="largest-card">
+                        <div class="value">{{ format_currency(largest_invoice.amount) }}</div>
+                        <p class="mb-1 text-muted">{{ largest_invoice.customer }}</p>
+                        <small class="text-muted">{{ largest_invoice.date }}</small>
+                        <div class="mt-3 d-flex justify-content-between text-muted small">
+                            <span>Rata-rata Order</span>
+                            <strong>{{ format_currency(average_order) }}</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script type="application/json" id="sales-chart-data">{{ daily_points|tojson }}</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const script = document.getElementById('sales-chart-data');
+        const dataset = script ? JSON.parse(script.textContent || '[]') : [];
+        const canvas = document.getElementById('salesChart');
+        const canRenderChart = !!(canvas && window.Chart && dataset.length);
+        if (canRenderChart) {
+            const parent = canvas.parentElement;
+            if (parent) {
+                canvas.width = parent.clientWidth || 900;
+            }
+            canvas.height = 260;
+
+            const labels = dataset.map(item => item.label);
+            const revenueData = dataset.map(item => item.revenue);
+            const grossData = dataset.map(item => item.gross);
+
+            new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Revenue',
+                            data: revenueData,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                            borderWidth: 3,
+                            tension: 0.35,
+                            fill: true
+                        },
+                        {
+                            label: 'Laba Kotor',
+                            data: grossData,
+                            borderColor: '#16a34a',
+                            backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                            borderDash: [6, 4],
+                            borderWidth: 3,
+                            tension: 0.35,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: false,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    responsiveAnimationDuration: 0,
+                    transitions: {
+                        active: { animation: { duration: 0 } },
+                        resize: { animation: { duration: 0 } }
+                    },
+                    plugins: {
+                        legend: {
+                            align: 'end',
+                            labels: {
+                                boxWidth: 12,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const value = context.parsed.y || 0;
+                                    return `${context.dataset.label}: Rp ${value.toLocaleString('id-ID')}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function (value) {
+                                    return 'Rp ' + Number(value).toLocaleString('id-ID');
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        const detailToggles = document.querySelectorAll('.detail-toggle');
+        const detailRows = document.querySelectorAll('.sale-detail-row');
+        detailToggles.forEach(button => {
+            button.addEventListener('click', () => {
+                const targetId = button.getAttribute('data-target');
+                const targetRow = document.getElementById(targetId);
+                if (!targetRow) {
+                    return;
+                }
+                const shouldOpen = targetRow.hasAttribute('hidden');
+                detailRows.forEach(row => row.setAttribute('hidden', ''));
+                detailToggles.forEach(btn => btn.classList.remove('text-primary'));
+                if (shouldOpen) {
+                    targetRow.removeAttribute('hidden');
+                    button.classList.add('text-primary');
+                }
+            });
+        });
+
+        const input = document.getElementById('search');
+        const panel = document.getElementById('sales-report-suggestions');
+        const wrapper = document.getElementById('salesReportSearchWrapper');
+        const form = input ? input.closest('form') : null;
+
+        if (!input || !panel || !wrapper || !form) {
+            return;
+        }
+
+        let debounceTimer = null;
+        let abortCtrl = null;
+
+        const hidePanel = () => {
+            panel.innerHTML = '';
+            panel.hidden = true;
+        };
+
+        const showPanel = () => {
+            panel.hidden = false;
+        };
+
+        const badgeMeta = (kind) => {
+            if (kind === 'faktur') return { label: 'Faktur', className: 'badge-soft-primary' };
+            if (kind === 'pelanggan') return { label: 'Pelanggan', className: 'badge-soft-info' };
+            if (kind === 'sales') return { label: 'Sales', className: 'badge-soft-warning' };
+            return { label: 'Hasil', className: 'badge-soft' };
+        };
+
+        const render = (items) => {
+            if (!Array.isArray(items) || !items.length) {
+                hidePanel();
+                return;
+            }
+            panel.innerHTML = '';
+            items.slice(0, 12).forEach((item) => {
+                const meta = badgeMeta(item.kind);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'suggestion-item';
+                btn.dataset.value = item.value || item.label || '';
+                const subtext = item.subtext ? String(item.subtext) : '';
+                btn.innerHTML = `
+                    <div style="min-width: 0;">
+                        <div class="font-weight-semibold">${item.label || '-'}</div>
+                        ${subtext ? `<small>${subtext}</small>` : ''}
+                    </div>
+                    <span class="badge ${meta.className} ml-2">${meta.label}</span>
+                `;
+                btn.addEventListener('click', () => {
+                    input.value = btn.dataset.value;
+                    hidePanel();
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.submit();
+                    }
+                });
+                panel.appendChild(btn);
+            });
+            showPanel();
+        };
+
+        const fetchSuggestions = (term) => {
+            if (abortCtrl) {
+                abortCtrl.abort();
+            }
+            abortCtrl = new AbortController();
+            const startDate = document.getElementById('start_date')?.value || '';
+            const endDate = document.getElementById('end_date')?.value || '';
+            fetch(`{{ url_for('main.laporan_penjualan_suggest') }}?q=${encodeURIComponent(term)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`, {
+                headers: { Accept: 'application/json' },
+                signal: abortCtrl.signal,
+            })
+                .then((res) => {
+                    if (!res.ok) throw new Error('fail');
+                    return res.json();
+                })
+                .then((data) => {
+                    const items = Array.isArray(data.results) ? data.results : [];
+                    render(items);
+                })
+                .catch((err) => {
+                    if (err.name === 'AbortError') return;
+                    hidePanel();
+                });
+        };
+
+        input.addEventListener('input', function () {
+            const term = (this.value || '').trim();
+            if (term.length < 2) {
+                hidePanel();
+                return;
+            }
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => fetchSuggestions(term), 200);
+        });
+
+        input.addEventListener('focus', function () {
+            const term = (this.value || '').trim();
+            if (term.length >= 2) {
+                fetchSuggestions(term);
+            }
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!wrapper.contains(event.target)) {
+                hidePanel();
+            }
+        });
+    });
+</script>
+
+<style>
+    .sales-report .eyebrow {
+        letter-spacing: 0.25em;
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+
+    .sales-report .text-navy {
+        color: #0f172a;
+    }
+
+    .report-hero {
+        border-radius: 24px;
+    }
+
+    .badge-soft-success {
+        background: rgba(16, 185, 129, 0.18);
+        color: #0f766e;
+        font-weight: 600;
+    }
+
+    .summary-grid .metric-card {
+        border-radius: 20px;
+        padding: 1.25rem;
+        background: #fff;
+        display: flex;
+        align-items: center;
+    }
+
+    .metric-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        margin-right: 1rem;
+    }
+
+    .metric-body .metric-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .metric-icon.text-primary {
+        background: rgba(37, 99, 235, 0.12);
+    }
+
+    .metric-icon.text-success {
+        background: rgba(34, 197, 94, 0.15);
+    }
+
+    .metric-icon.text-warning {
+        background: rgba(245, 158, 11, 0.18);
+    }
+
+    .metric-icon.text-info {
+        background: rgba(6, 182, 212, 0.18);
+    }
+
+    .chart-shell {
+        height: 260px;
+    }
+
+    .chart-shell canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+    }
+
+    .insight-list li:last-child {
+        border-bottom: none !important;
+    }
+
+    .top-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .top-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    }
+
+    .top-item:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    .largest-card .value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .report-filter label {
+        font-size: 0.75rem;
+        letter-spacing: 0.04em;
+    }
+
+    .suggestion-box {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 30;
+        background: #fff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 12px;
+        box-shadow: 0 18px 30px rgba(15, 23, 42, 0.1);
+        max-height: 260px;
+        overflow-y: auto;
+        padding: 0.25rem;
+    }
+
+    .suggestion-item {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        font-size: 0.9rem;
+        color: #0f172a;
+        cursor: pointer;
+    }
+
+    .suggestion-item:hover,
+    .suggestion-item:focus {
+        background: rgba(59, 130, 246, 0.08);
+        outline: none;
+    }
+
+    .suggestion-item small {
+        color: #94a3b8;
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 0.1rem;
+    }
+
+    .badge-soft {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        background: rgba(99, 102, 241, 0.12);
+        color: #312e81;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .badge-soft-primary {
+        background: rgba(37, 99, 235, 0.12);
+        color: #1d4ed8;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.65rem;
+    }
+
+    .badge-soft-info {
+        background: rgba(14, 165, 233, 0.12);
+        color: #0369a1;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.65rem;
+    }
+
+    .badge-soft-warning {
+        background: rgba(245, 158, 11, 0.18);
+        color: #92400e;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.35rem 0.65rem;
+    }
+
+    .sales-table thead th {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        border-top: none;
+        background: #f8fafc;
+    }
+
+    .sale-detail-row td {
+        background: #f8fafc;
+        border-top: none;
+    }
+
+    .sale-detail-card {
+        border-radius: 16px;
+        border: 1px dashed rgba(37, 99, 235, 0.3);
+        background: #fff;
+        padding: 1.5rem;
+    }
+
+    .detail-meta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .detail-meta-grid .label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        color: #94a3b8;
+        letter-spacing: 0.04em;
+    }
+
+    .detail-meta-grid .value {
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .sale-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .sale-summary-grid .label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        color: #94a3b8;
+    }
+
+    .sale-summary-grid .value {
+        font-weight: 600;
+    }
+
+    @media (max-width: 767px) {
+        .summary-grid .metric-card {
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .metric-icon {
+            margin-bottom: 0.75rem;
+        }
+    }
+</style>
+{% endblock %}

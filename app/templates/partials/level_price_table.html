@@ -1,0 +1,64 @@
+{% if entries %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Produk</th>
+                    <th>Kode</th>
+                    <th class="text-right">Harga Khusus</th>
+                    <th class="text-center">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                    <tr>
+                        <td>{{ entry.product_name }}</td>
+                        <td>{{ entry.product_code }}</td>
+                        <td class="text-right">{{ ('Rp {:,.0f}'.format(entry.price)).replace(',', '.') }}</td>
+                        <td class="text-center">
+                            <form method="POST" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="action" value="delete_price">
+                                <input type="hidden" name="entry_id" value="{{ entry.id }}">
+                                <button type="submit" class="btn btn-link text-danger btn-sm">Hapus</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if page_info and page_info.pages > 1 %}
+        <nav class="mt-2">
+            <ul class="pagination pagination-sm justify-content-end mb-0">
+                <li class="page-item {% if not page_info.prev_url %}disabled{% endif %}">
+                    <a class="page-link level-price-page-link"
+                       href="{{ page_info.prev_url or '#' }}"
+                       data-fragment-url="{{ page_info.prev_fragment_url or '' }}"
+                       aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                {% for link in page_info.links %}
+                    <li class="page-item {% if link.num == page_info.page %}active{% endif %}">
+                        <a class="page-link level-price-page-link"
+                           href="{{ link.url }}"
+                           data-fragment-url="{{ link.fragment_url }}">
+                            {{ link.num }}
+                        </a>
+                    </li>
+                {% endfor %}
+                <li class="page-item {% if not page_info.next_url %}disabled{% endif %}">
+                    <a class="page-link level-price-page-link"
+                       href="{{ page_info.next_url or '#' }}"
+                       data-fragment-url="{{ page_info.next_fragment_url or '' }}"
+                       aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    {% endif %}
+{% else %}
+    <p class="small text-muted">Belum ada harga khusus untuk level ini.</p>
+{% endif %}

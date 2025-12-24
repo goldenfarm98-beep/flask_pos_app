@@ -4,6 +4,7 @@ Flask-Migrate>=4.0
 SQLAlchemy>=2.0
 python-dotenv>=1.0
 PyMySQL>=1.1
+psutil>=5.9
 pytest>=8
 
 # Form-related
@@ -15,5 +16,3 @@ pandas>=2.2
 numpy>=1.26
 openpyxl>=3.1   # kalau ada baca/tulis Excel
 XlsxWriter>=3.2 # kalau export Excel pakai XlsxWriter
-
-

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Data Metode Pembayaran{% endblock %}
+
+{% block content %}
+{% set edit_channel = edit_channel if edit_channel is defined else None %}
+{% set is_editing = edit_channel is not none %}
+<div class="container mt-4">
+    <h2 class="text-center"><i class="fas fa-credit-card"></i> Data Metode Pembayaran</h2>
+    <p class="text-center text-muted">Kelola master kartu/bank untuk laporan pembayaran.</p>
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-plus-circle"></i> Input Metode Pembayaran</h5>
+                    <form method="POST"
+                        action="{% if is_editing %}/metode_pembayaran/edit/{{ edit_channel.id }}{% else %}/metode_pembayaran{% endif %}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label for="name">Nama Kartu / Bank</label>
+                            <input type="text" class="form-control" id="name" name="name" placeholder="BCA, BNI, Mandiri"
+                                value="{% if is_editing %}{{ edit_channel.name }}{% endif %}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="channel_type">Jenis</label>
+                            <select class="custom-select" id="channel_type" name="channel_type">
+                                {% set selected_type = edit_channel.channel_type if is_editing else 'Kartu' %}
+                                <option value="Kartu" {% if selected_type == 'Kartu' %}selected{% endif %}>Kartu</option>
+                                <option value="Tunai" {% if selected_type == 'Tunai' %}selected{% endif %}>Tunai</option>
+                                <option value="Tempo" {% if selected_type == 'Tempo' %}selected{% endif %}>Tempo</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="note">Catatan</label>
+                            <input type="text" class="form-control" id="note" name="note"
+                                placeholder="Contoh: debit/credit"
+                                value="{% if is_editing %}{{ edit_channel.note }}{% endif %}">
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            {% if is_editing %}<i class="fas fa-save"></i> Update{% else %}<i class="fas fa-save"></i> Simpan{% endif %}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-list"></i> Daftar Metode Pembayaran</h5>
+                    <table class="table table-bordered table-hover">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Nama</th>
+                                <th>Jenis</th>
+                                <th>Catatan</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for channel in channels %}
+                            <tr>
+                                <td>{{ channel.name }}</td>
+                                <td>{{ channel.channel_type }}</td>
+                                <td>{{ channel.note or '-' }}</td>
+                                <td>
+                                    <a href="/metode_pembayaran/edit/{{ channel.id }}" class="btn btn-sm btn-warning">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </a>
+                                    <form action="/metode_pembayaran/delete/{{ channel.id }}" method="POST" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-danger"
+                                            onclick="return confirm('Hapus metode pembayaran ini?')">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not channels %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">Belum ada data metode pembayaran.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-secondary" onclick="window.location.href='/dashboard'">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    h2 {
+        font-weight: bold;
+        color: #1d4ed8;
+    }
+    .card {
+        border: none;
+        border-radius: 10px;
+    }
+    .btn {
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan Stok Barang{% endblock %}
+
+{% block content %}
+<section class="stock-report">
+    <div class="card shadow-sm border-0 mb-4 report-hero">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Laporan Stok Barang</p>
+                <h1 class="display-5 mb-2 text-navy">Inventori terkini dalam satu tampilan</h1>
+                <p class="mb-0 text-muted">Monitor nilai persediaan, stok kritis, dan distribusi kategori untuk mempermudah keputusan restock.</p>
+            </div>
+            <div class="mt-4 mt-lg-0 text-lg-right">
+                <small class="text-uppercase text-muted d-block">Produk ditampilkan</small>
+                <div class="h4 font-weight-bold mb-0">{{ summary_cards[0].value if summary_cards else 0 }}</div>
+            </div>
+        </div>
+        <div class="card-footer bg-transparent">
+            <form class="form-row" method="get">
+                <div class="form-group col-md-5 mb-0">
+                    <label class="small text-uppercase text-muted">Cari</label>
+                    <div class="position-relative" id="stockReportSearchWrapper">
+                        <input type="text" class="form-control form-control-lg" id="stock-search" name="search" placeholder="Nama / kode / SKU" value="{{ filter_values.search }}" autocomplete="off">
+                        <div class="suggestion-box mt-2" id="stock-report-suggestions" hidden></div>
+                    </div>
+                </div>
+                <div class="form-group col-md-3 mb-0">
+                    <label class="small text-uppercase text-muted">Kategori</label>
+                    <select name="kategori" class="custom-select custom-select-lg">
+                        <option value="">Semua kategori</option>
+                        {% for option in kategori_options %}
+                        <option value="{{ option.id }}" {% if filter_values.kategori|int == option.id %}selected{% endif %}>{{ option.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group col-md-2 mb-0">
+                    <label class="small text-uppercase text-muted">Supplier</label>
+                    <select name="supplier" class="custom-select custom-select-lg">
+                        <option value="">Semua</option>
+                        {% for option in supplier_options %}
+                        <option value="{{ option.id }}" {% if filter_values.supplier|int == option.id %}selected{% endif %}>{{ option.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group col-md-2 mb-0 d-flex align-items-end">
+                    <button class="btn btn-primary btn-lg btn-block" type="submit">
+                        <i class="fas fa-filter mr-2"></i>Terapkan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row summary-grid">
+        {% for card in summary_cards %}
+        <div class="col-sm-6 col-xl-3 mb-3">
+            <div class="metric-card shadow-sm h-100">
+                <div class="metric-icon {{ card.accent }}">
+                    <i class="fas {{ card.icon }}"></i>
+                </div>
+                <div class="metric-body">
+                    <small class="text-muted text-uppercase">{{ card.label }}</small>
+                    {% if card.label in ['Nilai HPP', 'Nilai Jual'] %}
+                        <div class="metric-value">{{ ('Rp {:,.0f}'.format(card.value)).replace(',', '.') }}</div>
+                    {% else %}
+                        <div class="metric-value">{{ '{:,}'.format(card.value).replace(',', '.') }}</div>
+                    {% endif %}
+                    <p class="small text-muted mb-0">{{ card.subtitle }}</p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <p class="eyebrow text-uppercase mb-1">Daftar stok</p>
+                            <h3 class="h5 mb-0">Produk & nilai persediaan</h3>
+                        </div>
+                        <span class="badge badge-light">
+                            Halaman {{ pagination.page }} / {{ pagination.pages }}
+                        </span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="text-uppercase small text-muted">
+                                <tr>
+                                    <th>Produk</th>
+                                    <th>Kategori</th>
+                                    <th>Supplier</th>
+                                    <th class="text-center">Stok / Min</th>
+                                    <th class="text-right">HPP</th>
+                                    <th class="text-right">Nilai</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for product in products %}
+                                <tr>
+                                    <td>
+                                        <div class="font-weight-semibold">{{ product.name }}</div>
+                                        <small class="text-muted">{{ product.code }} • {{ product.sku }}</small>
+                                    </td>
+                                    <td>{{ product.kategori }}</td>
+                                    <td>{{ product.supplier }}</td>
+                                    <td class="text-center">
+                                        <span class="badge badge-soft">{{ product.stock }}</span>
+                                        {% if product.minimal %}
+                                            <small class="text-muted d-block">Min {{ product.minimal }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-right">{{ ('Rp {:,.0f}'.format(product.cost)).replace(',', '.') }}</td>
+                                    <td class="text-right font-weight-semibold">{{ ('Rp {:,.0f}'.format(product.value)).replace(',', '.') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if pagination.pages > 1 %}
+                    {% set base_args = pagination_args or {} %}
+                    <nav class="mt-3">
+                        <ul class="pagination pagination-sm justify-content-end mb-0">
+                            <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                                <a class="page-link" href="{% if pagination.has_prev %}{{ url_for('main.laporan_stok_barang', page=pagination.prev_num, **base_args) }}{% else %}#{% endif %}" aria-label="Previous">
+                                    <span aria-hidden="true">&laquo;</span>
+                                </a>
+                            </li>
+                            {% set window_start = 1 if pagination.page - 2 < 1 else pagination.page - 2 %}
+                            {% set window_end = pagination.pages if pagination.page + 2 > pagination.pages else pagination.page + 2 %}
+                            {% for number in range(window_start, window_end + 1) %}
+                                <li class="page-item {% if number == pagination.page %}active{% endif %}">
+                                    <a class="page-link" href="{{ url_for('main.laporan_stok_barang', page=number, **base_args) }}">{{ number }}</a>
+                                </li>
+                            {% endfor %}
+                            <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                                <a class="page-link" href="{% if pagination.has_next %}{{ url_for('main.laporan_stok_barang', page=pagination.next_num, **base_args) }}{% else %}#{% endif %}" aria-label="Next">
+                                    <span aria-hidden="true">&raquo;</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Stok kritis</p>
+                    <h3 class="h5 mb-3">Perlu restock</h3>
+                    {% if low_stock_items %}
+                    <ul class="list-group list-group-flush">
+                        {% for item in low_stock_items %}
+                        <li class="list-group-item px-0 d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="font-weight-semibold">{{ item.name }}</div>
+                                <small class="text-muted d-block">{{ item.code }} • {{ item.supplier }}</small>
+                            </div>
+                            <div class="text-right">
+                                <span class="badge badge-danger">Stok {{ item.stock }}</span>
+                                <small class="text-muted d-block">Min {{ item.minimal }}</small>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted mb-0">Tidak ada stok kritis.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Distribusi kategori</p>
+                    <h3 class="h5 mb-3">Stok per kategori</h3>
+                    {% if category_distribution %}
+                    <div class="chart-shell mb-3">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                    <ul class="list-unstyled mb-0">
+                        {% for entry in category_distribution[:5] %}
+                        <li class="d-flex justify-content-between mb-2">
+                            <span>{{ entry.label }}</span>
+                            <strong>{{ entry.stock }}</strong>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted mb-0">Tidak ada data kategori.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if category_distribution %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script type="application/json" id="category-data">{{ category_distribution|tojson }}</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const script = document.getElementById('category-data');
+        const dataset = script ? JSON.parse(script.textContent || '[]') : [];
+        const canvas = document.getElementById('categoryChart');
+        if (!canvas || !dataset.length) return;
+        const labels = dataset.map(item => item.label);
+        const data = dataset.map(item => item.stock);
+        new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor: ['#2563eb', '#16a34a', '#f59e0b', '#ec4899', '#14b8a6', '#9333ea']
+                }]
+            },
+            options: {
+                responsive: false,
+                maintainAspectRatio: false,
+                cutout: '60%',
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    });
+</script>
+{% endif %}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const input = document.getElementById('stock-search');
+        const panel = document.getElementById('stock-report-suggestions');
+        const wrapper = document.getElementById('stockReportSearchWrapper');
+        const form = input ? input.closest('form') : null;
+
+        if (!input || !panel || !wrapper || !form) {
+            return;
+        }
+
+        let debounceTimer = null;
+        let abortCtrl = null;
+
+        const hidePanel = () => {
+            panel.innerHTML = '';
+            panel.hidden = true;
+        };
+
+        const showPanel = () => {
+            panel.hidden = false;
+        };
+
+        const render = (items) => {
+            if (!Array.isArray(items) || !items.length) {
+                hidePanel();
+                return;
+            }
+            panel.innerHTML = '';
+            items.slice(0, 10).forEach((product) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'suggestion-item';
+                btn.dataset.value = product.code || product.name || '';
+                btn.innerHTML = `
+                    <div style="min-width: 0;">
+                        <div class="font-weight-semibold">${product.code || '-'} — ${product.name || '-'}</div>
+                        <small>${product.sku || '-'} • ${product.kategori || '-'} • ${product.supplier || '-'}</small>
+                    </div>
+                    <span class="badge badge-soft ml-2">Stok ${Number(product.stock || 0).toLocaleString('id-ID')}</span>
+                `;
+                btn.addEventListener('click', () => {
+                    input.value = btn.dataset.value;
+                    hidePanel();
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.submit();
+                    }
+                });
+                panel.appendChild(btn);
+            });
+            showPanel();
+        };
+
+        const fetchSuggestions = (term) => {
+            if (abortCtrl) {
+                abortCtrl.abort();
+            }
+            abortCtrl = new AbortController();
+            const kategori = form.querySelector('[name="kategori"]')?.value || '';
+            const supplier = form.querySelector('[name="supplier"]')?.value || '';
+            fetch(`{{ url_for('main.laporan_stok_barang_suggest') }}?q=${encodeURIComponent(term)}&kategori=${encodeURIComponent(kategori)}&supplier=${encodeURIComponent(supplier)}`, {
+                headers: { Accept: 'application/json' },
+                signal: abortCtrl.signal,
+            })
+                .then((res) => {
+                    if (!res.ok) throw new Error('fail');
+                    return res.json();
+                })
+                .then((data) => {
+                    const items = Array.isArray(data.products) ? data.products : [];
+                    render(items);
+                })
+                .catch((err) => {
+                    if (err.name === 'AbortError') return;
+                    hidePanel();
+                });
+        };
+
+        input.addEventListener('input', function () {
+            const term = (this.value || '').trim();
+            if (term.length < 2) {
+                hidePanel();
+                return;
+            }
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => fetchSuggestions(term), 200);
+        });
+
+        input.addEventListener('focus', function () {
+            const term = (this.value || '').trim();
+            if (term.length >= 2) {
+                fetchSuggestions(term);
+            }
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!wrapper.contains(event.target)) {
+                hidePanel();
+            }
+        });
+    });
+</script>
+
+<style>
+    .stock-report .eyebrow { letter-spacing: 0.25em; font-size: 0.75rem; color: #94a3b8; }
+    .stock-report .text-navy { color: #0f172a; }
+    .report-hero { border-radius: 22px; }
+    .summary-grid .metric-card { border-radius: 18px; padding: 1.2rem; display:flex; align-items:center; background:#fff; }
+    .metric-icon { width:48px; height:48px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; margin-right:1rem; }
+    .metric-body .metric-value { font-size:1.6rem; font-weight:700; }
+    .badge-soft { background: rgba(15, 23, 42, 0.08); color:#0f172a; border-radius:12px; padding:0.15rem 0.6rem; display:inline-flex; }
+    .suggestion-box {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 30;
+        background: #fff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 12px;
+        box-shadow: 0 18px 30px rgba(15, 23, 42, 0.1);
+        max-height: 260px;
+        overflow-y: auto;
+        padding: 0.25rem;
+    }
+    .suggestion-item {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        font-size: 0.9rem;
+        color: #0f172a;
+        cursor: pointer;
+    }
+    .suggestion-item:hover,
+    .suggestion-item:focus {
+        background: rgba(59, 130, 246, 0.08);
+        outline: none;
+    }
+    .suggestion-item small {
+        color: #94a3b8;
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 0.1rem;
+    }
+    .chart-shell { height:240px; }
+    .chart-shell canvas { width:100% !important; height:100% !important; display:block; }
+</style>
+{% endblock %}
