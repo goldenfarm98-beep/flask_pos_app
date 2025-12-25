@@ -22,6 +22,8 @@ from io import BytesIO
 import math
 import os
 import re
+import time
+import sqlite3
 from importlib import util
 from pathlib import Path
 _psutil_spec = util.find_spec("psutil")
@@ -34,6 +36,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import joinedload
 from sqlalchemy.engine.url import make_url
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 
 from app import csrf, normalize_phone
 from app.forms import SalesForm
@@ -386,6 +389,77 @@ def _get_company_profile():
     }
 
 
+def _update_env_file(updates, env_path=None):
+    env_path = env_path or os.path.join(os.getcwd(), ".env")
+    cleaned_updates = {
+        key: (value or "").replace("\n", " ").strip()
+        for key, value in updates.items()
+    }
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    else:
+        lines = []
+
+    updated_keys = set()
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in line:
+            new_lines.append(line)
+            continue
+        key, _, _ = line.partition("=")
+        if key in cleaned_updates:
+            new_lines.append(f"{key}={cleaned_updates[key]}")
+            updated_keys.add(key)
+        else:
+            new_lines.append(line)
+
+    for key, value in cleaned_updates.items():
+        if key not in updated_keys:
+            new_lines.append(f"{key}={value}")
+
+    content = "\n".join(new_lines).rstrip() + "\n"
+    with open(env_path, "w", encoding="utf-8") as handle:
+        handle.write(content)
+
+
+def _get_env_value(key, default=""):
+    value = os.environ.get(key)
+    if value is None:
+        return default
+    value = value.strip()
+    return value if value else default
+
+
+def _parse_tax_value(value, default=0.0):
+    try:
+        tax = float(value)
+    except (TypeError, ValueError):
+        return default
+    if tax < 0:
+        return 0.0
+    if tax > 100:
+        return 100.0
+    return tax
+
+
+def _get_sales_invoice_prefix():
+    return _get_env_value("SALES_INVOICE_PREFIX", "F")
+
+
+def _get_purchase_invoice_prefix():
+    return _get_env_value("PURCHASE_INVOICE_PREFIX", "INV")
+
+
+def _get_default_sales_tax():
+    return _parse_tax_value(_get_env_value("DEFAULT_SALES_TAX_PERCENT", "0"))
+
+
+def _get_default_purchase_tax():
+    return _parse_tax_value(_get_env_value("DEFAULT_PURCHASE_TAX_PERCENT", "0"))
+
+
 def _build_sale_print_payload(sale):
     items = []
     subtotal = 0.0
@@ -555,6 +629,45 @@ def _ensure_receivable_payment_table() -> bool:
         return True
     except Exception:
         return False
+
+
+def _ensure_purchase_payment_columns() -> bool:
+    try:
+        inspector = inspect(db.engine)
+        if not inspector.has_table("pembelian"):
+            return False
+        columns = {col["name"] for col in inspector.get_columns("pembelian")}
+        statements = []
+        if "due_date" not in columns:
+            statements.append("ALTER TABLE pembelian ADD COLUMN due_date DATE")
+        if "payment_bank" not in columns:
+            statements.append(
+                "ALTER TABLE pembelian ADD COLUMN payment_bank VARCHAR(120)"
+            )
+        if "payment_reference" not in columns:
+            statements.append(
+                "ALTER TABLE pembelian ADD COLUMN payment_reference VARCHAR(100)"
+            )
+        if not statements:
+            return True
+        with db.engine.begin() as connection:
+            for stmt in statements:
+                connection.execute(text(stmt))
+        return True
+    except Exception:
+        return False
+
+
+_PURCHASE_PAYMENT_COLUMNS_READY = False
+
+
+@bp.before_app_request
+def _ensure_purchase_columns_once():
+    global _PURCHASE_PAYMENT_COLUMNS_READY
+    if _PURCHASE_PAYMENT_COLUMNS_READY:
+        return
+    if _ensure_purchase_payment_columns():
+        _PURCHASE_PAYMENT_COLUMNS_READY = True
 
 
 def _perform_produk_import(df, progress_cb=None):
@@ -1139,6 +1252,205 @@ def profile():
         return redirect("/profile")
 
     return render_template("profile.html", username=user.username, email=user.email)
+
+
+@bp.route("/pengaturan/perusahaan", methods=["GET", "POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pengaturan_perusahaan():
+    profile = _get_company_profile()
+
+    if request.method == "POST":
+        name = (request.form.get("company_name") or "").strip()
+        address = (request.form.get("company_address") or "").strip()
+        city = (request.form.get("company_city") or "").strip()
+        phone = (request.form.get("company_phone") or "").strip()
+        email = (request.form.get("company_email") or "").strip()
+        website = (request.form.get("company_website") or "").strip()
+        logo_url = (request.form.get("company_logo_url") or "").strip()
+        bank_info = (request.form.get("company_bank_info") or "").strip()
+
+        if not name:
+            flash("Nama perusahaan wajib diisi.", "warning")
+            return redirect(url_for("main.pengaturan_perusahaan"))
+        if not address:
+            flash("Alamat perusahaan wajib diisi.", "warning")
+            return redirect(url_for("main.pengaturan_perusahaan"))
+        if not city:
+            flash("Kota perusahaan wajib diisi.", "warning")
+            return redirect(url_for("main.pengaturan_perusahaan"))
+
+        updates = {
+            "COMPANY_NAME": name,
+            "COMPANY_ADDRESS": address,
+            "COMPANY_CITY": city,
+            "COMPANY_PHONE": phone,
+            "COMPANY_EMAIL": email,
+            "COMPANY_WEBSITE": website,
+            "COMPANY_LOGO_URL": logo_url,
+            "COMPANY_BANK_INFO": bank_info,
+        }
+        _update_env_file(updates)
+        for key, value in updates.items():
+            os.environ[key] = value
+
+        flash("Profil perusahaan berhasil diperbarui.", "success")
+        return redirect(url_for("main.pengaturan_perusahaan"))
+
+    return render_template("pengaturan_perusahaan.html", profile=profile)
+
+
+@bp.route("/pengaturan/faktur-pajak", methods=["GET", "POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pengaturan_faktur_pajak():
+    if request.method == "POST":
+        sales_prefix = (request.form.get("sales_invoice_prefix") or "").strip().upper()
+        purchase_prefix = (
+            request.form.get("purchase_invoice_prefix") or ""
+        ).strip().upper()
+        sales_tax_raw = request.form.get("default_sales_tax") or "0"
+        purchase_tax_raw = request.form.get("default_purchase_tax") or "0"
+
+        if not sales_prefix:
+            flash("Prefix faktur penjualan wajib diisi.", "warning")
+            return redirect(url_for("main.pengaturan_faktur_pajak"))
+        if not purchase_prefix:
+            flash("Prefix faktur pembelian wajib diisi.", "warning")
+            return redirect(url_for("main.pengaturan_faktur_pajak"))
+
+        sales_tax = _parse_tax_value(sales_tax_raw, default=0.0)
+        purchase_tax = _parse_tax_value(purchase_tax_raw, default=0.0)
+
+        updates = {
+            "SALES_INVOICE_PREFIX": sales_prefix,
+            "PURCHASE_INVOICE_PREFIX": purchase_prefix,
+            "DEFAULT_SALES_TAX_PERCENT": str(sales_tax),
+            "DEFAULT_PURCHASE_TAX_PERCENT": str(purchase_tax),
+        }
+        _update_env_file(updates)
+        for key, value in updates.items():
+            os.environ[key] = value
+
+        flash("Pengaturan faktur & pajak berhasil diperbarui.", "success")
+        return redirect(url_for("main.pengaturan_faktur_pajak"))
+
+    sales_prefix = _get_sales_invoice_prefix()
+    purchase_prefix = _get_purchase_invoice_prefix()
+    sales_tax = _get_default_sales_tax()
+    purchase_tax = _get_default_purchase_tax()
+
+    now = datetime.utcnow()
+    preview_stamp = now.strftime("%Y%m%d%H%M")
+    return render_template(
+        "pengaturan_faktur_pajak.html",
+        sales_prefix=sales_prefix,
+        purchase_prefix=purchase_prefix,
+        sales_tax=sales_tax,
+        purchase_tax=purchase_tax,
+        sales_preview=f"{sales_prefix}{preview_stamp}",
+        purchase_preview=f"{purchase_prefix}{preview_stamp}",
+    )
+
+
+@bp.route("/pengaturan/database", methods=["GET", "POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pengaturan_database():
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        backup_supported = _resolve_sqlite_path() is not None
+
+        if action == "check":
+            result = _check_db_connection()
+            flash(
+                result["message"],
+                "success" if result["ok"] else "danger",
+            )
+            return redirect(url_for("main.pengaturan_database"))
+
+        if action == "backup":
+            if not backup_supported:
+                flash("Backup hanya tersedia untuk database SQLite.", "warning")
+                return redirect(url_for("main.pengaturan_database"))
+            backup_name, error = _backup_sqlite_database()
+            if error:
+                flash(error, "danger")
+            else:
+                flash(f"Backup tersimpan: {backup_name}", "success")
+            return redirect(url_for("main.pengaturan_database"))
+
+        if action == "restore":
+            if not backup_supported:
+                flash("Restore hanya tersedia untuk database SQLite.", "warning")
+                return redirect(url_for("main.pengaturan_database"))
+            backup_dir = _get_backup_directory()
+            uploaded = request.files.get("backup_file")
+            selected_name = (request.form.get("backup_choice") or "").strip()
+            backup_path = None
+
+            if uploaded and uploaded.filename:
+                safe_name = secure_filename(uploaded.filename)
+                if not _is_allowed_backup_name(safe_name):
+                    flash("Format file backup tidak didukung.", "warning")
+                    return redirect(url_for("main.pengaturan_database"))
+                stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+                stored_name = f"restore_{stamp}_{safe_name}"
+                backup_path = os.path.join(backup_dir, stored_name)
+                uploaded.save(backup_path)
+            elif selected_name:
+                selected_name = os.path.basename(selected_name)
+                backup_path = os.path.join(backup_dir, selected_name)
+
+            if not backup_path:
+                flash("Pilih file backup atau unggah file untuk restore.", "warning")
+                return redirect(url_for("main.pengaturan_database"))
+
+            error = _restore_sqlite_database(backup_path)
+            if error:
+                flash(error, "danger")
+            else:
+                flash("Restore database berhasil.", "success")
+            return redirect(url_for("main.pengaturan_database"))
+
+        if action == "delete":
+            if not backup_supported:
+                flash("Hapus backup hanya tersedia untuk database SQLite.", "warning")
+                return redirect(url_for("main.pengaturan_database"))
+            target_name = (request.form.get("backup_name") or "").strip()
+            if not target_name:
+                flash("Nama file backup tidak ditemukan.", "warning")
+                return redirect(url_for("main.pengaturan_database"))
+            target_name = os.path.basename(target_name)
+            if not _is_allowed_backup_name(target_name):
+                flash("Format file backup tidak didukung.", "warning")
+                return redirect(url_for("main.pengaturan_database"))
+            backup_path = os.path.join(_get_backup_directory(), target_name)
+            if not os.path.exists(backup_path):
+                flash("File backup tidak ditemukan.", "warning")
+                return redirect(url_for("main.pengaturan_database"))
+            try:
+                os.remove(backup_path)
+                flash("Backup berhasil dihapus.", "success")
+            except Exception as exc:
+                flash(f"Gagal menghapus backup: {exc}", "danger")
+            return redirect(url_for("main.pengaturan_database"))
+
+        flash("Aksi pengaturan database tidak dikenal.", "warning")
+        return redirect(url_for("main.pengaturan_database"))
+
+    connection_status = _check_db_connection()
+    db_info = _collect_system_metrics().get("database", {})
+    backup_supported = _resolve_sqlite_path() is not None
+    backups = _list_db_backups() if backup_supported else []
+
+    return render_template(
+        "pengaturan_database.html",
+        connection_status=connection_status,
+        db_info=db_info,
+        backup_supported=backup_supported,
+        backups=backups,
+    )
 
 
 def _build_supplier_page_context(
@@ -3904,6 +4216,11 @@ def get_price_level_costs():
 @login_required
 @roles_required(*INVENTORY_ROLES)
 def pembelian():
+    if not _ensure_purchase_payment_columns():
+        flash(
+            "Kolom pembayaran pembelian belum tersedia. Jalankan migrasi untuk pembelian.",
+            "warning",
+        )
     if request.method == "POST":
         try:
             if not request.is_json:
@@ -3924,6 +4241,9 @@ def pembelian():
             supplier_id = payload.get("supplier")
             items = payload.get("items") or []
             jenis_pembayaran = (payload.get("jenis_pembayaran") or "Tunai").strip()
+            due_date_raw = (payload.get("due_date") or "").strip()
+            payment_bank = (payload.get("payment_bank") or "").strip()
+            payment_reference = (payload.get("payment_reference") or "").strip()
             allowed_payments = {"Tunai", "Tempo", "Transfer"}
 
             if not tanggal_faktur or not no_faktur or not supplier_id:
@@ -3964,6 +4284,47 @@ def pembelian():
                     ),
                     400,
                 )
+
+            due_date = None
+            if due_date_raw:
+                try:
+                    due_date = datetime.strptime(due_date_raw, "%Y-%m-%d").date()
+                except ValueError:
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "message": "Format tanggal jatuh tempo tidak valid.",
+                            }
+                        ),
+                        400,
+                    )
+
+            if jenis_pembayaran == "Tempo" and not due_date:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "Tanggal jatuh tempo wajib diisi untuk pembayaran tempo.",
+                        }
+                    ),
+                    400,
+                )
+            if jenis_pembayaran == "Transfer" and not payment_reference:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "Nomor referensi wajib diisi untuk pembayaran transfer.",
+                        }
+                    ),
+                    400,
+                )
+            if jenis_pembayaran != "Transfer":
+                payment_bank = ""
+                payment_reference = ""
+            if jenis_pembayaran != "Tempo":
+                due_date = None
 
             try:
                 supplier_id = int(supplier_id)
@@ -4107,6 +4468,9 @@ def pembelian():
                 no_faktur=no_faktur,
                 supplier_id=supplier_id,
                 jenis_pembayaran=jenis_pembayaran,
+                due_date=due_date,
+                payment_bank=payment_bank or None,
+                payment_reference=payment_reference or None,
             )
             db.session.add(pembelian)
             db.session.flush()
@@ -4320,6 +4684,10 @@ def pembelian():
         purchase_stat_cards=purchase_stat_cards,
         purchase_insights=purchase_insights,
         recent_purchases=recent_purchases,
+        default_purchase_tax=_get_default_purchase_tax(),
+        draft_purchase_invoice=_build_draft_invoice(
+            _get_purchase_invoice_prefix(), Pembelian
+        ),
     )
 
 
@@ -4459,7 +4827,8 @@ def penjualan():
     average_order = total_revenue / total_orders if total_orders else 0.0
 
     sale_date_display = _format_date_id(today)
-    draft_invoice = f"F{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    sales_prefix = _get_sales_invoice_prefix()
+    draft_invoice = _build_draft_invoice(sales_prefix, Penjualan)
     sales_operator = session.get("username") or "Sales"
 
     sales_stat_cards = [
@@ -4823,6 +5192,7 @@ def penjualan():
         price_levels=price_levels,
         expedisi_list=expedisi_list,
         payment_channels=payment_channels,
+        default_sales_tax=_get_default_sales_tax(),
     )
 
 
@@ -5444,6 +5814,7 @@ def laporan_laba_rugi():
 @login_required
 @roles_required(*INVENTORY_ROLES)
 def laporan_pembelian():
+    _ensure_purchase_payment_columns()
     today = datetime.utcnow().date()
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
@@ -5544,13 +5915,24 @@ def laporan_pembelian():
                 purchase.supplier.name if purchase.supplier else "Tanpa supplier"
             )
             largest_invoice["date"] = _format_date_id(invoice_date)
+        payment_label = purchase.jenis_pembayaran or "Tunai"
+        if purchase.jenis_pembayaran == "Tempo" and purchase.due_date:
+            payment_label = f"Tempo • {_format_date_id(purchase.due_date)}"
+        elif purchase.jenis_pembayaran == "Transfer":
+            transfer_detail = purchase.payment_reference or purchase.payment_bank
+            if transfer_detail:
+                payment_label = f"Transfer • {transfer_detail}"
         purchase_table.append(
             {
                 "id": purchase.id,
                 "no_faktur": purchase.no_faktur,
                 "supplier": purchase.supplier.name if purchase.supplier else "Tanpa supplier",
                 "tanggal_label": _format_date_id(invoice_date),
-                "payment": purchase.jenis_pembayaran,
+                "payment": payment_label,
+                "payment_raw": purchase.jenis_pembayaran,
+                "due_date_label": _format_date_id(purchase.due_date) if purchase.due_date else "-",
+                "payment_bank": purchase.payment_bank or "-",
+                "payment_reference": purchase.payment_reference or "-",
                 "units": invoice_units,
                 "total": invoice_total,
                 "line_items": line_items,
@@ -5682,6 +6064,183 @@ def laporan_pembelian():
         largest_invoice=largest_invoice,
         range_label=range_label,
         filter_values=filter_values,
+    )
+
+
+@bp.route("/laporan/pembelian/print")
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def laporan_pembelian_print():
+    _ensure_purchase_payment_columns()
+    today = datetime.utcnow().date()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+    search_query = (request.args.get("search") or "").strip()
+    supplier_id = _parse_int_param(request.args.get("supplier"))
+
+    purchase_query = (
+        Pembelian.query.options(
+            joinedload(Pembelian.barang),
+            joinedload(Pembelian.supplier),
+        )
+        .filter(Pembelian.tanggal_faktur >= start_date)
+        .filter(Pembelian.tanggal_faktur <= end_date)
+        .order_by(Pembelian.tanggal_faktur.asc(), Pembelian.id.asc())
+    )
+    if supplier_id:
+        purchase_query = purchase_query.filter(Pembelian.supplier_id == supplier_id)
+    if search_query:
+        like = f"%{search_query}%"
+        purchase_query = purchase_query.outerjoin(Supplier).filter(
+            or_(Pembelian.no_faktur.ilike(like), Supplier.name.ilike(like))
+        )
+
+    purchase_records = purchase_query.all()
+    purchase_table = []
+    total_spend = 0.0
+    total_units = 0
+
+    for purchase in purchase_records:
+        invoice_total = 0.0
+        invoice_units = 0
+        invoice_date = purchase.tanggal_faktur or today
+        line_items = []
+
+        for item in purchase.barang:
+            qty = item.jumlah or 0
+            unit_price = item.harga_beli or 0.0
+            discount_pct = item.diskon or 0.0
+            tax_pct = item.pajak or 0.0
+
+            base_total = unit_price * qty
+            discount_value = base_total * (discount_pct / 100.0)
+            taxable_total = base_total - discount_value
+            tax_value = taxable_total * (tax_pct / 100.0)
+            final_total = taxable_total + tax_value
+
+            invoice_total += final_total
+            invoice_units += qty
+            line_items.append(
+                {
+                    "name": item.nama_barang,
+                    "code": item.kode_barang,
+                    "qty": qty,
+                    "unit_price": unit_price,
+                    "discount": f"{discount_pct:.1f}%",
+                    "tax": f"{tax_pct:.1f}%",
+                    "line_total": final_total,
+                }
+            )
+
+        payment_label = purchase.jenis_pembayaran or "Tunai"
+        if purchase.jenis_pembayaran == "Tempo" and purchase.due_date:
+            payment_label = f"Tempo • {_format_date_id(purchase.due_date)}"
+        elif purchase.jenis_pembayaran == "Transfer":
+            transfer_detail = purchase.payment_reference or purchase.payment_bank
+            if transfer_detail:
+                payment_label = f"Transfer • {transfer_detail}"
+
+        purchase_table.append(
+            {
+                "id": purchase.id,
+                "no_faktur": purchase.no_faktur,
+                "supplier": purchase.supplier.name if purchase.supplier else "Tanpa supplier",
+                "tanggal_label": _format_date_id(invoice_date),
+                "payment": payment_label,
+                "units": invoice_units,
+                "total": invoice_total,
+                "line_items": line_items,
+            }
+        )
+        total_spend += invoice_total
+        total_units += invoice_units
+
+    range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
+    supplier_name = "-"
+    if supplier_id:
+        supplier = Supplier.query.get(supplier_id)
+        if supplier:
+            supplier_name = supplier.name
+
+    return render_template(
+        "laporan_pembelian_print.html",
+        purchase_table=purchase_table,
+        range_label=range_label,
+        search_query=search_query,
+        supplier_name=supplier_name,
+        total_spend=total_spend,
+        total_units=total_units,
+        total_invoices=len(purchase_table),
+        printed_at=datetime.utcnow(),
+        company_profile=_get_company_profile(),
+    )
+
+
+@bp.route("/laporan/pembelian/print/<int:purchase_id>")
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def laporan_pembelian_print_detail(purchase_id):
+    _ensure_purchase_payment_columns()
+    purchase = (
+        Pembelian.query.options(
+            joinedload(Pembelian.barang),
+            joinedload(Pembelian.supplier),
+        )
+        .filter(Pembelian.id == purchase_id)
+        .first_or_404()
+    )
+    invoice_date = purchase.tanggal_faktur or datetime.utcnow().date()
+    line_items = []
+    invoice_total = 0.0
+    total_units = 0
+
+    for item in purchase.barang:
+        qty = item.jumlah or 0
+        unit_price = item.harga_beli or 0.0
+        discount_pct = item.diskon or 0.0
+        tax_pct = item.pajak or 0.0
+
+        base_total = unit_price * qty
+        discount_value = base_total * (discount_pct / 100.0)
+        taxable_total = base_total - discount_value
+        tax_value = taxable_total * (tax_pct / 100.0)
+        final_total = taxable_total + tax_value
+
+        invoice_total += final_total
+        total_units += qty
+        line_items.append(
+            {
+                "name": item.nama_barang,
+                "code": item.kode_barang,
+                "qty": qty,
+                "unit_price": unit_price,
+                "discount": f"{discount_pct:.1f}%",
+                "tax": f"{tax_pct:.1f}%",
+                "line_total": final_total,
+            }
+        )
+
+    payment_label = purchase.jenis_pembayaran or "Tunai"
+    if purchase.jenis_pembayaran == "Tempo" and purchase.due_date:
+        payment_label = f"Tempo • {_format_date_id(purchase.due_date)}"
+    elif purchase.jenis_pembayaran == "Transfer":
+        transfer_detail = purchase.payment_reference or purchase.payment_bank
+        if transfer_detail:
+            payment_label = f"Transfer • {transfer_detail}"
+
+    return render_template(
+        "pembelian_print.html",
+        purchase=purchase,
+        invoice_date=_format_date_id(invoice_date),
+        payment_label=payment_label,
+        line_items=line_items,
+        total_units=total_units,
+        total_amount=invoice_total,
+        printed_at=datetime.utcnow(),
+        company_profile=_get_company_profile(),
     )
 
 
@@ -5940,14 +6499,36 @@ def _generate_journal_reference():
     return candidate
 
 
-def _generate_invoice_number(prefix="F"):
+def _generate_invoice_number(prefix=None):
     """
     Generate unique invoice number using timestamp with microseconds and fallback counter.
     """
+    prefix = (prefix or _get_sales_invoice_prefix()).strip() or "F"
     base = f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
     candidate = base
     counter = 1
     while Penjualan.query.filter_by(no_faktur=candidate).first():
+        candidate = f"{base}-{counter}"
+        counter += 1
+    return candidate
+
+
+def _generate_purchase_invoice_number(prefix=None):
+    prefix = (prefix or _get_purchase_invoice_prefix()).strip() or "INV"
+    base = f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+    candidate = base
+    counter = 1
+    while Pembelian.query.filter_by(no_faktur=candidate).first():
+        candidate = f"{base}-{counter}"
+        counter += 1
+    return candidate
+
+
+def _build_draft_invoice(prefix, model):
+    base = f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    candidate = base
+    counter = 1
+    while model.query.filter_by(no_faktur=candidate).first():
         candidate = f"{base}-{counter}"
         counter += 1
     return candidate
@@ -6022,6 +6603,94 @@ def _resolve_sqlite_path():
     if trimmed.startswith("/"):
         trimmed = trimmed[1:]
     return os.path.abspath(trimmed)
+
+
+def _check_db_connection():
+    start = time.perf_counter()
+    try:
+        db.session.execute(text("SELECT 1"))
+        latency_ms = (time.perf_counter() - start) * 1000
+        return {
+            "ok": True,
+            "message": "Koneksi database berhasil.",
+            "latency_ms": round(latency_ms, 2),
+        }
+    except Exception as exc:
+        db.session.rollback()
+        return {"ok": False, "message": f"Gagal: {exc}", "latency_ms": None}
+
+
+def _get_backup_directory():
+    base_dir = current_app.instance_path or os.getcwd()
+    backup_dir = os.path.join(base_dir, "db_backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    return backup_dir
+
+
+def _list_db_backups():
+    backup_dir = _get_backup_directory()
+    backups = []
+    for name in os.listdir(backup_dir):
+        path = os.path.join(backup_dir, name)
+        if not os.path.isfile(path):
+            continue
+        stat = os.stat(path)
+        backups.append(
+            {
+                "name": name,
+                "size": stat.st_size,
+                "mtime": datetime.utcfromtimestamp(stat.st_mtime),
+                "path": path,
+            }
+        )
+    backups.sort(key=lambda item: item["mtime"], reverse=True)
+    return backups
+
+
+def _is_allowed_backup_name(filename):
+    if not filename:
+        return False
+    lowered = filename.lower()
+    return lowered.endswith((".db", ".sqlite", ".sqlite3", ".bak"))
+
+
+def _backup_sqlite_database():
+    db_path = _resolve_sqlite_path()
+    if not db_path or not os.path.exists(db_path):
+        return None, "Database SQLite tidak ditemukan."
+    backup_dir = _get_backup_directory()
+    stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    backup_name = f"backup_{stamp}.sqlite3"
+    backup_path = os.path.join(backup_dir, backup_name)
+
+    try:
+        with sqlite3.connect(db_path) as source, sqlite3.connect(backup_path) as target:
+            source.backup(target)
+        return backup_name, None
+    except Exception as exc:
+        return None, f"Gagal membuat backup: {exc}"
+
+
+def _restore_sqlite_database(backup_path):
+    db_path = _resolve_sqlite_path()
+    if not db_path:
+        return "Database SQLite tidak ditemukan."
+    if not backup_path or not os.path.exists(backup_path):
+        return "File backup tidak ditemukan."
+
+    try:
+        db.session.remove()
+        db.engine.dispose()
+    except Exception:
+        pass
+
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    try:
+        with sqlite3.connect(backup_path) as source, sqlite3.connect(db_path) as target:
+            source.backup(target)
+        return None
+    except Exception as exc:
+        return f"Gagal restore database: {exc}"
 
 
 def _collect_system_metrics():
@@ -7209,6 +7878,130 @@ def laporan_penjualan_report():
     )
 
 
+@bp.route("/laporan/penjualan/print")
+@login_required
+@roles_required(*SALES_ROLES)
+def laporan_penjualan_print():
+    today = datetime.utcnow().date()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    search_query = (request.args.get("search") or "").strip()
+    selected_sales_id = _parse_int_param(request.args.get("sales"))
+    selected_customer_id = _parse_int_param(request.args.get("customer"))
+
+    sales_query = (
+        Penjualan.query.options(
+            joinedload(Penjualan.detail_penjualan).joinedload(DetailPenjualan.produk),
+            joinedload(Penjualan.pelanggan),
+            joinedload(Penjualan.sales),
+            joinedload(Penjualan.payment_channel),
+        )
+        .filter(Penjualan.tanggal_penjualan >= start_date)
+        .filter(Penjualan.tanggal_penjualan <= end_date)
+        .order_by(Penjualan.tanggal_penjualan.asc(), Penjualan.id.asc())
+    )
+
+    if selected_sales_id:
+        sales_query = sales_query.filter(Penjualan.sales_id == selected_sales_id)
+    if selected_customer_id:
+        sales_query = sales_query.filter(Penjualan.pelanggan_id == selected_customer_id)
+    if search_query:
+        like = f"%{search_query}%"
+        sales_query = (
+            sales_query.join(Penjualan.pelanggan)
+            .join(Penjualan.sales)
+            .filter(
+                or_(
+                    Penjualan.no_faktur.ilike(like),
+                    Pelanggan.nama.ilike(like),
+                    User.username.ilike(like),
+                )
+            )
+        )
+
+    sales_records = sales_query.all()
+    rows = []
+    total_revenue = 0.0
+    total_orders = 0
+    total_items = 0
+
+    for sale in sales_records:
+        sale_date = sale.tanggal_penjualan or today
+        invoice_total = 0.0
+        items_count = 0
+        for detail in sale.detail_penjualan:
+            qty = detail.jumlah or 0
+            price = detail.harga_satuan or 0.0
+            discount_pct = detail.diskon or 0.0
+            tax_pct = detail.pajak or 0.0
+
+            base_total = price * qty
+            discount_value = base_total * (discount_pct / 100.0)
+            taxable = base_total - discount_value
+            tax_value = taxable * (tax_pct / 100.0)
+            line_total = taxable + tax_value
+
+            invoice_total += line_total
+            items_count += qty
+
+        cost_total = float(sale.marketplace_cost_total or 0.0)
+        net_total = max(invoice_total - cost_total, 0.0)
+
+        total_revenue += net_total
+        total_orders += 1
+        total_items += items_count
+
+        payment_label = sale.payment_method or "Belum dicatat"
+        if sale.payment_method == "Kartu" and sale.payment_channel:
+            if sale.payment_channel.name:
+                payment_label = f"Kartu - {sale.payment_channel.name}"
+        due_label = "-"
+        if sale.payment_method == "Tempo" and sale.due_date:
+            due_label = _format_date_id(sale.due_date)
+
+        rows.append(
+            {
+                "invoice": sale.no_faktur,
+                "date": _format_date_id(sale_date),
+                "customer": sale.pelanggan.nama if sale.pelanggan else "Umum",
+                "sales": sale.sales.username if sale.sales else "Sales",
+                "payment_method": payment_label,
+                "due_date": due_label,
+                "items_count": items_count,
+                "total": net_total,
+            }
+        )
+
+    sales_name = "-"
+    if selected_sales_id:
+        sales_user = User.query.get(selected_sales_id)
+        if sales_user:
+            sales_name = sales_user.username
+    customer_name = "-"
+    if selected_customer_id:
+        customer = Pelanggan.query.get(selected_customer_id)
+        if customer:
+            customer_name = customer.nama
+
+    return render_template(
+        "laporan_penjualan_print.html",
+        rows=rows,
+        range_label=f"{_format_date_id(start_date)} - {_format_date_id(end_date)}",
+        search_query=search_query,
+        sales_name=sales_name,
+        customer_name=customer_name,
+        total_revenue=total_revenue,
+        total_orders=total_orders,
+        total_items=total_items,
+        printed_at=datetime.utcnow(),
+        company_profile=_get_company_profile(),
+    )
+
+
 @bp.route("/laporan/piutang")
 @login_required
 @roles_required(*SALES_ROLES)
@@ -8118,6 +8911,61 @@ def sales_staff():
             }
         )
 
+    role_permissions = [
+        {
+            "role": "Administrator",
+            "note": "Full akses semua menu & pengaturan",
+            "badge_class": "badge-soft-danger",
+            "accent_class": "permission-admin",
+            "items_list": [
+                "Semua transaksi & laporan",
+                "Master data (produk, pelanggan, supplier)",
+                "Pengaturan perusahaan & faktur/pajak",
+                "Pengaturan database & backup",
+                "Manajemen user & role",
+            ],
+        },
+        {
+            "role": "Sales",
+            "note": "Akses penjualan & piutang",
+            "badge_class": "badge-soft-info",
+            "accent_class": "permission-sales",
+            "items_list": [
+                "Input transaksi penjualan",
+                "Cetak struk / invoice / surat jalan",
+                "Kelola pelanggan",
+                "Laporan penjualan",
+                "Laporan & pembayaran piutang",
+            ],
+        },
+        {
+            "role": "Kasir",
+            "note": "Operasional kasir harian",
+            "badge_class": "badge-soft-success",
+            "accent_class": "permission-kasir",
+            "items_list": [
+                "Input transaksi penjualan",
+                "Cetak struk / invoice",
+                "Kelola pelanggan",
+                "Pembayaran piutang",
+                "Laporan penjualan",
+            ],
+        },
+        {
+            "role": "Gudang",
+            "note": "Stok & pembelian",
+            "badge_class": "badge-soft-warning",
+            "accent_class": "permission-gudang",
+            "items_list": [
+                "Pembelian & penerimaan barang",
+                "Master produk & kategori",
+                "Supplier & expedisi",
+                "Stok opname & update harga",
+                "Laporan pembelian & stok",
+            ],
+        },
+    ]
+
     return render_template(
         "sales_staff.html",
         stats_cards=stats_cards,
@@ -8128,6 +8976,7 @@ def sales_staff():
         edit_user=edit_user,
         recent_sales=recent_sales,
         role_labels=role_labels,
+        role_permissions=role_permissions,
     )
 
 

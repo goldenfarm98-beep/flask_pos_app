@@ -67,7 +67,12 @@
                             <div class="suggestion-box mt-2" id="sales-report-suggestions" hidden></div>
                         </div>
                     </div>
-                    <div class="form-group col-lg-3 col-md-4 ml-auto">
+                    <div class="form-group col-lg-3 col-md-4">
+                        <a class="btn btn-outline-primary btn-lg btn-block mt-4 mt-md-0" href="{{ url_for('main.laporan_penjualan_print', **request.args) }}" target="_blank" rel="noreferrer">
+                            <i class="fas fa-print mr-2"></i>Cetak Laporan
+                        </a>
+                    </div>
+                    <div class="form-group col-lg-3 col-md-4">
                         <button class="btn btn-primary btn-lg btn-block mt-4 mt-md-0" type="submit">
                             <i class="fas fa-sync-alt mr-2"></i>Perbarui Laporan
                         </button>

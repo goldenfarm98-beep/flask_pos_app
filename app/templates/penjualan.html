@@ -180,7 +180,7 @@
                             <div class="entry-field">
                                 <label for="quick-tax" class="font-weight-semibold">Pajak (%)</label>
                                 <input type="number" id="quick-tax" class="form-control form-control-lg" min="0"
-                                    step="0.5" value="0" data-next="ADD_ITEM" data-prev="#quick-discount">
+                                    step="0.5" value="{{ default_sales_tax }}" data-next="ADD_ITEM" data-prev="#quick-discount">
                             </div>
                             <div class="entry-field align-self-end">
                                 <button type="button" class="btn btn-entry btn-block" id="quick-add">
@@ -1035,6 +1035,7 @@
         const quickPrice = document.getElementById('quick-price');
         const quickDiscount = document.getElementById('quick-discount');
         const quickTax = document.getElementById('quick-tax');
+        const defaultSalesTax = Number({{ default_sales_tax|tojson }}) || 0;
         const quickAddButton = document.getElementById('quick-add');
         const cancelEntryButton = document.getElementById('cancel-entry');
         const newSaleButton = document.getElementById('new-sale');
@@ -1569,7 +1570,7 @@
                 quickDiscount.value = 0;
             }
             if (quickTax) {
-                quickTax.value = 0;
+                quickTax.value = defaultSalesTax;
             }
         }
 

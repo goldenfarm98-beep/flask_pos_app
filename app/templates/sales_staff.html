@@ -34,6 +34,45 @@
     </div>
     {% endif %}
 
+    {% if role_permissions %}
+    <div class="card shadow-sm border-0 mb-4 permission-card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+                <div>
+                    <p class="eyebrow text-uppercase mb-1">Hak akses</p>
+                    <h3 class="h5 mb-0">Checklist per peran</h3>
+                </div>
+                <span class="badge badge-pill badge-light">Informasi</span>
+            </div>
+            <div class="row permission-grid">
+                {% for role in role_permissions %}
+                    <div class="col-md-6 col-xl-3 mb-3">
+                        <div class="permission-tile {{ role.accent_class }}">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <div class="permission-title">{{ role.role }}</div>
+                                    <small class="text-muted">{{ role.note }}</small>
+                                </div>
+                                <span class="badge badge-pill {{ role.badge_class }}">{{ role.role }}</span>
+                            </div>
+                            <ul class="permission-list">
+                                {% for item in role.items_list %}
+                                    <li>
+                                        <label class="permission-item">
+                                            <input type="checkbox" checked disabled>
+                                            <span>{{ item }}</span>
+                                        </label>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="row align-items-start">
         <div class="col-xl-5">
             <div class="card shadow-sm mb-4 add-card">
@@ -193,6 +232,52 @@
     .add-card {
         border-radius: 18px;
     }
+    .permission-card {
+        border-radius: 18px;
+    }
+    .permission-tile {
+        border-radius: 16px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        padding: 1rem;
+        background: #fff;
+        height: 100%;
+    }
+    .permission-title {
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .permission-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+    }
+    .permission-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: #1f2937;
+    }
+    .permission-item input {
+        accent-color: #2563eb;
+        width: 16px;
+        height: 16px;
+    }
+    .permission-admin {
+        background: rgba(239, 68, 68, 0.06);
+    }
+    .permission-sales {
+        background: rgba(14, 165, 233, 0.08);
+    }
+    .permission-kasir {
+        background: rgba(34, 197, 94, 0.08);
+    }
+    .permission-gudang {
+        background: rgba(234, 179, 8, 0.12);
+    }
     .badge-soft {
         display: inline-flex;
         align-items: center;
@@ -204,6 +289,26 @@
         font-weight: 600;
         text-transform: uppercase;
         font-size: 0.75rem;
+    }
+    .badge-soft-danger {
+        background: rgba(239, 68, 68, 0.16);
+        color: #b91c1c;
+        font-weight: 650;
+    }
+    .badge-soft-info {
+        background: rgba(14, 165, 233, 0.16);
+        color: #0369a1;
+        font-weight: 650;
+    }
+    .badge-soft-success {
+        background: rgba(22, 163, 74, 0.16);
+        color: #15803d;
+        font-weight: 650;
+    }
+    .badge-soft-warning {
+        background: rgba(234, 179, 8, 0.2);
+        color: #b45309;
+        font-weight: 650;
     }
     .staff-table thead th {
         text-transform: uppercase;

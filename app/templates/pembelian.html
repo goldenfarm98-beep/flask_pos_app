@@ -61,7 +61,7 @@
                     </div>
                     <div class="form-group">
                         <label for="no_faktur" class="font-weight-semibold">Nomor faktur</label>
-                        <input type="text" class="form-control form-control-lg" id="no_faktur" name="no_faktur" placeholder="Misal: INV-2025-001" required>
+                        <input type="text" class="form-control form-control-lg" id="no_faktur" name="no_faktur" placeholder="Misal: INV-2025-001" value="{{ draft_purchase_invoice }}" required>
                         <div id="fakturFeedback" class="invoice-feedback mt-2">
                             <i class="icon fas fa-info-circle"></i>
                             <span class="text">Pastikan nomor faktur unik.</span>
@@ -74,6 +74,19 @@
                             <option value="Tempo">Tempo</option>
                             <option value="Transfer">Transfer</option>
                         </select>
+                    </div>
+                    <div class="form-group" id="tempo-due-date-group" style="display: none;">
+                        <label for="tempo_due_date" class="font-weight-semibold">Jatuh tempo</label>
+                        <input type="date" class="form-control form-control-lg" id="tempo_due_date" name="tempo_due_date">
+                        <small class="text-muted">Wajib diisi untuk pembayaran tempo.</small>
+                    </div>
+                    <div class="form-group" id="transfer-bank-group" style="display: none;">
+                        <label for="transfer_bank" class="font-weight-semibold">Bank transfer</label>
+                        <input type="text" class="form-control form-control-lg" id="transfer_bank" name="transfer_bank" placeholder="Misal: BCA">
+                    </div>
+                    <div class="form-group" id="transfer-ref-group" style="display: none;">
+                        <label for="transfer_reference" class="font-weight-semibold">No referensi transfer</label>
+                        <input type="text" class="form-control form-control-lg" id="transfer_reference" name="transfer_reference" placeholder="Wajib diisi">
                     </div>
                     <div class="form-group">
                         <label for="supplier_id" class="font-weight-semibold">Supplier</label>
@@ -137,7 +150,7 @@
                         </div>
                         <div class="form-group">
                             <label for="item_pajak">Pajak (%)</label>
-                            <input type="number" class="form-control" id="item_pajak" min="0" step="0.5" value="0">
+                            <input type="number" class="form-control" id="item_pajak" min="0" step="0.5" value="{{ default_purchase_tax }}">
                         </div>
                         <div class="form-group">
                             <label for="item_harga_jual">Harga jual</label>
@@ -448,11 +461,18 @@ document.addEventListener('DOMContentLoaded', function () {
     const supplierSelect = document.getElementById('supplier_id');
     const supplierMeta = document.getElementById('supplier-meta');
     const paymentSelect = document.getElementById('jenis_pembayaran');
+    const tempoDueDateGroup = document.getElementById('tempo-due-date-group');
+    const tempoDueDateInput = document.getElementById('tempo_due_date');
+    const transferBankGroup = document.getElementById('transfer-bank-group');
+    const transferBankInput = document.getElementById('transfer_bank');
+    const transferRefGroup = document.getElementById('transfer-ref-group');
+    const transferRefInput = document.getElementById('transfer_reference');
     const invoiceInput = document.getElementById('no_faktur');
     const invoiceFeedback = document.getElementById('fakturFeedback');
     const tanggalInput = document.getElementById('tanggal_faktur');
     const formElement = document.getElementById('pembelianForm');
     const csrfTokenValue = document.querySelector('input[name="csrf_token"]')?.value || '';
+    const defaultPurchaseTax = Number({{ default_purchase_tax|tojson }}) || 0;
 
     const entry = {
         search: document.getElementById('item_product_search'),
@@ -505,10 +525,16 @@ document.addEventListener('DOMContentLoaded', function () {
         entry.hargaJual,
         entry.expDate
     ].filter(Boolean);
+    const paymentFields = [
+        tempoDueDateInput,
+        transferBankInput,
+        transferRefInput
+    ].filter(Boolean);
     const navigationOrder = [
         tanggalInput,
         invoiceInput,
         paymentSelect,
+        ...paymentFields,
         supplierSelect,
         ...itemFields
     ].filter(Boolean);
@@ -669,7 +695,7 @@ function resetEntryForm() {
         entry.qty.value = 1;
         entry.hargaBeli.value = '';
         entry.diskon.value = 0;
-        entry.pajak.value = 0;
+        entry.pajak.value = defaultPurchaseTax;
         entry.hargaJual.value = '';
         entry.expDate.value = '';
         if (entry.hpp) {
@@ -821,9 +847,14 @@ function resetEntryForm() {
         if (nextIndex >= navigationOrder.length) {
             nextIndex = navigationOrder.length - 1;
         }
-        const nextEl = navigationOrder[nextIndex];
-        if (nextEl && typeof nextEl.focus === 'function') {
-            nextEl.focus();
+        while (nextIndex >= 0 && nextIndex < navigationOrder.length) {
+            const nextEl = navigationOrder[nextIndex];
+            const isVisible = nextEl && nextEl.offsetParent !== null;
+            if (nextEl && !nextEl.disabled && isVisible && typeof nextEl.focus === 'function') {
+                nextEl.focus();
+                break;
+            }
+            nextIndex += offset > 0 ? 1 : -1;
         }
     }
 
@@ -852,6 +883,28 @@ function resetEntryForm() {
         }
         event.preventDefault();
         focusByOffset(target, event.shiftKey ? -1 : 1);
+    }
+
+    function updatePaymentFields() {
+        const method = paymentSelect ? paymentSelect.value : 'Tunai';
+        if (tempoDueDateGroup) {
+            tempoDueDateGroup.style.display = method === 'Tempo' ? '' : 'none';
+            if (method !== 'Tempo' && tempoDueDateInput) {
+                tempoDueDateInput.value = '';
+            }
+        }
+        if (transferBankGroup) {
+            transferBankGroup.style.display = method === 'Transfer' ? '' : 'none';
+            if (method !== 'Transfer' && transferBankInput) {
+                transferBankInput.value = '';
+            }
+        }
+        if (transferRefGroup) {
+            transferRefGroup.style.display = method === 'Transfer' ? '' : 'none';
+            if (method !== 'Transfer' && transferRefInput) {
+                transferRefInput.value = '';
+            }
+        }
     }
 
     function handleTableAction(event) {
@@ -965,7 +1018,10 @@ function resetEntryForm() {
             tanggal_faktur: tanggalInput.value,
             no_faktur: invoiceInput.value.trim(),
             supplier: supplierSelect.value,
-            jenis_pembayaran: paymentSelect ? paymentSelect.value : 'Tunai',
+            jenis_pembayaran: paymentSelect ? paymentSelect.value.trim() : 'Tunai',
+            due_date: tempoDueDateInput ? tempoDueDateInput.value : '',
+            payment_bank: transferBankInput ? transferBankInput.value.trim() : '',
+            payment_reference: transferRefInput ? transferRefInput.value.trim() : '',
             items: state.items.map(item => ({
                 kode_barang: item.kode_barang,
                 nama_barang: item.nama_barang,
@@ -988,6 +1044,20 @@ function resetEntryForm() {
 
         if (!payload.jenis_pembayaran) {
             alert('Pilih jenis pembayaran terlebih dahulu.');
+            return;
+        }
+        if (payload.jenis_pembayaran === 'Tempo' && !payload.due_date) {
+            alert('Tanggal jatuh tempo wajib diisi untuk pembayaran tempo.');
+            if (tempoDueDateInput) {
+                tempoDueDateInput.focus();
+            }
+            return;
+        }
+        if (payload.jenis_pembayaran === 'Transfer' && !payload.payment_reference) {
+            alert('Nomor referensi transfer wajib diisi.');
+            if (transferRefInput) {
+                transferRefInput.focus();
+            }
             return;
         }
 
@@ -1025,6 +1095,14 @@ function resetEntryForm() {
         }
         invoiceCheckTimeout = setTimeout(checkInvoiceUniqueness, 600);
     });
+    if (invoiceInput.value.trim()) {
+        checkInvoiceUniqueness();
+    }
+
+    if (paymentSelect) {
+        paymentSelect.addEventListener('change', updatePaymentFields);
+        updatePaymentFields();
+    }
 
     navigationOrder.forEach(field => {
         field.addEventListener('keydown', handleKeyboardAdvance);

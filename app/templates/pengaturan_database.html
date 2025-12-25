@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Pengaturan Database{% endblock %}
+
+{% block content %}
+<section class="database-settings">
+    <div class="card shadow-sm border-0 mb-4 db-hero">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Pengaturan</p>
+                <h1 class="display-6 mb-2 text-navy">Database & backup</h1>
+                <p class="mb-0 text-muted">Cek koneksi database, buat backup, dan lakukan restore dengan aman.</p>
+            </div>
+            <div class="status-pill mt-4 mt-lg-0">
+                {% if connection_status.ok %}
+                    <span class="badge badge-pill badge-soft-success">Koneksi OK</span>
+                {% else %}
+                    <span class="badge badge-pill badge-soft-danger">Koneksi bermasalah</span>
+                {% endif %}
+                {% if connection_status.latency_ms %}
+                    <div class="small text-muted">Latensi {{ connection_status.latency_ms }} ms</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-lg-4 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Info database</p>
+                    <h3 class="h5 mb-2 text-uppercase">{{ db_info.engine or 'Tidak diketahui' }}</h3>
+                    <p class="small text-muted mb-1">
+                        {% if db_info.name %}{{ db_info.name }}{% elif db_info.path %}{{ db_info.path|truncate(36) }}{% else %}Nama database tidak tersedia{% endif %}
+                        {% if db_info.host %} • Host {{ db_info.host }}{% endif %}
+                    </p>
+                    <p class="small text-muted mb-0">
+                        {% if db_info.size is not none %}
+                            Ukuran: {{ db_info.size|filesizeformat }}
+                        {% else %}
+                            Ukuran belum tersedia
+                        {% endif %}
+                        {% if db_info.path %}<br>Lokasi: {{ db_info.path|truncate(50) }}{% endif %}
+                    </p>
+                    {% if not backup_supported %}
+                        <div class="alert alert-light border-dashed mt-3 mb-0" role="alert">
+                            Backup/restore otomatis hanya tersedia untuk database SQLite.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Cek koneksi</p>
+                    <h3 class="h5 mb-3">Status akses database</h3>
+                    <p class="small text-muted mb-3">{{ connection_status.message }}</p>
+                    <form method="POST" action="{{ url_for('main.pengaturan_database') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="check">
+                        <button type="submit" class="btn btn-outline-primary btn-block">
+                            <i class="fas fa-link mr-2"></i>Cek koneksi
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Backup</p>
+                    <h3 class="h5 mb-3">Cadangan database</h3>
+                    <p class="small text-muted mb-3">Buat backup manual sebelum melakukan perubahan besar.</p>
+                    <form method="POST" action="{{ url_for('main.pengaturan_database') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="backup">
+                        <button type="submit" class="btn btn-primary btn-block" {% if not backup_supported %}disabled{% endif %}>
+                            <i class="fas fa-download mr-2"></i>Buat backup
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-7 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <p class="eyebrow text-uppercase mb-1">Daftar backup</p>
+                            <h3 class="h5 mb-0">Cadangan tersimpan</h3>
+                        </div>
+                        <span class="badge badge-pill badge-light">{{ backups|length }} file</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead class="text-uppercase small text-muted">
+                                <tr>
+                                    <th>File</th>
+                                    <th>Ukuran</th>
+                                    <th>Terakhir diubah</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for backup in backups %}
+                                    <tr>
+                                        <td class="font-weight-semibold">{{ backup.name }}</td>
+                                        <td>{{ backup.size|filesizeformat }}</td>
+                                        <td>{{ backup.mtime.strftime('%d %b %Y %H:%M') }}</td>
+                                        <td class="text-right">
+                                            <form method="POST" action="{{ url_for('main.pengaturan_database') }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="backup_name" value="{{ backup.name }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                    onclick="return confirm('Hapus file backup ini?')">
+                                                    <i class="fas fa-trash-alt mr-1"></i>Hapus
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                {% if not backups %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted">Belum ada backup tersimpan.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <p class="eyebrow text-uppercase mb-1">Restore</p>
+                    <h3 class="h5 mb-3">Pulihkan database</h3>
+                    <form method="POST" action="{{ url_for('main.pengaturan_database') }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="restore">
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Pilih backup tersimpan</label>
+                            <select class="custom-select" name="backup_choice" {% if not backup_supported %}disabled{% endif %}>
+                                <option value="">-- Pilih file --</option>
+                                {% for backup in backups %}
+                                    <option value="{{ backup.name }}">{{ backup.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Atau unggah file backup</label>
+                            <input type="file" class="form-control-file" name="backup_file" accept=".db,.sqlite,.sqlite3,.bak" {% if not backup_supported %}disabled{% endif %}>
+                            <small class="text-muted d-block mt-1">Format yang didukung: .db, .sqlite, .sqlite3, .bak</small>
+                        </div>
+                        <div class="alert alert-danger" role="alert">
+                            Restore akan mengganti data saat ini. Pastikan Anda sudah membuat backup terbaru.
+                        </div>
+                        <button type="submit" class="btn btn-danger btn-block" {% if not backup_supported %}disabled{% endif %}
+                            onclick="return confirm('Restore database akan mengganti data saat ini. Lanjutkan?')">
+                            <i class="fas fa-undo-alt mr-2"></i>Restore database
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .database-settings .db-hero {
+        background: linear-gradient(135deg, rgba(14, 116, 144, 0.1), rgba(59, 130, 246, 0.08), rgba(15, 23, 42, 0.02));
+    }
+    .database-settings .status-pill {
+        padding: 0.75rem 1rem;
+        border-radius: 16px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: #fff;
+        text-align: center;
+        min-width: 180px;
+    }
+    .database-settings .badge-soft-success {
+        background: rgba(22, 163, 74, 0.14);
+        color: #15803d;
+        font-weight: 650;
+    }
+    .database-settings .badge-soft-danger {
+        background: rgba(220, 53, 69, 0.12);
+        color: #b91c1c;
+        font-weight: 650;
+    }
+    .database-settings .alert.border-dashed {
+        border: 1px dashed rgba(15, 23, 42, 0.18);
+        color: #475569;
+        background: #f8fafc;
+    }
+</style>
+{% endblock %}
