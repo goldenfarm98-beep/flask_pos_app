@@ -207,6 +207,9 @@ class Pembelian(db.Model):
     no_faktur = db.Column(db.String(50), unique=True, nullable=False)
     supplier_id = db.Column(db.Integer, db.ForeignKey('supplier.id'), nullable=False)
     jenis_pembayaran = db.Column(db.String(20), nullable=False, default='Tunai')
+    due_date = db.Column(db.Date, nullable=True)
+    payment_bank = db.Column(db.String(120), nullable=True)
+    payment_reference = db.Column(db.String(100), nullable=True)
     supplier = db.relationship('Supplier', backref=db.backref('pembelian', lazy=True))
     barang = db.relationship('BarangPembelian', backref='pembelian', cascade='all, delete-orphan')
     accounting_period_id = db.Column(

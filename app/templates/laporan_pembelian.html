@@ -55,6 +55,11 @@
                     </div>
                 </div>
                 <div class="form-row justify-content-end mt-3">
+                    <div class="col-lg-3 col-md-4 mb-2 mb-md-0">
+                        <a class="btn btn-outline-primary btn-lg btn-block" href="{{ url_for('main.laporan_pembelian_print', **request.args) }}" target="_blank" rel="noreferrer">
+                            <i class="fas fa-print mr-2"></i>Cetak Laporan
+                        </a>
+                    </div>
                     <div class="col-lg-3 col-md-4">
                         <button class="btn btn-primary btn-lg btn-block" type="submit">
                             <i class="fas fa-sync mr-2"></i>Perbarui Laporan
@@ -145,6 +150,11 @@
                                 <tr class="purchase-detail-row" id="purchase-detail-{{ purchase.id }}" hidden>
                                     <td colspan="7">
                                         <div class="purchase-detail-card">
+                                            <div class="d-flex justify-content-end mb-2 flex-wrap" style="gap: 0.4rem;">
+                                                <a href="{{ url_for('main.laporan_pembelian_print_detail', purchase_id=purchase.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noreferrer">
+                                                    <i class="fas fa-print mr-1"></i>Cetak transaksi
+                                                </a>
+                                            </div>
                                             <div class="detail-meta-grid">
                                                 <div>
                                                     <small class="label text-uppercase">Faktur</small>
@@ -161,6 +171,18 @@
                                                 <div>
                                                     <small class="label text-uppercase">Pembayaran</small>
                                                     <div class="value">{{ purchase.payment or 'Tunai' }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label text-uppercase">Jatuh tempo</small>
+                                                    <div class="value">{{ purchase.due_date_label }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label text-uppercase">Bank</small>
+                                                    <div class="value">{{ purchase.payment_bank }}</div>
+                                                </div>
+                                                <div>
+                                                    <small class="label text-uppercase">No referensi</small>
+                                                    <div class="value">{{ purchase.payment_reference }}</div>
                                                 </div>
                                             </div>
                                             <div class="table-responsive">
