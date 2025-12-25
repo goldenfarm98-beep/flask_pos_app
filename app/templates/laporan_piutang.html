@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan Piutang{% endblock %}
+
+{% macro format_currency(value) -%}
+    {{ ('Rp {:,.0f}'.format(value or 0)).replace(',', '.') }}
+{%- endmacro %}
+{% macro format_number(value) -%}
+    {{ '{:,}'.format(value or 0).replace(',', '.') }}
+{%- endmacro %}
+
+{% block content %}
+<section class="receivable-report">
+    <div class="card shadow-sm border-0 mb-4 receivable-hero">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Piutang Tempo</p>
+                <h1 class="display-5 mb-2 text-navy">Pantau jatuh tempo pembayaran</h1>
+                <p class="mb-0 text-muted">Daftar penjualan tempo, status jatuh tempo, dan sisa tagihan.</p>
+            </div>
+            <div class="report-kpi text-lg-right mt-4 mt-lg-0">
+                <small class="text-uppercase text-muted d-block">Total piutang terbuka</small>
+                <div class="h3 font-weight-bold mb-1">{{ format_currency(total_outstanding) }}</div>
+                <span class="badge badge-pill badge-soft-danger">Overdue {{ format_number(overdue_count) }}</span>
+            </div>
+        </div>
+        <div class="card-footer bg-transparent">
+            <form class="receivable-filter" method="get">
+                <div class="form-row">
+                    <div class="form-group col-lg-4 col-md-6 mb-3">
+                        <label class="text-muted small text-uppercase">Cari faktur / pelanggan / sales</label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            </div>
+                            <input type="text" class="form-control" name="search" placeholder="Misal: F2025 / Andi" value="{{ filter_values.search }}">
+                        </div>
+                    </div>
+                    <div class="form-group col-lg-2 col-md-6 mb-3">
+                        <label class="text-muted small text-uppercase">Mulai jatuh tempo</label>
+                        <input type="date" class="form-control" name="start_due" value="{{ filter_values.start_due }}">
+                    </div>
+                    <div class="form-group col-lg-2 col-md-6 mb-3">
+                        <label class="text-muted small text-uppercase">Sampai jatuh tempo</label>
+                        <input type="date" class="form-control" name="end_due" value="{{ filter_values.end_due }}">
+                    </div>
+                    <div class="form-group col-lg-2 col-md-6 mb-3">
+                        <label class="text-muted small text-uppercase">Status</label>
+                        <select name="status" class="custom-select">
+                            <option value="">Semua status</option>
+                            <option value="open" {% if filter_values.status == 'open' %}selected{% endif %}>Belum lunas</option>
+                            <option value="overdue" {% if filter_values.status == 'overdue' %}selected{% endif %}>Jatuh tempo</option>
+                            <option value="upcoming" {% if filter_values.status == 'upcoming' %}selected{% endif %}>Belum jatuh tempo</option>
+                            <option value="paid" {% if filter_values.status == 'paid' %}selected{% endif %}>Lunas</option>
+                            <option value="nodue" {% if filter_values.status == 'nodue' %}selected{% endif %}>Tanpa tanggal</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-lg-2 col-md-6 mb-3">
+                        <label class="text-muted small text-uppercase">Sortir</label>
+                        <select name="sort" class="custom-select">
+                            <option value="due_asc" {% if sort_option == 'due_asc' %}selected{% endif %}>Jatuh tempo tercepat</option>
+                            <option value="due_desc" {% if sort_option == 'due_desc' %}selected{% endif %}>Jatuh tempo terlama</option>
+                            <option value="outstanding_desc" {% if sort_option == 'outstanding_desc' %}selected{% endif %}>Sisa terbesar</option>
+                            <option value="outstanding_asc" {% if sort_option == 'outstanding_asc' %}selected{% endif %}>Sisa terkecil</option>
+                            <option value="total_desc" {% if sort_option == 'total_desc' %}selected{% endif %}>Total terbesar</option>
+                            <option value="total_asc" {% if sort_option == 'total_asc' %}selected{% endif %}>Total terkecil</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-lg-3 col-md-6 mb-3">
+                        <label class="text-muted small text-uppercase">Pelanggan</label>
+                        <select class="custom-select" name="pelanggan">
+                            <option value="">Semua pelanggan</option>
+                            {% for pelanggan in customer_options %}
+                                <option value="{{ pelanggan.id }}" {% if filter_values.pelanggan == pelanggan.id %}selected{% endif %}>
+                                    {{ pelanggan.nama }} ({{ pelanggan.pelanggan_id }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group col-lg-3 col-md-6 mb-3">
+                        <label class="text-muted small text-uppercase">Sales</label>
+                        <select class="custom-select" name="sales">
+                            <option value="">Semua sales</option>
+                            {% for sales in sales_options %}
+                                <option value="{{ sales.id }}" {% if filter_values.sales == sales.id %}selected{% endif %}>
+                                    {{ sales.username }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group col-lg-2 col-md-6 mb-3">
+                        <label class="text-muted small text-uppercase">Per halaman</label>
+                        <select name="per_page" class="custom-select">
+                            {% for candidate in [10, 20, 30, 50] %}
+                                <option value="{{ candidate }}" {% if per_page == candidate %}selected{% endif %}>{{ candidate }} data</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group col-lg-4 col-md-6 d-flex align-items-end justify-content-between flex-wrap mb-0">
+                        <div class="small text-muted mt-2">
+                            Tanpa tanggal: {{ format_number(no_due_count) }} faktur
+                        </div>
+                        <div class="mt-3 mt-md-0">
+                            <a href="{{ url_for('main.laporan_piutang') }}" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-sync-alt mr-1"></i>Reset
+                            </a>
+                            <button type="submit" class="btn btn-primary btn-sm ml-2">
+                                <i class="fas fa-filter mr-1"></i>Terapkan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row summary-grid mb-4">
+        {% for card in summary_cards %}
+            <div class="col-md-6 col-xl-3 mb-3">
+                <div class="summary-card shadow-sm h-100">
+                    <div class="summary-icon {{ card.accent }}">
+                        <i class="fas {{ card.icon }}"></i>
+                    </div>
+                    <div class="summary-body">
+                        <small class="text-uppercase text-muted">{{ card.label }}</small>
+                        <div class="summary-value">
+                            {% if card.type == 'currency' %}
+                                {{ format_currency(card.value) }}
+                            {% else %}
+                                {{ format_number(card.value) }}
+                            {% endif %}
+                        </div>
+                        <p class="small text-muted mb-0">{{ card.description }}</p>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+                <div>
+                    <p class="eyebrow text-uppercase mb-1">Daftar piutang</p>
+                    <h3 class="h5 mb-0">Faktur tempo</h3>
+                </div>
+                <span class="badge badge-pill badge-light">{{ format_number(pagination.total_records) }} faktur</span>
+            </div>
+            {% if filter_active %}
+                <div class="alert alert-info py-2 px-3 small mb-3">
+                    Filter aktif
+                    {% if filter_values.start_due or filter_values.end_due %}
+                        - Jatuh tempo {{ filter_values.start_due or 'awal' }} sampai {{ filter_values.end_due or 'akhir' }}
+                    {% endif %}
+                    {% if filter_values.status %}
+                        - Status {{ filter_values.status }}
+                    {% endif %}
+                    {% if filter_values.search %}
+                        - Kata kunci "{{ filter_values.search }}"
+                    {% endif %}
+                </div>
+            {% endif %}
+            {% if receivable_rows %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle receivable-table mb-0">
+                        <thead class="text-uppercase small text-muted">
+                            <tr>
+                                <th>Faktur</th>
+                                <th>Pelanggan</th>
+                                <th>Sales</th>
+                                <th>Jatuh tempo</th>
+                                <th class="text-right">Total</th>
+                                <th class="text-right">Dibayar</th>
+                                <th class="text-right">Sisa</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-right">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in receivable_rows %}
+                                <tr>
+                                    <td>
+                                        <div class="font-weight-semibold text-navy">{{ row.invoice }}</div>
+                                        <small class="text-muted">Tanggal {{ format_date(row.sale_date) }}</small>
+                                    </td>
+                                    <td>
+                                        <div class="font-weight-semibold">{{ row.customer_name }}</div>
+                                        <small class="text-muted">{{ row.customer_code }}</small>
+                                    </td>
+                                    <td>{{ row.sales_name }}</td>
+                                    <td>
+                                        <div class="font-weight-semibold">
+                                            {{ format_date(row.due_date) if row.due_date else '-' }}
+                                        </div>
+                                    </td>
+                                    <td class="text-right font-weight-semibold">{{ format_currency(row.total) }}</td>
+                                    <td class="text-right">{{ format_currency(row.amount_paid) }}</td>
+                                    <td class="text-right font-weight-semibold text-danger">{{ format_currency(row.outstanding) }}</td>
+                                    <td class="text-center">
+                                        <span class="badge badge-pill {{ row.status_badge }}">{{ row.status_label }}</span>
+                                        {% if row.status_hint %}
+                                            <small class="text-muted d-block">{{ row.status_hint }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-right">
+                                        <a href="{{ url_for('main.penjualan_invoice', sale_id=row.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noreferrer">
+                                            <i class="fas fa-file-invoice mr-1"></i>Invoice
+                                        </a>
+                                        <a href="{{ url_for('main.penjualan_receipt', sale_id=row.id) }}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noreferrer">
+                                            <i class="fas fa-receipt mr-1"></i>Struk
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-inbox fa-2x mb-2"></i>
+                    <div>Belum ada data piutang tempo sesuai filter.</div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+        <p class="small text-muted mb-3 mb-md-0">
+            Total {{ format_number(pagination.total_records) }} faktur - Halaman {{ pagination.page }} dari {{ pagination.total_pages }}
+        </p>
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ pagination.prev_url if pagination.prev_url else '#' }}">&laquo;</a>
+                </li>
+                {% for link in pagination.page_links %}
+                    <li class="page-item {% if link.current %}active{% endif %}">
+                        <a class="page-link" href="{{ link.url }}">{{ link.number }}</a>
+                    </li>
+                {% endfor %}
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ pagination.next_url if pagination.next_url else '#' }}">&raquo;</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+</section>
+
+<style>
+    .receivable-hero {
+        border-radius: 18px;
+        background: #f8fafc;
+    }
+    .receivable-hero .display-5 {
+        font-weight: 700;
+    }
+    .summary-card {
+        border-radius: 16px;
+        padding: 1rem 1.25rem;
+        background: #fff;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        display: flex;
+        gap: 0.9rem;
+        align-items: flex-start;
+    }
+    .summary-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(37, 99, 235, 0.12);
+        color: #1d4ed8;
+        flex: 0 0 auto;
+    }
+    .summary-icon.text-danger {
+        background: rgba(220, 38, 38, 0.12);
+        color: #dc2626;
+    }
+    .summary-icon.text-warning {
+        background: rgba(234, 179, 8, 0.16);
+        color: #b45309;
+    }
+    .summary-icon.text-primary {
+        background: rgba(37, 99, 235, 0.16);
+        color: #1d4ed8;
+    }
+    .summary-body .summary-value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        margin: 0.15rem 0 0.35rem;
+    }
+    .receivable-table thead th {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #475569;
+        border-top: none;
+        background: #f8fafc;
+    }
+    .badge-soft-danger {
+        background: rgba(220, 38, 38, 0.14);
+        color: #b91c1c;
+        font-weight: 600;
+    }
+    .badge-soft-warning {
+        background: rgba(234, 179, 8, 0.16);
+        color: #b45309;
+        font-weight: 600;
+    }
+    .badge-soft-success {
+        background: rgba(22, 163, 74, 0.14);
+        color: #15803d;
+        font-weight: 600;
+    }
+    .badge-soft-secondary {
+        background: rgba(148, 163, 184, 0.18);
+        color: #475569;
+        font-weight: 600;
+    }
+    .pagination .page-link {
+        border-radius: 999px;
+        margin: 0 0.1rem;
+    }
+    .pagination .page-item.active .page-link {
+        background: #2563eb;
+        border-color: #2563eb;
+    }
+    @media (max-width: 768px) {
+        .summary-card {
+            flex-direction: column;
+        }
+    }
+</style>
+{% endblock %}

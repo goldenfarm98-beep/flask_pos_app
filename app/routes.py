@@ -29,7 +29,7 @@ psutil = __import__("psutil") if _psutil_spec else None
 
 import pandas as pd
 from flask import make_response
-from sqlalchemy import or_, and_, func, inspect, text
+from sqlalchemy import or_, and_, case, func, inspect, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import joinedload
 from sqlalchemy.engine.url import make_url
@@ -50,6 +50,7 @@ from app.models import (
     Pembelian,
     BarangPembelian,
     Penjualan,
+    ReceivablePayment,
     DetailPenjualan,
     PasswordResetToken,
     PriceLevel,
@@ -543,6 +544,17 @@ def _clean_import_date(value):
         return pd.to_datetime(value).date()
     except Exception:
         return None
+
+
+def _ensure_receivable_payment_table() -> bool:
+    try:
+        inspector = inspect(db.engine)
+        if inspector.has_table("receivable_payment"):
+            return True
+        ReceivablePayment.__table__.create(db.engine, checkfirst=True)
+        return True
+    except Exception:
+        return False
 
 
 def _perform_produk_import(df, progress_cb=None):
@@ -5438,6 +5450,8 @@ def laporan_pembelian():
     end_date = _parse_date_param(request.args.get("end_date")) or today
     if end_date < start_date:
         start_date, end_date = end_date, start_date
+    search_query = (request.args.get("search") or "").strip()
+    supplier_id = _parse_int_param(request.args.get("supplier"))
 
     purchase_query = (
         Pembelian.query.options(
@@ -5448,6 +5462,13 @@ def laporan_pembelian():
         .filter(Pembelian.tanggal_faktur <= end_date)
         .order_by(Pembelian.tanggal_faktur.asc(), Pembelian.id.asc())
     )
+    if supplier_id:
+        purchase_query = purchase_query.filter(Pembelian.supplier_id == supplier_id)
+    if search_query:
+        like = f"%{search_query}%"
+        purchase_query = purchase_query.outerjoin(Supplier).filter(
+            or_(Pembelian.no_faktur.ilike(like), Supplier.name.ilike(like))
+        )
     purchase_records = purchase_query.all()
 
     totals = {
@@ -5464,12 +5485,14 @@ def laporan_pembelian():
     )
 
     largest_invoice = {"amount": 0.0, "supplier": "Tanpa supplier", "date": "-"}
+    purchase_table = []
 
     for purchase in purchase_records:
         invoice_total = 0.0
         invoice_units = 0
         invoice_date = purchase.tanggal_faktur or today
         month_key = (invoice_date.year, invoice_date.month)
+        line_items = []
 
         for item in purchase.barang:
             qty = item.jumlah or 0
@@ -5490,6 +5513,17 @@ def laporan_pembelian():
 
             invoice_total += final_total
             invoice_units += qty
+            line_items.append(
+                {
+                    "name": item.nama_barang,
+                    "code": item.kode_barang,
+                    "qty": qty,
+                    "unit_price": unit_price,
+                    "discount": f"{discount_pct:.1f}%",
+                    "tax": f"{tax_pct:.1f}%",
+                    "line_total": final_total,
+                }
+            )
 
         daily_map[invoice_date]["spent"] += invoice_total
         daily_map[invoice_date]["units"] += invoice_units
@@ -5510,6 +5544,18 @@ def laporan_pembelian():
                 purchase.supplier.name if purchase.supplier else "Tanpa supplier"
             )
             largest_invoice["date"] = _format_date_id(invoice_date)
+        purchase_table.append(
+            {
+                "id": purchase.id,
+                "no_faktur": purchase.no_faktur,
+                "supplier": purchase.supplier.name if purchase.supplier else "Tanpa supplier",
+                "tanggal_label": _format_date_id(invoice_date),
+                "payment": purchase.jenis_pembayaran,
+                "units": invoice_units,
+                "total": invoice_total,
+                "line_items": line_items,
+            }
+        )
 
     average_invoice = (
         totals["spend"] / totals["invoices"] if totals["invoices"] else 0.0
@@ -5537,6 +5583,12 @@ def laporan_pembelian():
     top_suppliers = sorted(
         supplier_map.values(), key=lambda entry: entry["spent"], reverse=True
     )[:5]
+    supplier_breakdown = [
+        entry for entry in supplier_map.values() if entry["spent"]
+    ]
+    supplier_breakdown = sorted(
+        supplier_breakdown, key=lambda entry: entry["spent"], reverse=True
+    )
 
     summary_cards = [
         {
@@ -5599,13 +5651,28 @@ def laporan_pembelian():
     filter_values = {
         "start_date": start_date.strftime("%Y-%m-%d"),
         "end_date": end_date.strftime("%Y-%m-%d"),
+        "supplier": supplier_id or "",
+        "search": search_query,
     }
     range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
+    filter_active = any(
+        [
+            search_query,
+            supplier_id,
+            request.args.get("start_date"),
+            request.args.get("end_date"),
+        ]
+    )
+    supplier_options = Supplier.query.order_by(Supplier.name.asc()).all()
 
     return render_template(
         "laporan_pembelian.html",
         summary_cards=summary_cards,
         insight_cards=insight_cards,
+        purchase_table=purchase_table,
+        filter_active=filter_active,
+        supplier_options=supplier_options,
+        supplier_breakdown=supplier_breakdown,
         top_suppliers=top_suppliers,
         daily_points=daily_points,
         monthly_breakdown=monthly_breakdown,
@@ -6840,6 +6907,9 @@ def laporan_penjualan_report():
     customer_map = defaultdict(
         lambda: {"name": "Pelanggan umum", "orders": 0, "revenue": 0.0}
     )
+    sales_map = defaultdict(
+        lambda: {"name": "Sales", "orders": 0, "revenue": 0.0}
+    )
     largest_invoice = {"amount": 0.0, "customer": "Pelanggan umum", "date": "-"}
     transaction_details = []
 
@@ -6935,6 +7005,13 @@ def laporan_penjualan_report():
         customer_entry["orders"] += 1
         customer_entry["revenue"] += net_invoice_revenue
 
+        sales_key = sale.sales_id or f"sales-{sale.id}"
+        sales_entry = sales_map[sales_key]
+        if sale.sales:
+            sales_entry["name"] = sale.sales.username
+        sales_entry["orders"] += 1
+        sales_entry["revenue"] += net_invoice_revenue
+
         if invoice_total > largest_invoice["amount"]:
             largest_invoice["amount"] = invoice_total
             largest_invoice["customer"] = (
@@ -6961,6 +7038,7 @@ def laporan_penjualan_report():
         if sale.payment_method == "Kartu":
             if sale.payment_channel and sale.payment_channel.name:
                 payment_label = f"Kartu - {sale.payment_channel.name}"
+        items_count = sum(item["qty"] for item in item_rows)
         transaction_details.append(
             {
                 "id": sale.id,
@@ -6969,6 +7047,8 @@ def laporan_penjualan_report():
                 "staff": staff_name,
                 "customer": {"name": customer_name, "code": customer_code},
                 "items": item_rows,
+                "line_items": item_rows,
+                "items_count": items_count,
                 "subtotal_before_discount": gross_subtotal_sum,
                 "total_discount": discount_sum,
                 "net_subtotal": net_subtotal,
@@ -7022,6 +7102,18 @@ def laporan_penjualan_report():
     top_customers = sorted(
         customer_map.values(), key=lambda entry: entry["revenue"], reverse=True
     )[:5]
+    sales_breakdown = [
+        entry for entry in sales_map.values() if entry["revenue"]
+    ]
+    sales_breakdown = sorted(
+        sales_breakdown, key=lambda entry: entry["revenue"], reverse=True
+    )
+    customer_breakdown = [
+        entry for entry in customer_map.values() if entry["revenue"]
+    ]
+    customer_breakdown = sorted(
+        customer_breakdown, key=lambda entry: entry["revenue"], reverse=True
+    )
 
     summary_cards = [
         {
@@ -7112,7 +7204,594 @@ def laporan_penjualan_report():
         customer_options=customer_options,
         largest_invoice=largest_invoice,
         transaction_details=transaction_details,
+        sales_breakdown=sales_breakdown,
+        customer_breakdown=customer_breakdown,
     )
+
+
+@bp.route("/laporan/piutang")
+@login_required
+@roles_required(*SALES_ROLES)
+def laporan_piutang():
+    today = datetime.utcnow().date()
+    search_query = (request.args.get("search") or "").strip()
+    pelanggan_id = _parse_int_param(request.args.get("pelanggan"))
+    sales_id = _parse_int_param(request.args.get("sales"))
+    status_filter = (request.args.get("status") or "").strip()
+    start_due = _parse_date_param(request.args.get("start_due"))
+    end_due = _parse_date_param(request.args.get("end_due"))
+    sort_option = request.args.get("sort", "due_asc")
+    per_page = request.args.get("per_page", type=int) or 10
+    per_page = max(5, min(per_page, 50))
+    page = request.args.get("page", type=int) or 1
+    if page < 1:
+        page = 1
+
+    base_filters = [Penjualan.payment_method == "Tempo"]
+    if search_query:
+        like = f"%{search_query}%"
+        base_filters.append(
+            or_(
+                Penjualan.no_faktur.ilike(like),
+                Penjualan.pelanggan.has(Pelanggan.nama.ilike(like)),
+                Penjualan.sales.has(User.username.ilike(like)),
+            )
+        )
+    if pelanggan_id:
+        base_filters.append(Penjualan.pelanggan_id == pelanggan_id)
+    if sales_id:
+        base_filters.append(Penjualan.sales_id == sales_id)
+    if start_due:
+        base_filters.append(Penjualan.due_date >= start_due)
+    if end_due:
+        base_filters.append(Penjualan.due_date <= end_due)
+
+    outstanding_expr = Penjualan.total_harga - func.coalesce(Penjualan.amount_paid, 0)
+    status_filters = []
+    if status_filter == "open":
+        status_filters.append(outstanding_expr > 0)
+    elif status_filter == "overdue":
+        status_filters.append(
+            and_(outstanding_expr > 0, Penjualan.due_date < today)
+        )
+    elif status_filter == "upcoming":
+        status_filters.append(
+            and_(outstanding_expr > 0, Penjualan.due_date >= today)
+        )
+    elif status_filter == "paid":
+        status_filters.append(outstanding_expr <= 0)
+    elif status_filter == "nodue":
+        status_filters.append(
+            and_(outstanding_expr > 0, Penjualan.due_date.is_(None))
+        )
+
+    list_filters = base_filters + status_filters
+
+    def apply_filters(query, filters):
+        return query.filter(*filters) if filters else query
+
+    total_records = (
+        apply_filters(db.session.query(func.count(Penjualan.id)), list_filters)
+        .scalar()
+        or 0
+    )
+    total_pages = max(1, (total_records + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * per_page
+
+    sort_map = {
+        "due_asc": Penjualan.due_date.asc(),
+        "due_desc": Penjualan.due_date.desc(),
+        "total_desc": Penjualan.total_harga.desc(),
+        "total_asc": Penjualan.total_harga.asc(),
+        "outstanding_desc": outstanding_expr.desc(),
+        "outstanding_asc": outstanding_expr.asc(),
+    }
+    order_clause = sort_map.get(sort_option, Penjualan.due_date.asc())
+
+    base_query = apply_filters(
+        Penjualan.query.options(
+            joinedload(Penjualan.pelanggan),
+            joinedload(Penjualan.sales),
+            joinedload(Penjualan.payment_channel),
+        ),
+        list_filters,
+    )
+    records = (
+        base_query.order_by(order_clause, Penjualan.id.desc())
+        .offset(offset)
+        .limit(per_page)
+        .all()
+    )
+
+    summary_base = base_filters
+    total_outstanding = (
+        apply_filters(
+            db.session.query(func.coalesce(func.sum(outstanding_expr), 0)),
+            summary_base + [outstanding_expr > 0],
+        ).scalar()
+        or 0.0
+    )
+    open_count = (
+        apply_filters(
+            db.session.query(func.count(Penjualan.id)),
+            summary_base + [outstanding_expr > 0],
+        ).scalar()
+        or 0
+    )
+    overdue_count = (
+        apply_filters(
+            db.session.query(func.count(Penjualan.id)),
+            summary_base + [outstanding_expr > 0, Penjualan.due_date < today],
+        ).scalar()
+        or 0
+    )
+    due_soon_end = today + timedelta(days=7)
+    due_soon_count = (
+        apply_filters(
+            db.session.query(func.count(Penjualan.id)),
+            summary_base
+            + [
+                outstanding_expr > 0,
+                Penjualan.due_date >= today,
+                Penjualan.due_date <= due_soon_end,
+            ],
+        ).scalar()
+        or 0
+    )
+    no_due_count = (
+        apply_filters(
+            db.session.query(func.count(Penjualan.id)),
+            summary_base + [outstanding_expr > 0, Penjualan.due_date.is_(None)],
+        ).scalar()
+        or 0
+    )
+
+    receivable_rows = []
+    for sale in records:
+        total = float(sale.total_harga or 0.0)
+        amount_paid = float(sale.amount_paid or 0.0)
+        outstanding = max(total - amount_paid, 0.0)
+        due_date = sale.due_date
+        status_label = "Lunas"
+        status_badge = "badge-soft-success"
+        status_hint = ""
+        if outstanding > 0:
+            if due_date:
+                delta_days = (due_date - today).days
+                if delta_days < 0:
+                    status_label = "Jatuh tempo"
+                    status_badge = "badge-soft-danger"
+                    status_hint = f"Terlambat {abs(delta_days)} hari"
+                elif delta_days == 0:
+                    status_label = "Jatuh tempo"
+                    status_badge = "badge-soft-warning"
+                    status_hint = "Jatuh tempo hari ini"
+                else:
+                    status_label = "Belum jatuh tempo"
+                    status_badge = "badge-soft-warning"
+                    status_hint = f"H-{delta_days} hari"
+            else:
+                status_label = "Tanpa tanggal"
+                status_badge = "badge-soft-secondary"
+                status_hint = "Isi tanggal tempo"
+
+        customer_name = sale.pelanggan.nama if sale.pelanggan else "Umum"
+        customer_code = sale.pelanggan.pelanggan_id if sale.pelanggan else "-"
+        sales_name = sale.sales.username if sale.sales else "-"
+
+        receivable_rows.append(
+            {
+                "id": sale.id,
+                "invoice": sale.no_faktur,
+                "sale_date": sale.tanggal_penjualan,
+                "due_date": due_date,
+                "customer_name": customer_name,
+                "customer_code": customer_code,
+                "sales_name": sales_name,
+                "total": total,
+                "amount_paid": amount_paid,
+                "outstanding": outstanding,
+                "status_label": status_label,
+                "status_badge": status_badge,
+                "status_hint": status_hint,
+            }
+        )
+
+    filter_active = any(
+        [search_query, pelanggan_id, sales_id, start_due, end_due, status_filter]
+    )
+
+    def _date_value_to_str(value):
+        return value.strftime("%Y-%m-%d") if value else ""
+
+    filter_values = {
+        "search": search_query,
+        "pelanggan": pelanggan_id or "",
+        "sales": sales_id or "",
+        "start_due": _date_value_to_str(start_due),
+        "end_due": _date_value_to_str(end_due),
+        "status": status_filter,
+    }
+
+    summary_cards = [
+        {
+            "label": "Total piutang",
+            "value": total_outstanding,
+            "type": "currency",
+            "icon": "fa-wallet",
+            "accent": "text-danger",
+            "description": "Nilai tempo yang masih terbuka.",
+        },
+        {
+            "label": "Tempo terbuka",
+            "value": open_count,
+            "type": "count",
+            "icon": "fa-file-invoice-dollar",
+            "accent": "text-primary",
+            "description": "Jumlah faktur yang belum lunas.",
+        },
+        {
+            "label": "Jatuh tempo",
+            "value": overdue_count,
+            "type": "count",
+            "icon": "fa-exclamation-triangle",
+            "accent": "text-danger",
+            "description": "Faktur melewati tanggal jatuh tempo.",
+        },
+        {
+            "label": "Tempo 7 hari",
+            "value": due_soon_count,
+            "type": "count",
+            "icon": "fa-hourglass-half",
+            "accent": "text-warning",
+            "description": "Jatuh tempo dalam 7 hari ke depan.",
+        },
+    ]
+
+    sales_options = (
+        User.query.filter(User.role.in_(SALES_ROLES)).order_by(User.username.asc()).all()
+    )
+    customer_options = Pelanggan.query.order_by(Pelanggan.nama.asc()).all()
+
+    query_args = request.args.to_dict(flat=True)
+    query_args.pop("page", None)
+    base_args = query_args.copy()
+    prev_url = (
+        url_for("main.laporan_piutang", page=page - 1, **base_args)
+        if page > 1
+        else None
+    )
+    next_url = (
+        url_for("main.laporan_piutang", page=page + 1, **base_args)
+        if page < total_pages
+        else None
+    )
+    page_window_start = max(1, page - 2)
+    page_window_end = min(total_pages, page + 2)
+    page_links = [
+        {
+            "number": number,
+            "url": url_for("main.laporan_piutang", page=number, **base_args),
+            "current": number == page,
+        }
+        for number in range(page_window_start, page_window_end + 1)
+    ]
+    pagination = {
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "total_records": total_records,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "prev_url": prev_url,
+        "next_url": next_url,
+        "page_links": page_links,
+    }
+
+    return render_template(
+        "laporan_piutang.html",
+        receivable_rows=receivable_rows,
+        summary_cards=summary_cards,
+        filter_values=filter_values,
+        sort_option=sort_option,
+        per_page=per_page,
+        pagination=pagination,
+        filter_active=filter_active,
+        sales_options=sales_options,
+        customer_options=customer_options,
+        no_due_count=no_due_count,
+        total_outstanding=total_outstanding,
+        overdue_count=overdue_count,
+        format_date=_format_date_id,
+    )
+
+
+@bp.route("/utilitas/pembayaran-piutang", methods=["GET"])
+@login_required
+@roles_required(*SALES_ROLES)
+def pembayaran_piutang():
+    today = datetime.utcnow().date()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    search_query = (request.args.get("search") or "").strip()
+    pelanggan_id = _parse_int_param(request.args.get("pelanggan"))
+    sales_id = _parse_int_param(request.args.get("sales"))
+    per_page = request.args.get("per_page", type=int) or 10
+    per_page = max(5, min(per_page, 50))
+    page = request.args.get("page", type=int) or 1
+    if page < 1:
+        page = 1
+
+    outstanding_expr = Penjualan.total_harga - func.coalesce(Penjualan.amount_paid, 0)
+    base_filters = [
+        Penjualan.payment_method == "Tempo",
+        Penjualan.tanggal_penjualan >= start_date,
+        Penjualan.tanggal_penjualan <= end_date,
+        outstanding_expr > 0,
+    ]
+
+    if pelanggan_id:
+        base_filters.append(Penjualan.pelanggan_id == pelanggan_id)
+    if sales_id:
+        base_filters.append(Penjualan.sales_id == sales_id)
+    if search_query:
+        like = f"%{search_query}%"
+        base_filters.append(
+            or_(
+                Penjualan.no_faktur.ilike(like),
+                Penjualan.pelanggan.has(Pelanggan.nama.ilike(like)),
+                Penjualan.sales.has(User.username.ilike(like)),
+            )
+        )
+
+    total_records = (
+        db.session.query(func.count(Penjualan.id)).filter(*base_filters).scalar()
+        or 0
+    )
+    total_pages = max(1, (total_records + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * per_page
+
+    nulls_last = case((Penjualan.due_date.is_(None), 1), else_=0)
+    order_clause = (
+        nulls_last.asc(),
+        Penjualan.due_date.asc(),
+        Penjualan.tanggal_penjualan.desc(),
+        Penjualan.id.desc(),
+    )
+
+    records = (
+        Penjualan.query.options(
+            joinedload(Penjualan.pelanggan),
+            joinedload(Penjualan.sales),
+        )
+        .filter(*base_filters)
+        .order_by(*order_clause)
+        .offset(offset)
+        .limit(per_page)
+        .all()
+    )
+
+    total_outstanding = (
+        db.session.query(func.coalesce(func.sum(outstanding_expr), 0))
+        .filter(*base_filters)
+        .scalar()
+        or 0.0
+    )
+
+    receivable_rows = []
+    for sale in records:
+        total = float(sale.total_harga or 0.0)
+        amount_paid = float(sale.amount_paid or 0.0)
+        outstanding = max(total - amount_paid, 0.0)
+        receivable_rows.append(
+            {
+                "id": sale.id,
+                "invoice": sale.no_faktur,
+                "sale_date": sale.tanggal_penjualan,
+                "due_date": sale.due_date,
+                "customer_name": sale.pelanggan.nama if sale.pelanggan else "Umum",
+                "customer_code": sale.pelanggan.pelanggan_id if sale.pelanggan else "-",
+                "sales_name": sale.sales.username if sale.sales else "-",
+                "total": total,
+                "amount_paid": amount_paid,
+                "outstanding": outstanding,
+            }
+        )
+
+    filter_values = {
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "search": search_query,
+        "pelanggan": pelanggan_id or "",
+        "sales": sales_id or "",
+    }
+    filter_active = any([search_query, pelanggan_id, sales_id])
+
+    sales_options = (
+        User.query.filter(User.role.in_(SALES_ROLES)).order_by(User.username.asc()).all()
+    )
+    customer_options = Pelanggan.query.order_by(Pelanggan.nama.asc()).all()
+
+    query_args = request.args.to_dict(flat=True)
+    query_args.pop("page", None)
+    base_args = query_args.copy()
+    prev_url = (
+        url_for("main.pembayaran_piutang", page=page - 1, **base_args)
+        if page > 1
+        else None
+    )
+    next_url = (
+        url_for("main.pembayaran_piutang", page=page + 1, **base_args)
+        if page < total_pages
+        else None
+    )
+    page_window_start = max(1, page - 2)
+    page_window_end = min(total_pages, page + 2)
+    page_links = [
+        {
+            "number": number,
+            "url": url_for("main.pembayaran_piutang", page=number, **base_args),
+            "current": number == page,
+        }
+        for number in range(page_window_start, page_window_end + 1)
+    ]
+    pagination = {
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "total_records": total_records,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "prev_url": prev_url,
+        "next_url": next_url,
+        "page_links": page_links,
+    }
+
+    return render_template(
+        "pembayaran_piutang.html",
+        receivable_rows=receivable_rows,
+        filter_values=filter_values,
+        per_page=per_page,
+        pagination=pagination,
+        filter_active=filter_active,
+        total_outstanding=total_outstanding,
+        sales_options=sales_options,
+        customer_options=customer_options,
+        format_date=_format_date_id,
+    )
+
+
+@bp.route("/utilitas/pembayaran-piutang/bayar", methods=["POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def pembayaran_piutang_bayar():
+    sale_id = _parse_int_param(request.form.get("sale_id"))
+    amount = _parse_float_param(request.form.get("payment_amount"))
+    payment_method = (request.form.get("payment_method") or "Tunai").strip()
+    reference = (request.form.get("reference") or "").strip() or None
+    note = (request.form.get("note") or "").strip() or None
+    update_due = request.form.get("update_due") == "1"
+    new_due_date = _parse_date_param(request.form.get("new_due_date"))
+    next_target = request.form.get("next") or url_for("main.pembayaran_piutang")
+
+    if not sale_id:
+        flash("Transaksi tidak ditemukan.", "warning")
+        return redirect(url_for("main.pembayaran_piutang"))
+
+    if not _ensure_receivable_payment_table():
+        flash(
+            "Tabel riwayat pembayaran belum tersedia. Jalankan migrasi terlebih dahulu.",
+            "warning",
+        )
+        return redirect(
+            next_target
+            if _is_safe_redirect_target(next_target)
+            else url_for("main.pembayaran_piutang")
+        )
+
+    sale = Penjualan.query.get_or_404(sale_id)
+    if sale.payment_method != "Tempo":
+        flash("Transaksi ini bukan pembayaran tempo.", "warning")
+        return redirect(url_for("main.pembayaran_piutang"))
+
+    if amount is None or amount <= 0:
+        flash("Jumlah bayar wajib diisi dan lebih dari 0.", "warning")
+        return redirect(
+            next_target
+            if _is_safe_redirect_target(next_target)
+            else url_for("main.pembayaran_piutang")
+        )
+
+    allowed_methods = {"Tunai", "Transfer", "Kartu"}
+    if payment_method not in allowed_methods:
+        payment_method = "Tunai"
+
+    if update_due and not new_due_date:
+        flash("Tanggal jatuh tempo baru wajib diisi.", "warning")
+        return redirect(
+            next_target
+            if _is_safe_redirect_target(next_target)
+            else url_for("main.pembayaran_piutang")
+        )
+
+    total = float(sale.total_harga or 0.0)
+    current_paid = float(sale.amount_paid or 0.0)
+    outstanding = max(total - current_paid, 0.0)
+    if outstanding <= 0:
+        flash("Piutang sudah lunas.", "info")
+        return redirect(
+            next_target
+            if _is_safe_redirect_target(next_target)
+            else url_for("main.pembayaran_piutang")
+        )
+
+    payment = ReceivablePayment(
+        penjualan_id=sale.id,
+        amount=amount,
+        payment_method=payment_method,
+        reference=reference,
+        note=note,
+        created_by=session.get("user_id"),
+    )
+    db.session.add(payment)
+
+    sale.amount_paid = current_paid + amount
+    sale.change_due = max(0.0, sale.amount_paid - total)
+    if update_due and new_due_date:
+        sale.due_date = new_due_date
+
+    db.session.commit()
+    flash("Pembayaran piutang berhasil disimpan.", "success")
+    return redirect(
+        next_target if _is_safe_redirect_target(next_target) else url_for("main.pembayaran_piutang")
+    )
+
+
+@bp.route("/api/piutang/history/<int:sale_id>", methods=["GET"])
+@login_required
+@roles_required(*SALES_ROLES)
+def pembayaran_piutang_history(sale_id):
+    sale = Penjualan.query.get_or_404(sale_id)
+    if sale.payment_method != "Tempo":
+        return jsonify({"payments": []})
+    if not _ensure_receivable_payment_table():
+        return jsonify({"payments": []})
+
+    payments = (
+        ReceivablePayment.query.options(joinedload(ReceivablePayment.created_by_user))
+        .filter(ReceivablePayment.penjualan_id == sale_id)
+        .order_by(ReceivablePayment.paid_at.desc(), ReceivablePayment.id.desc())
+        .all()
+    )
+    payload = []
+    for payment in payments:
+        paid_at = payment.paid_at or datetime.utcnow()
+        date_label = f"{_format_date_id(paid_at.date())} {paid_at.strftime('%H:%M')}"
+        payload.append(
+            {
+                "id": payment.id,
+                "amount": float(payment.amount or 0.0),
+                "method": payment.payment_method or "-",
+                "reference": payment.reference or "-",
+                "note": payment.note or "-",
+                "paid_at": date_label,
+                "created_by": (
+                    payment.created_by_user.username
+                    if payment.created_by_user
+                    else "-"
+                ),
+            }
+        )
+
+    return jsonify({"payments": payload})
 
 
 @bp.route("/api/laporan/penjualan/suggest", methods=["GET"])

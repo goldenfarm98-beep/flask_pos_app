@@ -492,6 +492,28 @@ document.addEventListener('DOMContentLoaded', function () {
     let invoiceCheckTimeout = null;
     let suggestionTimer = null;
 
+    const itemFields = [
+        entry.search,
+        entry.kode,
+        entry.nama,
+        entry.kategori,
+        entry.satuan,
+        entry.qty,
+        entry.hargaBeli,
+        entry.diskon,
+        entry.pajak,
+        entry.hargaJual,
+        entry.expDate
+    ].filter(Boolean);
+    const navigationOrder = [
+        tanggalInput,
+        invoiceInput,
+        paymentSelect,
+        supplierSelect,
+        ...itemFields
+    ].filter(Boolean);
+    const itemFieldSet = new Set(itemFields);
+
 function sanitizeNumericString(value) {
         if (value === null || value === undefined) {
             return '';
@@ -748,10 +770,36 @@ function resetEntryForm() {
         if (!item) {
             return;
         }
+        const kode = item.kode_barang;
+        const mergeItems = (baseItem, incomingItem) => {
+            const merged = { ...baseItem };
+            merged.jumlah = parseNumber(baseItem.jumlah) + parseNumber(incomingItem.jumlah);
+            if (!merged.exp_date && incomingItem.exp_date) {
+                merged.exp_date = incomingItem.exp_date;
+            }
+            return merged;
+        };
+
         if (state.editingIndex !== null) {
-            state.items[state.editingIndex] = item;
+            const currentIndex = state.editingIndex;
+            const duplicateIndex = state.items.findIndex(
+                (existing, idx) => idx !== currentIndex && existing.kode_barang === kode
+            );
+            if (duplicateIndex !== -1) {
+                state.items[duplicateIndex] = mergeItems(state.items[duplicateIndex], item);
+                state.items.splice(currentIndex, 1);
+            } else {
+                state.items[currentIndex] = item;
+            }
         } else {
-            state.items.push(item);
+            const existingIndex = state.items.findIndex(
+                existing => existing.kode_barang === kode
+            );
+            if (existingIndex !== -1) {
+                state.items[existingIndex] = mergeItems(state.items[existingIndex], item);
+            } else {
+                state.items.push(item);
+            }
         }
         state.editingIndex = null;
         addItemLabel.textContent = 'Tambah ke tabel';
@@ -759,6 +807,51 @@ function resetEntryForm() {
         renderItemsTable();
         resetEntryForm();
         entry.search.focus();
+    }
+
+    function focusByOffset(currentEl, offset) {
+        const currentIndex = navigationOrder.indexOf(currentEl);
+        if (currentIndex === -1) {
+            return;
+        }
+        let nextIndex = currentIndex + offset;
+        if (nextIndex < 0) {
+            nextIndex = 0;
+        }
+        if (nextIndex >= navigationOrder.length) {
+            nextIndex = navigationOrder.length - 1;
+        }
+        const nextEl = navigationOrder[nextIndex];
+        if (nextEl && typeof nextEl.focus === 'function') {
+            nextEl.focus();
+        }
+    }
+
+    function handleKeyboardAdvance(event) {
+        if (event.key !== 'Enter' && event.key !== 'NumpadEnter') {
+            return;
+        }
+        if (event.isComposing) {
+            return;
+        }
+        const target = event.target;
+        if (!target || !navigationOrder.includes(target)) {
+            return;
+        }
+        if (event.ctrlKey || event.metaKey) {
+            if (itemFieldSet.has(target)) {
+                event.preventDefault();
+                handleAddItem();
+            }
+            return;
+        }
+        if (itemFieldSet.has(target) && target === entry.expDate && !event.shiftKey) {
+            event.preventDefault();
+            handleAddItem();
+            return;
+        }
+        event.preventDefault();
+        focusByOffset(target, event.shiftKey ? -1 : 1);
     }
 
     function handleTableAction(event) {
@@ -931,6 +1024,10 @@ function resetEntryForm() {
             clearTimeout(invoiceCheckTimeout);
         }
         invoiceCheckTimeout = setTimeout(checkInvoiceUniqueness, 600);
+    });
+
+    navigationOrder.forEach(field => {
+        field.addEventListener('keydown', handleKeyboardAdvance);
     });
 
     addItemButton.addEventListener('click', handleAddItem);
