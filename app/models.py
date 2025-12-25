@@ -286,12 +286,43 @@ class Penjualan(db.Model):
         'AccountingPeriod',
         backref=db.backref('sales', lazy=True),
     )
+    payments = db.relationship(
+        "ReceivablePayment",
+        backref="penjualan",
+        lazy=True,
+        cascade="all, delete-orphan",
+    )
 
     @property
     def net_revenue(self):
         base = float(self.total_harga or 0.0)
         cost = float(self.marketplace_cost_total or 0.0)
         return max(base - cost, 0.0)
+
+
+class ReceivablePayment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    penjualan_id = db.Column(
+        db.Integer,
+        db.ForeignKey("penjualan.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    amount = db.Column(db.Float, nullable=False)
+    payment_method = db.Column(db.String(20), nullable=False, default="Tunai")
+    reference = db.Column(db.String(100), nullable=True)
+    note = db.Column(db.String(255), nullable=True)
+    paid_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by_user = db.relationship(
+        "User", backref=db.backref("receivable_payments", lazy=True)
+    )
+
+    def __repr__(self):
+        return f"<ReceivablePayment {self.id} penjualan={self.penjualan_id}>"
 
 
 class DetailPenjualan(db.Model):
