@@ -25,6 +25,9 @@
                 </div>
             </div>
             <div class="col-md-6 text-md-right mt-2 mt-md-0">
+                <button type="button" class="btn btn-outline-primary btn-sm mr-2" id="supplierPreviewBtn">
+                    <i class="fas fa-eye mr-1"></i>Preview &amp; Cetak
+                </button>
                 <span class="badge badge-primary">Menampilkan {{ suppliers|length }} baris</span>
             </div>
         </div>
@@ -33,6 +36,7 @@
             <table class="table table-modern mb-0" id="supplierReportTable">
                 <thead>
                     <tr>
+                        <th>ID</th>
                         <th>Nama</th>
                         <th>Kontak</th>
                         <th>Telepon</th>
@@ -46,7 +50,8 @@
                 </thead>
                 <tbody>
                     {% for supplier in suppliers %}
-                    <tr data-filter-text="{{ (supplier.name or '') | lower }}">
+                    <tr data-filter-text="{{ (supplier.id ~ ' ' ~ (supplier.name or '') ~ ' ' ~ (supplier.contact_person or '') ~ ' ' ~ (supplier.phone or '') ~ ' ' ~ (supplier.email or '') ~ ' ' ~ (supplier.bank_name or '') ~ ' ' ~ (supplier.bank_account or '') ~ ' ' ~ (supplier.account_name or '') ~ ' ' ~ (supplier.address or '') ~ ' ' ~ (supplier.website or '')) | lower }}">
+                        <td>{{ supplier.id }}</td>
                         <td class="font-weight-semibold">{{ supplier.name }}</td>
                         <td>{{ supplier.contact_person or '-' }}</td>
                         <td>
@@ -74,7 +79,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">Belum ada supplier yang bisa ditampilkan.</td>
+                        <td colspan="10" class="text-center text-muted py-4">Belum ada supplier yang bisa ditampilkan.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -87,6 +92,8 @@
     document.addEventListener('DOMContentLoaded', function () {
         const searchInput = document.getElementById('supplierReportSearch');
         const rows = Array.from(document.querySelectorAll('#supplierReportTable tbody tr'));
+        const previewBtn = document.getElementById('supplierPreviewBtn');
+        const previewBaseUrl = "{{ url_for('main.laporan_supplier_preview') }}";
 
         function applyFilter(term) {
             const q = (term || '').trim().toLowerCase();
@@ -102,6 +109,37 @@
             });
             applyFilter(searchInput.value);
         }
+
+        if (previewBtn) {
+            previewBtn.addEventListener('click', function () {
+                const params = new URLSearchParams();
+                const q = searchInput ? searchInput.value.trim() : '';
+                if (q) {
+                    params.set('search', q);
+                }
+                const url = params.toString()
+                    ? `${previewBaseUrl}?${params.toString()}`
+                    : previewBaseUrl;
+                window.open(url, '_blank');
+            });
+        }
     });
 </script>
+
+<style>
+    @media print {
+        .btn,
+        .input-group,
+        .badge {
+            display: none !important;
+        }
+        .card {
+            box-shadow: none !important;
+            border: none !important;
+        }
+        body {
+            background: #fff;
+        }
+    }
+</style>
 {% endblock %}

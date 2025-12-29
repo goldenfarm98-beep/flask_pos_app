@@ -18,7 +18,7 @@ import secrets
 import json
 from datetime import datetime, timedelta
 import logging
-from io import BytesIO
+from io import BytesIO, StringIO
 import math
 import os
 import re
@@ -45,6 +45,7 @@ from app.models import (
     db,
     Supplier,
     Expedisi,
+    ExpedisiVolumetricItem,
     PaymentChannel,
     Satuan,
     Kategori,
@@ -67,6 +68,7 @@ from app.models import (
     Account,
     JournalEntry,
     JournalLine,
+    MarketplacePricingSetting,
 )
 
 bp = Blueprint("main", __name__)
@@ -106,10 +108,22 @@ def _is_safe_redirect_target(target: str) -> bool:
 
 
 def _accepts_json():
+    if request.path.startswith("/api/") or request.is_json:
+        return True
+
+    if not request.accept_mimetypes:
+        return False
+
+    best_match = request.accept_mimetypes.best_match(
+        ["text/html", "application/json"]
+    )
+    if not best_match:
+        return False
+
     return (
-        request.path.startswith("/api/")
-        or request.is_json
-        or (request.accept_mimetypes and request.accept_mimetypes.accept_json)
+        best_match == "application/json"
+        and request.accept_mimetypes[best_match]
+        > request.accept_mimetypes["text/html"]
     )
 
 
@@ -1453,6 +1467,300 @@ def pengaturan_database():
     )
 
 
+def _normalize_fee(value, default):
+    try:
+        fee = float(value)
+    except (TypeError, ValueError):
+        return default
+    if fee > 1:
+        fee = fee / 100.0
+    if fee < 0:
+        fee = 0.0
+    if fee >= 0.95:
+        fee = 0.95
+    return fee
+
+
+@bp.route("/kelola-harga", methods=["GET", "POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def kelola_harga():
+    _ensure_table(MarketplacePricingSetting)
+    rounding_options = [
+        {"value": "none", "label": "Tidak dibulatkan"},
+        {"value": "round_100", "label": "Ke atas kelipatan 100"},
+        {"value": "round_500", "label": "Ke atas kelipatan 500"},
+        {"value": "round_1000", "label": "Ke atas kelipatan 1.000"},
+        {"value": "round_900", "label": "Psikologis (xx.900)"},
+    ]
+    rounding_lookup = {opt["value"]: opt["label"] for opt in rounding_options}
+
+    def _round_up_multiple(value, step):
+        if step <= 0:
+            return math.ceil(value)
+        return math.ceil(value / step) * step
+
+    def _round_psych_900(value):
+        base = math.floor(value / 1000) * 1000
+        candidate = base + 900
+        if candidate < value:
+            candidate += 1000
+        return candidate
+
+    def _apply_rounding(value, mode):
+        if mode == "round_100":
+            return _round_up_multiple(value, 100)
+        if mode == "round_500":
+            return _round_up_multiple(value, 500)
+        if mode == "round_1000":
+            return _round_up_multiple(value, 1000)
+        if mode == "round_900":
+            return _round_psych_900(value)
+        return math.ceil(value)
+
+    price_levels = PriceLevel.query.order_by(PriceLevel.name.asc()).all()
+    cost_entries = (
+        PriceLevelCost.query.filter(PriceLevelCost.is_active.is_(True))
+        .order_by(PriceLevelCost.level_id.asc(), PriceLevelCost.name.asc())
+        .all()
+    )
+    fee_map = {
+        level.id: {"percent": 0.0, "nominal": 0.0}
+        for level in price_levels
+    }
+    for cost in cost_entries:
+        bucket = fee_map.setdefault(cost.level_id, {"percent": 0.0, "nominal": 0.0})
+        if cost.type == "percent":
+            bucket["percent"] += float(cost.value or 0.0)
+        else:
+            bucket["nominal"] += float(cost.value or 0.0)
+
+    marketplace_levels = []
+    for level in price_levels:
+        totals = fee_map.get(level.id, {"percent": 0.0, "nominal": 0.0})
+        marketplace_levels.append(
+            {
+                "id": level.id,
+                "name": level.name,
+                "fee_percent": totals["percent"],
+                "fee_nominal": totals["nominal"],
+            }
+        )
+    has_price_levels = bool(price_levels)
+    if not marketplace_levels:
+        marketplace_levels = [
+            {
+                "id": 0,
+                "name": "Tokopedia / Shopee",
+                "fee_percent": 18.0,
+                "fee_nominal": 0.0,
+            },
+            {
+                "id": 1,
+                "name": "Blibli / Lazada",
+                "fee_percent": 10.5,
+                "fee_nominal": 0.0,
+            },
+        ]
+
+    form_data = {
+        "product_name": "",
+        "sku": "",
+        "cost": "",
+        "packing": "",
+        "target_profit": "",
+        "rounding_mode": "round_100",
+    }
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        if action == "save":
+            record_id = _parse_int_param(request.form.get("record_id"))
+            product_name = (request.form.get("product_name") or "").strip()
+            sku = (request.form.get("sku") or "").strip()
+            cost = _parse_float_param(request.form.get("cost"))
+            packing = _parse_float_param(request.form.get("packing"))
+            target_profit = _parse_float_param(request.form.get("target_profit"))
+            rounding_mode = (request.form.get("rounding_mode") or "").strip()
+            if rounding_mode not in rounding_lookup:
+                rounding_mode = "round_100"
+
+            if cost is None or packing is None or target_profit is None:
+                flash("HPP, packing, dan target laba wajib diisi.", "warning")
+                return redirect(url_for("main.kelola_harga"))
+            if cost < 0 or packing < 0 or target_profit < 0:
+                flash("Nilai biaya tidak boleh negatif.", "warning")
+                return redirect(url_for("main.kelola_harga"))
+
+            if record_id:
+                record = MarketplacePricingSetting.query.get(record_id)
+            else:
+                record = None
+
+            if record:
+                record.product_name = product_name or None
+                record.sku = sku or None
+                record.cost = cost
+                record.packing = packing
+                record.target_profit = target_profit
+                record.rounding_mode = rounding_mode
+                record.created_by = record.created_by or session.get("user_id")
+            else:
+                record = MarketplacePricingSetting(
+                    product_name=product_name or None,
+                    sku=sku or None,
+                    cost=cost,
+                    packing=packing,
+                    target_profit=target_profit,
+                    rounding_mode=rounding_mode,
+                    created_by=session.get("user_id"),
+                )
+                db.session.add(record)
+            db.session.commit()
+            flash("Setting harga marketplace disimpan.", "success")
+            return redirect(url_for("main.kelola_harga", load=record.id))
+
+        if action == "delete":
+            record_id = _parse_int_param(request.form.get("record_id"))
+            if not record_id:
+                flash("Data tidak ditemukan.", "warning")
+                return redirect(url_for("main.kelola_harga"))
+            record = MarketplacePricingSetting.query.get(record_id)
+            if record:
+                db.session.delete(record)
+                db.session.commit()
+                flash("Data pricing dihapus.", "success")
+            return redirect(url_for("main.kelola_harga"))
+
+        if action == "apply_levels":
+            if not has_price_levels:
+                flash("Level harga belum tersedia untuk diterapkan.", "warning")
+                return redirect(url_for("main.kelola_harga"))
+            product_id = _parse_int_param(request.form.get("product_id"))
+            cost = _parse_float_param(request.form.get("cost"))
+            packing = _parse_float_param(request.form.get("packing"))
+            target_profit = _parse_float_param(request.form.get("target_profit"))
+            rounding_mode = (request.form.get("rounding_mode") or "").strip()
+            if rounding_mode not in rounding_lookup:
+                rounding_mode = "round_100"
+
+            if not product_id:
+                flash("Pilih produk dari daftar sebelum menerapkan.", "warning")
+                return redirect(url_for("main.kelola_harga"))
+            if cost is None or packing is None or target_profit is None:
+                flash("HPP, packing, dan target laba wajib diisi.", "warning")
+                return redirect(url_for("main.kelola_harga"))
+            if cost < 0 or packing < 0 or target_profit < 0:
+                flash("Nilai biaya tidak boleh negatif.", "warning")
+                return redirect(url_for("main.kelola_harga"))
+
+            product = Produk.query.get(product_id)
+            if not product:
+                flash("Produk tidak ditemukan.", "warning")
+                return redirect(url_for("main.kelola_harga"))
+
+            level_ids = []
+            for raw_level in request.form.getlist("level_ids"):
+                try:
+                    level_id = int(raw_level)
+                except (TypeError, ValueError):
+                    continue
+                if level_id in fee_map:
+                    level_ids.append(level_id)
+
+            if not level_ids:
+                flash("Pilih minimal satu level harga untuk diterapkan.", "warning")
+                return redirect(url_for("main.kelola_harga"))
+
+            base = cost + packing
+            updated_count = 0
+            for level_id in level_ids:
+                totals = fee_map.get(level_id, {"percent": 0.0, "nominal": 0.0})
+                fee = min(max((totals["percent"] or 0.0) / 100, 0), 0.95)
+                base_with_nominal = base + float(totals["nominal"] or 0.0)
+                raw_price = (
+                    (base_with_nominal + target_profit) / (1 - fee)
+                    if fee < 1
+                    else 0.0
+                )
+                rounded_price = _apply_rounding(raw_price, rounding_mode)
+                entry = ProductPriceLevel.query.filter_by(
+                    product_id=product_id, level_id=level_id
+                ).first()
+                if entry:
+                    entry.price = rounded_price
+                else:
+                    entry = ProductPriceLevel(
+                        product_id=product_id,
+                        level_id=level_id,
+                        price=rounded_price,
+                    )
+                    db.session.add(entry)
+                updated_count += 1
+
+            db.session.commit()
+            flash(
+                f"Berhasil menerapkan {updated_count} harga level untuk {product.nama_produk}.",
+                "success",
+            )
+            return redirect(url_for("main.kelola_harga"))
+
+    load_id = _parse_int_param(request.args.get("load"))
+    if load_id:
+        record = MarketplacePricingSetting.query.get(load_id)
+        if record:
+            form_data.update(
+                {
+                    "product_name": record.product_name or "",
+                    "sku": record.sku or "",
+                    "cost": record.cost,
+                    "packing": record.packing,
+                    "target_profit": record.target_profit,
+                    "rounding_mode": record.rounding_mode,
+                    "record_id": record.id,
+                }
+            )
+
+    records = (
+        MarketplacePricingSetting.query.order_by(
+            MarketplacePricingSetting.updated_at.desc(),
+            MarketplacePricingSetting.id.desc(),
+        )
+        .limit(50)
+        .all()
+    )
+    record_rows = []
+    for record in records:
+        base = float(record.cost or 0.0) + float(record.packing or 0.0)
+        record_rows.append(
+            {
+                "id": record.id,
+                "product_name": record.product_name or "-",
+                "sku": record.sku or "-",
+                "base": base,
+                "target_profit": record.target_profit,
+                "rounding": rounding_lookup.get(record.rounding_mode, record.rounding_mode),
+                "updated_at": record.updated_at,
+            }
+        )
+
+    return render_template(
+        "kelola_harga.html",
+        form_data=form_data,
+        rounding_options=rounding_options,
+        records=record_rows,
+        marketplace_levels=marketplace_levels,
+        has_price_levels=has_price_levels,
+    )
+
+
+@bp.route("/pricing", methods=["GET"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def pricing():
+    return redirect(url_for("main.kelola_harga"))
+
+
 def _build_supplier_page_context(
     edit_supplier=None, search_query="", page=1, per_page=10
 ):
@@ -1781,11 +2089,15 @@ def delete_supplier(supplier_id):
 @login_required
 @roles_required(*INVENTORY_ROLES)
 def expedisi():
+    _ensure_expedisi_volume_divisor()
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         phone = request.form.get("phone", "").strip()
         address = request.form.get("address", "").strip()
         note = request.form.get("note", "").strip()
+        volume_divisor = _parse_float_param(request.form.get("volume_divisor"))
+        if volume_divisor is None or volume_divisor <= 0:
+            volume_divisor = 6000.0
         if not name:
             flash("Nama expedisi wajib diisi.", "warning")
             return redirect("/expedisi")
@@ -1798,6 +2110,7 @@ def expedisi():
             phone=phone or None,
             address=address or None,
             note=note or None,
+            volume_divisor=volume_divisor,
         )
         db.session.add(new_expedisi)
         db.session.commit()
@@ -1811,6 +2124,177 @@ def expedisi():
     return render_template("data_expedisi.html", expedisi_list=expedisi_list)
 
 
+@bp.route("/expedisi/volumetrik", methods=["GET", "POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def expedisi_volumetrik():
+    _ensure_expedisi_volume_divisor()
+    _ensure_table(ExpedisiVolumetricItem)
+    action = (request.form.get("action") or "").strip()
+    if request.method == "POST":
+        if action == "save":
+            item_id = _parse_int_param(request.form.get("item_id"))
+            expedisi_id = _parse_int_param(request.form.get("expedisi_id"))
+            product_id = _parse_int_param(request.form.get("product_id"))
+            packaging = (request.form.get("packaging") or "").strip()
+            qty_per_pack = _parse_int_param(request.form.get("qty_per_pack")) or 1
+            length_cm = _parse_float_param(request.form.get("length_cm"))
+            width_cm = _parse_float_param(request.form.get("width_cm"))
+            height_cm = _parse_float_param(request.form.get("height_cm"))
+            actual_weight = _parse_float_param(request.form.get("actual_weight"))
+            use_volumetric = request.form.get("use_volumetric") == "1"
+            note = (request.form.get("note") or "").strip()
+
+            if not expedisi_id or not product_id or not packaging:
+                flash("Expedisi, produk, dan kemasan wajib diisi.", "warning")
+                return redirect(url_for("main.expedisi_volumetrik"))
+            if qty_per_pack <= 0:
+                flash("Qty per kemasan minimal 1.", "warning")
+                return redirect(url_for("main.expedisi_volumetrik"))
+            if not length_cm or not width_cm or not height_cm:
+                flash("Dimensi kemasan wajib diisi.", "warning")
+                return redirect(url_for("main.expedisi_volumetrik"))
+            if length_cm <= 0 or width_cm <= 0 or height_cm <= 0:
+                flash("Dimensi harus lebih dari 0.", "warning")
+                return redirect(url_for("main.expedisi_volumetrik"))
+
+            expedisi_obj = Expedisi.query.get(expedisi_id)
+            product_obj = Produk.query.get(product_id)
+            if not expedisi_obj or not product_obj:
+                flash("Expedisi atau produk tidak ditemukan.", "warning")
+                return redirect(url_for("main.expedisi_volumetrik"))
+
+            existing = ExpedisiVolumetricItem.query.filter_by(
+                expedisi_id=expedisi_id,
+                product_id=product_id,
+                packaging=packaging,
+            ).first()
+
+            if item_id:
+                item = ExpedisiVolumetricItem.query.get(item_id)
+                if not item:
+                    flash("Data volumetrik tidak ditemukan.", "warning")
+                    return redirect(url_for("main.expedisi_volumetrik"))
+                if existing and existing.id != item.id:
+                    flash("Kombinasi produk, expedisi, dan kemasan sudah ada.", "warning")
+                    return redirect(
+                        url_for("main.expedisi_volumetrik", edit=item.id)
+                    )
+            else:
+                if existing:
+                    item = existing
+                    flash("Data sudah ada, diperbarui otomatis.", "info")
+                else:
+                    item = ExpedisiVolumetricItem(
+                        expedisi_id=expedisi_id,
+                        product_id=product_id,
+                        packaging=packaging,
+                    )
+                    db.session.add(item)
+
+            item.expedisi_id = expedisi_id
+            item.product_id = product_id
+            item.packaging = packaging
+            item.qty_per_pack = qty_per_pack
+            item.length_cm = length_cm
+            item.width_cm = width_cm
+            item.height_cm = height_cm
+            item.actual_weight = actual_weight
+            item.use_volumetric = use_volumetric
+            item.note = note or None
+            db.session.commit()
+            flash("Data volumetrik tersimpan.", "success")
+            return redirect(url_for("main.expedisi_volumetrik"))
+
+        if action == "delete":
+            item_id = _parse_int_param(request.form.get("item_id"))
+            if not item_id:
+                flash("Data tidak ditemukan.", "warning")
+                return redirect(url_for("main.expedisi_volumetrik"))
+            item = ExpedisiVolumetricItem.query.get(item_id)
+            if item:
+                db.session.delete(item)
+                db.session.commit()
+                flash("Data volumetrik dihapus.", "success")
+            return redirect(url_for("main.expedisi_volumetrik"))
+
+    search = (request.args.get("q") or "").strip()
+    edit_id = _parse_int_param(request.args.get("edit"))
+    edit_item = (
+        ExpedisiVolumetricItem.query.options(
+            joinedload(ExpedisiVolumetricItem.produk),
+            joinedload(ExpedisiVolumetricItem.expedisi),
+        ).get(edit_id)
+        if edit_id
+        else None
+    )
+
+    expedisi_list = Expedisi.query.order_by(Expedisi.name.asc()).all()
+    items_query = ExpedisiVolumetricItem.query.options(
+        joinedload(ExpedisiVolumetricItem.produk),
+        joinedload(ExpedisiVolumetricItem.expedisi),
+    ).join(Expedisi, Expedisi.id == ExpedisiVolumetricItem.expedisi_id).join(
+        Produk, Produk.id == ExpedisiVolumetricItem.product_id
+    )
+    if search:
+        like = f"%{search}%"
+        items_query = items_query.filter(
+            or_(
+                Produk.nama_produk.ilike(like),
+                Produk.kode_produk.ilike(like),
+                Expedisi.name.ilike(like),
+                ExpedisiVolumetricItem.packaging.ilike(like),
+            )
+        )
+
+    items = items_query.order_by(
+        ExpedisiVolumetricItem.updated_at.desc(),
+        ExpedisiVolumetricItem.id.desc(),
+    ).all()
+
+    item_rows = []
+    for item in items:
+        factor = float(item.expedisi.volume_divisor or 0.0) if item.expedisi else 0.0
+        volume_weight = (
+            (item.length_cm * item.width_cm * item.height_cm) / factor
+            if factor > 0
+            else 0.0
+        )
+        actual_weight_value = float(item.actual_weight or 0.0)
+        chargeable = (
+            volume_weight
+            if item.use_volumetric
+            else max(actual_weight_value, volume_weight)
+        )
+        item_rows.append(
+            {
+                "id": item.id,
+                "expedisi_name": item.expedisi.name if item.expedisi else "-",
+                "expedisi_factor": factor,
+                "product_name": item.produk.nama_produk if item.produk else "-",
+                "product_code": item.produk.kode_produk if item.produk else "-",
+                "packaging": item.packaging,
+                "qty_per_pack": item.qty_per_pack,
+                "length_cm": item.length_cm,
+                "width_cm": item.width_cm,
+                "height_cm": item.height_cm,
+                "volume_weight": volume_weight,
+                "actual_weight": item.actual_weight,
+                "chargeable_weight": chargeable,
+                "use_volumetric": item.use_volumetric,
+                "note": item.note,
+            }
+        )
+
+    return render_template(
+        "expedisi_volumetrik.html",
+        expedisi_list=expedisi_list,
+        items=item_rows,
+        search_query=search,
+        edit_item=edit_item,
+    )
+
+
 @bp.route("/expedisi/edit/<int:expedisi_id>", methods=["GET", "POST"])
 @login_required
 @roles_required(*INVENTORY_ROLES)
@@ -1821,6 +2305,9 @@ def edit_expedisi(expedisi_id):
         phone = request.form.get("phone", "").strip()
         address = request.form.get("address", "").strip()
         note = request.form.get("note", "").strip()
+        volume_divisor = _parse_float_param(request.form.get("volume_divisor"))
+        if volume_divisor is None or volume_divisor <= 0:
+            volume_divisor = 6000.0
         if not name:
             flash("Nama expedisi wajib diisi.", "warning")
             return redirect(url_for("main.edit_expedisi", expedisi_id=expedisi_id))
@@ -1835,6 +2322,7 @@ def edit_expedisi(expedisi_id):
         expedisi_item.phone = phone or None
         expedisi_item.address = address or None
         expedisi_item.note = note or None
+        expedisi_item.volume_divisor = volume_divisor
         db.session.commit()
         flash("Expedisi updated successfully!", "success")
         return redirect("/expedisi")
@@ -1964,6 +2452,27 @@ def supplier_detail(supplier_id):
     return render_template("supplier_detail.html", supplier=supplier)
 
 
+def _supplier_report_query(search_query):
+    base_query = Supplier.query.order_by(Supplier.name.asc())
+    if search_query:
+        like = f"%{search_query}%"
+        filters = [
+            Supplier.name.ilike(like),
+            Supplier.contact_person.ilike(like),
+            Supplier.phone.ilike(like),
+            Supplier.email.ilike(like),
+            Supplier.bank_account.ilike(like),
+            Supplier.bank_name.ilike(like),
+            Supplier.account_name.ilike(like),
+            Supplier.address.ilike(like),
+            Supplier.website.ilike(like),
+        ]
+        if search_query.isdigit():
+            filters.append(Supplier.id == int(search_query))
+        base_query = base_query.filter(or_(*filters))
+    return base_query
+
+
 @bp.route("/supplier/export", methods=["GET"])
 @login_required
 @roles_required(*INVENTORY_ROLES)
@@ -1976,6 +2485,7 @@ def export_suppliers():
     # Data untuk Excel
     data = [
         {
+            "ID Supplier": supplier.id,
             "Nama Supplier": supplier.name,
             "Alamat": supplier.address,
             "No Telp": _normalize_phone(supplier.phone),
@@ -2012,20 +2522,7 @@ def export_suppliers():
 @roles_required(*INVENTORY_ROLES)
 def laporan_supplier():
     search_query = (request.args.get("search") or "").strip()
-    base_query = Supplier.query.order_by(Supplier.name.asc())
-    if search_query:
-        like = f"%{search_query}%"
-        base_query = base_query.filter(
-            or_(
-                Supplier.name.ilike(like),
-                Supplier.contact_person.ilike(like),
-                Supplier.phone.ilike(like),
-                Supplier.email.ilike(like),
-                Supplier.bank_account.ilike(like),
-                Supplier.bank_name.ilike(like),
-            )
-        )
-    suppliers = base_query.all()
+    suppliers = _supplier_report_query(search_query).all()
     total = Supplier.query.count()
     return render_template(
         "laporan_supplier.html",
@@ -2033,6 +2530,61 @@ def laporan_supplier():
         total=total,
         search_query=search_query,
     )
+
+
+@bp.route("/laporan/supplier/preview", methods=["GET"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def laporan_supplier_preview():
+    search_query = (request.args.get("search") or "").strip()
+    suppliers = _supplier_report_query(search_query).all()
+    total = Supplier.query.count()
+    return render_template(
+        "laporan_supplier_preview.html",
+        suppliers=suppliers,
+        total=total,
+        filtered_total=len(suppliers),
+        search_query=search_query,
+        printed_at=datetime.utcnow(),
+        company_profile=_get_company_profile(),
+    )
+
+
+@bp.route("/laporan/supplier/export", methods=["GET"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def laporan_supplier_export():
+    search_query = (request.args.get("search") or "").strip()
+    suppliers = _supplier_report_query(search_query).all()
+
+    data = [
+        {
+            "ID Supplier": supplier.id,
+            "Nama Supplier": supplier.name,
+            "Alamat": supplier.address,
+            "No Telp": normalize_phone(supplier.phone),
+            "Nama Bank": supplier.bank_name or "",
+            "No Rekening Bank": supplier.bank_account,
+            "Nama Rekening": supplier.account_name,
+            "Kontak Person": supplier.contact_person,
+            "Email": supplier.email,
+            "Website": supplier.website,
+        }
+        for supplier in suppliers
+    ]
+
+    df = pd.DataFrame(data)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    output.seek(0)
+
+    response = make_response(output.read())
+    response.headers["Content-Disposition"] = "attachment; filename=laporan_supplier.xlsx"
+    response.headers["Content-Type"] = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    return response
 
 
 @bp.route("/supplier/import", methods=["POST"])
@@ -2959,6 +3511,79 @@ def produk_data(produk_id):
     return jsonify(payload)
 
 
+@bp.route("/produk/check-code", methods=["GET"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def check_produk_code():
+    code = (request.args.get("code") or "").strip()
+    exclude_id = _parse_int_param(request.args.get("exclude_id"))
+    if not code:
+        return jsonify({"available": False, "message": "Kode produk kosong."})
+
+    existing = Produk.query.filter(
+        func.lower(Produk.kode_produk) == code.lower()
+    ).first()
+    if existing and exclude_id and existing.id == exclude_id:
+        existing = None
+
+    if existing:
+        return jsonify(
+            {
+                "available": False,
+                "message": f"Kode produk {code} sudah digunakan.",
+            }
+        )
+    return jsonify({"available": True, "message": "Kode produk tersedia."})
+
+
+@bp.route("/produk/check-sku", methods=["GET"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def check_produk_sku():
+    sku = (request.args.get("sku") or "").strip()
+    exclude_id = _parse_int_param(request.args.get("exclude_id"))
+    if not sku:
+        return jsonify({"available": True, "message": ""})
+
+    existing = Produk.query.filter(func.lower(Produk.sku) == sku.lower()).first()
+    if existing and exclude_id and existing.id == exclude_id:
+        existing = None
+
+    if existing:
+        return jsonify(
+            {
+                "available": False,
+                "message": f"SKU {sku} sudah digunakan.",
+            }
+        )
+    return jsonify({"available": True, "message": "SKU tersedia."})
+
+
+@bp.route("/produk/check-barcode", methods=["GET"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def check_produk_barcode():
+    barcode = (request.args.get("barcode") or "").strip()
+    exclude_id = _parse_int_param(request.args.get("exclude_id"))
+    if not barcode:
+        return jsonify({"available": True, "message": ""})
+
+    existing = Produk.query.filter(
+        func.lower(Produk.barcode) == barcode.lower()
+    ).first()
+    if existing and exclude_id and existing.id == exclude_id:
+        existing = None
+
+    if existing:
+        return jsonify(
+            {
+                "available": False,
+                "message": f"Barcode {barcode} sudah digunakan.",
+            }
+        )
+    return jsonify({"available": True, "message": "Barcode tersedia."})
+
+
 @bp.route("/akun", methods=["GET", "POST"])
 @login_required
 @roles_required(*ADMIN_ONLY)
@@ -3523,6 +4148,7 @@ def import_produk():
         return redirect("/produk")
 
     file_bytes = file.read()
+    filename = (file.filename or "").lower()
 
     def build_summary_message(summary):
         status_parts = []
@@ -3544,7 +4170,17 @@ def import_produk():
         return None
 
     try:
-        df = pd.read_excel(BytesIO(file_bytes))
+        if filename.endswith(".xls"):
+            try:
+                df = pd.read_excel(BytesIO(file_bytes), engine="xlrd")
+            except ImportError:
+                flash(
+                    "File .xls membutuhkan modul xlrd. Simpan sebagai .xlsx atau install xlrd.",
+                    "danger",
+                )
+                return redirect("/produk")
+        else:
+            df = pd.read_excel(BytesIO(file_bytes))
     except Exception as e:
         flash(f"Gagal membaca file: {e}", "danger")
         return redirect("/produk")
@@ -5127,7 +5763,16 @@ def penjualan():
                 change_due=change_due,
                 total_weight=0.0,
             )
-            penjualan.no_faktur = _generate_invoice_number()
+            draft_invoice = (request.form.get("draft_invoice") or "").strip()
+            if draft_invoice:
+                candidate = draft_invoice
+                counter = 1
+                while Penjualan.query.filter_by(no_faktur=candidate).first():
+                    candidate = f"{draft_invoice}-{counter}"
+                    counter += 1
+                penjualan.no_faktur = candidate
+            else:
+                penjualan.no_faktur = _generate_invoice_number()
             db.session.add(penjualan)
             db.session.flush()
 
@@ -5282,6 +5927,62 @@ def penjualan_surat_jalan(sale_id):
         total_weight=payload["total_weight"],
         company_profile=_get_company_profile(),
     )
+
+
+@bp.route("/penjualan/delete/<int:sale_id>", methods=["POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def delete_penjualan(sale_id):
+    sale = (
+        Penjualan.query.options(
+            joinedload(Penjualan.detail_penjualan).joinedload(DetailPenjualan.produk)
+        )
+        .get_or_404(sale_id)
+    )
+    locked_period = _get_locked_period_for_date(sale.tanggal_penjualan)
+    if sale.is_locked or locked_period:
+        label = locked_period.label if locked_period else "periode terkunci"
+        flash(
+            f"Penjualan tidak bisa dihapus karena {label} sudah ditutup.",
+            "warning",
+        )
+        return redirect(url_for("main.data_penjualan"))
+
+    memo = f"Auto COGS – Penjualan {sale.no_faktur}"
+    journal_entries = JournalEntry.query.filter(JournalEntry.memo == memo).all()
+    if any(entry.is_locked for entry in journal_entries):
+        flash(
+            "Penjualan tidak bisa dihapus karena jurnal terkait sudah dikunci.",
+            "warning",
+        )
+        return redirect(url_for("main.data_penjualan"))
+
+    try:
+        for detail in sale.detail_penjualan:
+            product = detail.produk
+            if product:
+                product.stok_lama = int(product.stok_lama or 0) + int(
+                    detail.jumlah or 0
+                )
+
+        for entry in journal_entries:
+            db.session.delete(entry)
+
+        for detail in list(sale.detail_penjualan):
+            db.session.delete(detail)
+
+        db.session.delete(sale)
+        db.session.commit()
+        flash(f"Penjualan {sale.no_faktur} berhasil dihapus.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        logging.exception("Gagal menghapus penjualan")
+        flash(f"Gagal menghapus penjualan: {str(exc)}", "danger")
+
+    next_target = (request.form.get("next") or "").strip()
+    if next_target and _is_safe_redirect_target(next_target):
+        return redirect(next_target)
+    return redirect(url_for("main.data_penjualan"))
 
 
 @bp.route("/data_penjualan")
@@ -6479,6 +7180,29 @@ def _ensure_table(model):
         pass
 
 
+_EXPEDISI_VOLUME_CHECKED = False
+
+
+def _ensure_expedisi_volume_divisor():
+    global _EXPEDISI_VOLUME_CHECKED
+    if _EXPEDISI_VOLUME_CHECKED:
+        return
+    try:
+        engine = db.session.get_bind()
+        inspector = inspect(engine)
+        columns = [col["name"] for col in inspector.get_columns("expedisi")]
+        if "volume_divisor" not in columns:
+            db.session.execute(
+                text(
+                    "ALTER TABLE expedisi ADD COLUMN volume_divisor FLOAT DEFAULT 6000"
+                )
+            )
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+    _EXPEDISI_VOLUME_CHECKED = True
+
+
 def _generate_stock_reference():
     base = f"SO{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     candidate = base
@@ -6501,10 +7225,10 @@ def _generate_journal_reference():
 
 def _generate_invoice_number(prefix=None):
     """
-    Generate unique invoice number using timestamp with microseconds and fallback counter.
+    Generate unique invoice number using timestamp (minute precision) and fallback counter.
     """
     prefix = (prefix or _get_sales_invoice_prefix()).strip() or "F"
-    base = f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+    base = f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M')}"
     candidate = base
     counter = 1
     while Penjualan.query.filter_by(no_faktur=candidate).first():
@@ -7150,13 +7874,478 @@ def stok_opname():
         "session_count": StockOpnameSession.query.count() if opname_ready else 0,
         "last_reference": session_payload[0]["reference"] if session_payload else None,
     }
+    import_status = (request.args.get("import_status") or "").strip().lower()
+    import_rows = _parse_int_param(request.args.get("import_rows"))
+    if import_status not in {"success"}:
+        import_status = None
+        import_rows = None
+    opname_import_schema = [
+        {
+            "column": "Kode Produk",
+            "required": False,
+            "description": "Kode unik barang (disarankan untuk akurasi).",
+        },
+        {"column": "SKU", "required": False, "description": "Kode internal opsional."},
+        {
+            "column": "Nama Produk",
+            "required": False,
+            "description": "Nama barang sesuai katalog (hindari nama ganda).",
+        },
+        {
+            "column": "Qty Fisik",
+            "required": True,
+            "description": "Jumlah fisik hasil hitung (angka bulat).",
+        },
+        {
+            "column": "HPP",
+            "required": False,
+            "description": "Harga pokok rata-rata per item (opsional).",
+        },
+        {
+            "column": "Catatan",
+            "required": False,
+            "description": "Catatan per item (opsional).",
+        },
+    ]
     return render_template(
         "stok_opname.html",
         product_payload=product_payload,
         sessions=session_payload,
         stats=stats,
         opname_ready=opname_ready,
+        opname_import_schema=opname_import_schema,
+        import_status=import_status,
+        import_rows=import_rows,
     )
+
+
+@bp.route("/stok-opname/import", methods=["POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def import_stok_opname():
+    inspector = inspect(db.session.get_bind())
+    if not (
+        inspector.has_table("stock_opname_session")
+        and inspector.has_table("stock_opname_item")
+    ):
+        flash(
+            "Modul stok opname belum siap. Jalankan migrasi flask db upgrade terlebih dahulu.",
+            "warning",
+        )
+        return redirect(url_for("main.stok_opname"))
+
+    if "file" not in request.files:
+        flash("Tidak ada file yang diunggah!", "danger")
+        return redirect(url_for("main.stok_opname"))
+
+    file = request.files["file"]
+    if file.filename == "":
+        flash("File tidak dipilih!", "danger")
+        return redirect(url_for("main.stok_opname"))
+
+    file_bytes = file.read()
+    if not file_bytes:
+        flash("File kosong atau tidak dapat dibaca.", "danger")
+        return redirect(url_for("main.stok_opname"))
+
+    filename = (file.filename or "").lower()
+    try:
+        if filename.endswith(".csv"):
+            try:
+                df = pd.read_csv(
+                    BytesIO(file_bytes), encoding="utf-8-sig", sep=None, engine="python"
+                )
+            except Exception:
+                df = pd.read_csv(BytesIO(file_bytes))
+        else:
+            df = pd.read_excel(BytesIO(file_bytes))
+    except Exception as exc:
+        flash(f"Gagal membaca file: {exc}", "danger")
+        return redirect(url_for("main.stok_opname"))
+
+    if df.empty:
+        flash("File tidak memiliki data untuk diproses.", "warning")
+        return redirect(url_for("main.stok_opname"))
+
+    def normalize_column_name(value):
+        value = str(value or "").strip().lower()
+        return re.sub(r"[\s_]+", " ", value)
+
+    column_map = {normalize_column_name(col): col for col in df.columns}
+    kode_keys = [
+        "kode produk",
+        "kode barang",
+        "kode",
+        "kode_produk",
+        "product code",
+    ]
+    sku_keys = ["sku", "kode sku"]
+    nama_keys = ["nama produk", "nama barang", "nama", "product name", "produk"]
+    qty_keys = [
+        "qty fisik",
+        "qty",
+        "stok fisik",
+        "jumlah fisik",
+        "qty hitung",
+        "counted qty",
+    ]
+    hpp_keys = [
+        "hpp",
+        "harga pokok",
+        "harga pokok rata-rata",
+        "harga pokok rata rata",
+        "harga pokok rata2",
+        "harga beli",
+        "cost",
+        "cost basis",
+    ]
+    note_keys = ["catatan", "keterangan", "note"]
+
+    if not any(key in column_map for key in qty_keys):
+        flash(
+            "Kolom Qty Fisik tidak ditemukan. Gunakan header seperti 'Qty Fisik' atau 'Qty'.",
+            "danger",
+        )
+        return redirect(url_for("main.stok_opname"))
+
+    if not any(key in column_map for key in (kode_keys + sku_keys + nama_keys)):
+        flash(
+            "Kolom identitas produk tidak ditemukan. Gunakan 'Kode Produk', 'SKU', atau 'Nama Produk'.",
+            "danger",
+        )
+        return redirect(url_for("main.stok_opname"))
+
+    products = Produk.query.order_by(Produk.id.asc()).all()
+    kode_map = {
+        (product.kode_produk or "").strip().lower(): product
+        for product in products
+        if product.kode_produk
+    }
+    sku_map = {
+        (product.sku or "").strip().lower(): product
+        for product in products
+        if product.sku
+    }
+    nama_map = defaultdict(list)
+    for product in products:
+        key = (product.nama_produk or "").strip().lower()
+        if key:
+            nama_map[key].append(product)
+
+    def read_row_value(row, keys):
+        for key in keys:
+            col = column_map.get(key)
+            if col is not None:
+                return row.get(col)
+        return None
+
+    def has_value(value):
+        return not pd.isna(value) and str(value).strip() != ""
+
+    def parse_counted_qty(value):
+        if pd.isna(value) or value == "":
+            return None
+        raw = str(value).strip()
+        if not raw:
+            return None
+        raw = raw.replace(" ", "")
+        if raw.isdigit():
+            return int(raw)
+        if re.fullmatch(r"\d{1,3}(\.\d{3})+", raw):
+            return int(raw.replace(".", ""))
+        if re.fullmatch(r"\d{1,3}(,\d{3})+", raw):
+            return int(raw.replace(",", ""))
+        try:
+            number = float(raw.replace(",", "."))
+        except (TypeError, ValueError):
+            return None
+        if not number.is_integer():
+            return None
+        return int(number)
+
+    def parse_cost(value):
+        if pd.isna(value) or value == "":
+            return None
+        raw = str(value).strip()
+        if not raw:
+            return None
+        raw = raw.replace(" ", "")
+        if re.fullmatch(r"\d{1,3}(\.\d{3})+(,\d+)?", raw):
+            normalized = raw.replace(".", "").replace(",", ".")
+        elif re.fullmatch(r"\d{1,3}(,\d{3})+(\.\d+)?", raw):
+            normalized = raw.replace(",", "")
+        else:
+            normalized = raw.replace(",", ".")
+        try:
+            return float(normalized)
+        except (TypeError, ValueError):
+            return None
+
+    prepared_rows = []
+    errors = []
+    error_count = 0
+    seen_product_ids = set()
+    max_errors = 8
+
+    for index, row in df.iterrows():
+        row_number = index + 2
+        kode_val = _clean_import_str(read_row_value(row, kode_keys))
+        sku_val = _clean_import_str(read_row_value(row, sku_keys))
+        nama_val = _clean_import_str(read_row_value(row, nama_keys))
+        qty_raw = read_row_value(row, qty_keys)
+        hpp_raw = read_row_value(row, hpp_keys)
+        note_val = _clean_import_str(read_row_value(row, note_keys))
+
+        if (
+            not any([kode_val, sku_val, nama_val])
+            and (pd.isna(qty_raw) or qty_raw == "")
+            and not has_value(hpp_raw)
+            and not note_val
+        ):
+            continue
+
+        product = None
+        if kode_val:
+            product = kode_map.get(kode_val.lower())
+            if not product:
+                error_count += 1
+                if len(errors) < max_errors:
+                    errors.append(
+                        f"Baris {row_number}: Kode Produk {kode_val} tidak ditemukan."
+                    )
+                continue
+        elif sku_val:
+            product = sku_map.get(sku_val.lower())
+            if not product:
+                error_count += 1
+                if len(errors) < max_errors:
+                    errors.append(
+                        f"Baris {row_number}: SKU {sku_val} tidak ditemukan."
+                    )
+                continue
+        elif nama_val:
+            matches = nama_map.get(nama_val.lower(), [])
+            if not matches:
+                error_count += 1
+                if len(errors) < max_errors:
+                    errors.append(
+                        f"Baris {row_number}: Nama Produk {nama_val} tidak ditemukan."
+                    )
+                continue
+            if len(matches) > 1:
+                error_count += 1
+                if len(errors) < max_errors:
+                    errors.append(
+                        f"Baris {row_number}: Nama Produk {nama_val} duplikat, gunakan Kode Produk atau SKU."
+                    )
+                continue
+            product = matches[0]
+        else:
+            error_count += 1
+            if len(errors) < max_errors:
+                errors.append(
+                    f"Baris {row_number}: Identitas produk kosong atau tidak dikenali."
+                )
+            continue
+
+        if product.id in seen_product_ids:
+            error_count += 1
+            if len(errors) < max_errors:
+                errors.append(
+                    f"Baris {row_number}: Produk {product.kode_produk} duplikat di file."
+                )
+            continue
+
+        counted_qty = parse_counted_qty(qty_raw)
+        if counted_qty is None:
+            error_count += 1
+            if len(errors) < max_errors:
+                errors.append(
+                    f"Baris {row_number}: Qty fisik tidak valid atau bukan angka bulat."
+                )
+            continue
+        if counted_qty < 0:
+            error_count += 1
+            if len(errors) < max_errors:
+                errors.append(
+                    f"Baris {row_number}: Qty fisik tidak boleh negatif."
+                )
+            continue
+
+        hpp_value = None
+        if has_value(hpp_raw):
+            hpp_value = parse_cost(hpp_raw)
+            if hpp_value is None:
+                error_count += 1
+                if len(errors) < max_errors:
+                    errors.append(
+                        f"Baris {row_number}: HPP tidak valid."
+                    )
+                continue
+            if hpp_value < 0:
+                error_count += 1
+                if len(errors) < max_errors:
+                    errors.append(
+                        f"Baris {row_number}: HPP tidak boleh negatif."
+                    )
+                continue
+
+        seen_product_ids.add(product.id)
+        prepared_rows.append(
+            {
+                "product": product,
+                "counted_qty": counted_qty,
+                "hpp": hpp_value,
+                "note": note_val,
+            }
+        )
+
+    if error_count:
+        message = "; ".join(errors)
+        if error_count > max_errors:
+            message += f"; dan {error_count - max_errors} baris lainnya."
+        flash(f"Gagal import stok opname: {message}", "danger")
+        return redirect(url_for("main.stok_opname"))
+
+    if not prepared_rows:
+        flash("Tidak ada baris valid yang diproses dari file import.", "warning")
+        return redirect(url_for("main.stok_opname"))
+
+    location = (request.form.get("location") or "").strip() or None
+    note = (request.form.get("note") or "").strip() or None
+    reference = _generate_stock_reference()
+
+    opname_session = StockOpnameSession(
+        reference=reference,
+        location=location,
+        note=note,
+        status="completed",
+        created_by=session.get("user_id"),
+        created_at=datetime.utcnow(),
+        finalized_at=datetime.utcnow(),
+    )
+    db.session.add(opname_session)
+
+    summary = {"rows": 0, "plus": 0, "minus": 0}
+    for row in prepared_rows:
+        product = row["product"]
+        counted_qty = row["counted_qty"]
+        system_qty = int(product.stok_lama or 0)
+        difference = counted_qty - system_qty
+        product.stok_lama = counted_qty
+        if row["hpp"] is not None:
+            product.harga_lama = row["hpp"]
+            product.harga_beli = row["hpp"]
+        db.session.add(
+            StockOpnameItem(
+                session=opname_session,
+                product_id=product.id,
+                system_qty=system_qty,
+                counted_qty=counted_qty,
+                difference_qty=difference,
+                note=row["note"] or None,
+            )
+        )
+        summary["rows"] += 1
+        if difference > 0:
+            summary["plus"] += difference
+        elif difference < 0:
+            summary["minus"] += difference
+
+    db.session.commit()
+    flash(
+        f"Import stok opname berhasil. {summary['rows']} item diproses.",
+        "success",
+    )
+    return redirect(
+        url_for(
+            "main.stok_opname",
+            import_status="success",
+            import_rows=summary["rows"],
+        )
+    )
+
+
+@bp.route("/stok-opname/template")
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def stok_opname_template():
+    fmt = (request.args.get("format") or "xlsx").strip().lower()
+    template_columns = [
+        "Kode Produk",
+        "SKU",
+        "Nama Produk",
+        "Qty Fisik",
+        "HPP",
+        "Catatan",
+    ]
+    df = pd.DataFrame(columns=template_columns)
+
+    if fmt == "csv":
+        output = StringIO()
+        df.to_csv(output, index=False)
+        response = make_response(output.getvalue().encode("utf-8-sig"))
+        response.headers["Content-Type"] = "text/csv; charset=utf-8"
+        response.headers["Content-Disposition"] = (
+            "attachment; filename=template_stok_opname.csv"
+        )
+        return response
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    output.seek(0)
+    response = make_response(output.read())
+    response.headers["Content-Disposition"] = (
+        "attachment; filename=template_stok_opname.xlsx"
+    )
+    response.headers["Content-Type"] = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    return response
+
+
+@bp.route("/stok-opname/export")
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def export_stok_opname():
+    fmt = (request.args.get("format") or "xlsx").strip().lower()
+    products = Produk.query.order_by(Produk.nama_produk.asc()).all()
+    data = [
+        {
+            "Kode Produk": product.kode_produk,
+            "SKU": product.sku or "",
+            "Nama Produk": product.nama_produk,
+            "Qty Fisik": int(product.stok_lama or 0),
+            "HPP": _product_cost_basis(product),
+            "Catatan": "",
+        }
+        for product in products
+    ]
+    df = pd.DataFrame(data)
+
+    if fmt == "csv":
+        output = StringIO()
+        df.to_csv(output, index=False)
+        response = make_response(output.getvalue().encode("utf-8-sig"))
+        response.headers["Content-Type"] = "text/csv; charset=utf-8"
+        response.headers["Content-Disposition"] = (
+            "attachment; filename=stok_opname_export.csv"
+        )
+        return response
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    output.seek(0)
+    response = make_response(output.read())
+    response.headers["Content-Disposition"] = (
+        "attachment; filename=stok_opname_export.xlsx"
+    )
+    response.headers["Content-Type"] = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    return response
 
 
 @bp.route("/laporan/stok-opname")
@@ -7317,14 +8506,10 @@ def laporan_stok_barang():
     kategori_filter = request.args.get("kategori")
     supplier_filter = request.args.get("supplier")
 
-    query = Produk.query.options(
-        joinedload(Produk.kategori),
-        joinedload(Produk.supplier),
-        joinedload(Produk.satuan),
-    )
+    filtered_query = Produk.query
     if search_query:
         like = f"%{search_query}%"
-        query = query.filter(
+        filtered_query = filtered_query.filter(
             or_(
                 Produk.nama_produk.ilike(like),
                 Produk.kode_produk.ilike(like),
@@ -7332,9 +8517,15 @@ def laporan_stok_barang():
             )
         )
     if kategori_filter:
-        query = query.filter(Produk.kategori_id == kategori_filter)
+        filtered_query = filtered_query.filter(Produk.kategori_id == kategori_filter)
     if supplier_filter:
-        query = query.filter(Produk.supplier_id == supplier_filter)
+        filtered_query = filtered_query.filter(Produk.supplier_id == supplier_filter)
+
+    query = filtered_query.options(
+        joinedload(Produk.kategori),
+        joinedload(Produk.supplier),
+        joinedload(Produk.satuan),
+    )
 
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 15, type=int)
@@ -7344,9 +8535,31 @@ def laporan_stok_barang():
     pagination = base_query.paginate(page=page, per_page=per_page, error_out=False)
     products = pagination.items
     total_products = pagination.total
-    total_stock = 0
-    total_value = 0.0
-    total_sell_value = 0.0
+    aggregate = (
+        filtered_query.with_entities(
+            func.coalesce(func.sum(Produk.stok_lama), 0).label("total_stock"),
+            func.coalesce(
+                func.sum(
+                    Produk.stok_lama
+                    * func.coalesce(
+                        Produk.harga_lama, Produk.harga_beli, Produk.harga, 0.0
+                    )
+                ),
+                0.0,
+            ).label("total_value"),
+            func.coalesce(
+                func.sum(
+                    Produk.stok_lama * func.coalesce(Produk.harga, 0.0)
+                ),
+                0.0,
+            ).label("total_sell_value"),
+        ).first()
+    )
+    total_stock = int(aggregate.total_stock or 0) if aggregate else 0
+    total_value = float(aggregate.total_value or 0.0) if aggregate else 0.0
+    total_sell_value = (
+        float(aggregate.total_sell_value or 0.0) if aggregate else 0.0
+    )
 
     low_stock_items = []
     category_map = defaultdict(lambda: {"label": "Tanpa kategori", "stock": 0})
@@ -7356,10 +8569,6 @@ def laporan_stok_barang():
         stock = int(product.stok_lama or 0)
         cost = _product_cost_basis(product)
         price = float(product.harga or 0.0)
-        total_products = len(products)
-        total_stock += stock
-        total_value += stock * cost
-        total_sell_value += stock * price
         minimal = int(product.stok_minimal or 0)
         low_stock = minimal > 0 and stock <= minimal
         if low_stock:
@@ -9056,6 +10265,30 @@ def _build_level_price_tables(price_levels, price_entries, req_args, per_page=8)
     return price_table, price_table_pages
 
 
+def _build_level_price_export_rows(levels, products, entries, blank_prices=False):
+    entry_map = {(entry.product_id, entry.level_id): entry for entry in entries}
+    rows = []
+    for product in products:
+        for level in levels:
+            entry = entry_map.get((product.id, level.id))
+            price_value = None
+            if not blank_prices and entry:
+                price_value = entry.price
+            rows.append(
+                {
+                    "Level ID": level.id,
+                    "Level Name": level.name,
+                    "Product ID": product.id,
+                    "Product Code": product.kode_produk,
+                    "Product Name": product.nama_produk,
+                    "SKU": product.sku,
+                    "Barcode": product.barcode,
+                    "Price": price_value,
+                }
+            )
+    return rows
+
+
 @bp.route("/harga_level", methods=["GET", "POST"])
 @login_required
 @roles_required(*INVENTORY_ROLES)
@@ -9199,26 +10432,8 @@ def harga_level():
         ProductPriceLevel.query.options(
             joinedload(ProductPriceLevel.produk), joinedload(ProductPriceLevel.level)
         )
-        .order_by(ProductPriceLevel.level_id.asc(), ProductPriceLevel.product_id.asc())
+        .order_by(ProductPriceLevel.level_id.asc(), ProductPriceLevel.id.desc())
         .all()
-    )
-
-    level_summary = []
-    for level in price_levels:
-        level_summary.append(
-            {
-                "id": level.id,
-                "name": level.name,
-                "description": level.description,
-                "customer_count": len(level.pelanggan),
-                "price_count": sum(
-                    1 for entry in price_entries if entry.level_id == level.id
-                ),
-            }
-        )
-
-    price_table, price_table_pages = _build_level_price_tables(
-        price_levels, price_entries, request.args, per_page=8
     )
 
     cost_entries = (
@@ -9230,6 +10445,44 @@ def harga_level():
     for cost in cost_entries:
         price_level_costs.setdefault(cost.level_id, []).append(cost)
 
+    cost_totals = {
+        level.id: {"percent": 0.0, "nominal": 0.0, "active": 0}
+        for level in price_levels
+    }
+    for cost in cost_entries:
+        if not cost.is_active:
+            continue
+        total_entry = cost_totals.setdefault(
+            cost.level_id, {"percent": 0.0, "nominal": 0.0, "active": 0}
+        )
+        if cost.type == "percent":
+            total_entry["percent"] += float(cost.value or 0.0)
+        else:
+            total_entry["nominal"] += float(cost.value or 0.0)
+        total_entry["active"] += 1
+
+    level_summary = []
+    for level in price_levels:
+        totals = cost_totals.get(level.id, {"percent": 0.0, "nominal": 0.0, "active": 0})
+        level_summary.append(
+            {
+                "id": level.id,
+                "name": level.name,
+                "description": level.description,
+                "customer_count": len(level.pelanggan),
+                "price_count": sum(
+                    1 for entry in price_entries if entry.level_id == level.id
+                ),
+                "cost_percent_total": totals["percent"],
+                "cost_nominal_total": totals["nominal"],
+                "cost_active_count": totals["active"],
+            }
+        )
+
+    price_table, price_table_pages = _build_level_price_tables(
+        price_levels, price_entries, request.args, per_page=8
+    )
+
     return render_template(
         "harga_level.html",
         price_levels=price_levels,
@@ -9237,6 +10490,7 @@ def harga_level():
         price_table=price_table,
         price_table_pages=price_table_pages,
         price_level_costs=price_level_costs,
+        cost_totals=cost_totals,
     )
 
 
@@ -9249,7 +10503,7 @@ def harga_level_level_fragment(level_id):
         ProductPriceLevel.query.options(
             joinedload(ProductPriceLevel.produk), joinedload(ProductPriceLevel.level)
         )
-        .order_by(ProductPriceLevel.level_id.asc(), ProductPriceLevel.product_id.asc())
+        .order_by(ProductPriceLevel.level_id.asc(), ProductPriceLevel.id.desc())
         .all()
     )
 
@@ -9274,3 +10528,178 @@ def harga_level_level_fragment(level_id):
         )
 
     return redirect(url_for("main.harga_level", **request.args.to_dict()))
+
+
+@bp.route("/harga_level/export", methods=["GET"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def export_harga_level():
+    blank = request.args.get("template") == "1"
+    levels = PriceLevel.query.order_by(PriceLevel.name.asc()).all()
+    products = Produk.query.order_by(Produk.nama_produk.asc()).all()
+    entries = ProductPriceLevel.query.all()
+
+    rows = _build_level_price_export_rows(levels, products, entries, blank_prices=blank)
+    df = pd.DataFrame(rows)
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    output.seek(0)
+
+    filename = "template_level_harga.xlsx" if blank else "level_harga.xlsx"
+    response = make_response(output.read())
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-Type"] = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    return response
+
+
+@bp.route("/harga_level/import", methods=["POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def import_harga_level():
+    if "file" not in request.files:
+        flash("File Excel belum dipilih.", "warning")
+        return redirect(url_for("main.harga_level"))
+
+    file = request.files["file"]
+    if not file or not file.filename:
+        flash("File Excel belum dipilih.", "warning")
+        return redirect(url_for("main.harga_level"))
+
+    try:
+        df = pd.read_excel(file)
+    except Exception as exc:
+        flash(f"Gagal membaca file Excel: {exc}", "danger")
+        return redirect(url_for("main.harga_level"))
+
+    if df.empty:
+        flash("File Excel kosong.", "warning")
+        return redirect(url_for("main.harga_level"))
+
+    def _normalize_col(name):
+        return re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower())
+
+    normalized_columns = {_normalize_col(col): col for col in df.columns}
+    required_any = {"price", "harga"}
+    if not required_any.intersection(normalized_columns.keys()):
+        flash("Kolom harga tidak ditemukan di file Excel.", "warning")
+        return redirect(url_for("main.harga_level"))
+
+    levels = PriceLevel.query.all()
+    products = Produk.query.all()
+    level_by_id = {level.id: level for level in levels}
+    level_by_name = {level.name.lower(): level for level in levels}
+    product_by_id = {product.id: product for product in products}
+    product_by_code = {
+        (product.kode_produk or "").lower(): product for product in products
+    }
+    product_by_sku = {(product.sku or "").lower(): product for product in products}
+    product_by_barcode = {
+        (product.barcode or "").lower(): product for product in products
+    }
+
+    existing_entries = {
+        (entry.product_id, entry.level_id): entry
+        for entry in ProductPriceLevel.query.all()
+    }
+
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+    errors = 0
+
+    for _, row in df.iterrows():
+        row_data = {
+            _normalize_col(col): row[col] for col in df.columns
+        }
+
+        def _get_value(*keys):
+            for key in keys:
+                if key in row_data:
+                    return row_data.get(key)
+            return None
+
+        level_id_value = _get_value("level_id", "id_level")
+        level_name_value = _get_value("level_name", "nama_level", "level")
+        product_id_value = _get_value("product_id", "id_produk", "produk_id")
+        product_code_value = _get_value("product_code", "kode_produk", "kode")
+        sku_value = _get_value("sku")
+        barcode_value = _get_value("barcode")
+        price_value = _get_value("price", "harga", "harga_level")
+
+        if pd.isna(price_value):
+            skipped_count += 1
+            continue
+
+        try:
+            price_value = float(price_value)
+        except (TypeError, ValueError):
+            errors += 1
+            continue
+
+        if price_value < 0:
+            errors += 1
+            continue
+
+        level = None
+        if not pd.isna(level_id_value):
+            try:
+                level = level_by_id.get(int(level_id_value))
+            except (TypeError, ValueError):
+                level = None
+        if not level and level_name_value and not pd.isna(level_name_value):
+            level = level_by_name.get(str(level_name_value).strip().lower())
+
+        product = None
+        if not pd.isna(product_id_value):
+            try:
+                product = product_by_id.get(int(product_id_value))
+            except (TypeError, ValueError):
+                product = None
+        if not product and product_code_value and not pd.isna(product_code_value):
+            product = product_by_code.get(str(product_code_value).strip().lower())
+        if not product and sku_value and not pd.isna(sku_value):
+            product = product_by_sku.get(str(sku_value).strip().lower())
+        if not product and barcode_value and not pd.isna(barcode_value):
+            product = product_by_barcode.get(str(barcode_value).strip().lower())
+
+        if not level or not product:
+            skipped_count += 1
+            continue
+
+        key = (product.id, level.id)
+        existing = existing_entries.get(key)
+        if existing:
+            if existing.price != price_value:
+                existing.price = price_value
+                updated_count += 1
+            else:
+                skipped_count += 1
+            continue
+
+        new_entry = ProductPriceLevel(
+            product_id=product.id, level_id=level.id, price=price_value
+        )
+        db.session.add(new_entry)
+        existing_entries[key] = new_entry
+        created_count += 1
+
+    if created_count or updated_count:
+        db.session.commit()
+
+    message_parts = []
+    if created_count:
+        message_parts.append(f"{created_count} dibuat")
+    if updated_count:
+        message_parts.append(f"{updated_count} diupdate")
+    if skipped_count:
+        message_parts.append(f"{skipped_count} dilewati")
+    if errors:
+        message_parts.append(f"{errors} error")
+    summary = ", ".join(message_parts) if message_parts else "Tidak ada perubahan"
+
+    flash(f"Import level harga selesai: {summary}.", "success")
+    return redirect(url_for("main.harga_level"))

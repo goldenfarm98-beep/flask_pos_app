@@ -247,6 +247,7 @@
         {% set primary_links = [
             {'label': 'Dashboard', 'endpoint': 'main.dashboard', 'icon': 'fa-tachometer-alt', 'active_prefix': 'main.dashboard'},
             {'label': 'Penjualan', 'endpoint': 'main.penjualan', 'icon': 'fa-cash-register', 'active_prefix': 'main.penjualan'},
+            {'label': 'Data Penjualan', 'endpoint': 'main.data_penjualan', 'icon': 'fa-list', 'active_prefix': 'main.data_penjualan'},
             {'label': 'Pembelian', 'endpoint': 'main.pembelian', 'icon': 'fa-shopping-cart', 'active_prefix': 'main.pembelian'}
         ] %}
         {% set grouped_links = [
@@ -257,7 +258,8 @@
                     {'label': 'Produk', 'endpoint': 'main.produk', 'active_prefix': 'main.produk'},
                     {'label': 'Pelanggan', 'endpoint': 'main.pelanggan', 'active_prefix': 'main.pelanggan'},
                     {'label': 'Supplier', 'endpoint': 'main.supplier', 'active_prefix': 'main.supplier'},
-                    {'label': 'Expedisi', 'endpoint': 'main.expedisi', 'active_prefix': 'main.expedisi'},
+                    {'label': 'Expedisi', 'endpoint': 'main.expedisi', 'active_endpoints': ['main.expedisi', 'main.edit_expedisi', 'main.delete_expedisi'], 'active_prefix': 'main.expedisi'},
+                    {'label': 'Volumetrik Expedisi', 'endpoint': 'main.expedisi_volumetrik', 'active_prefix': 'main.expedisi_volumetrik'},
                     {'label': 'Satuan', 'endpoint': 'main.satuan', 'active_prefix': 'main.satuan'},
                     {'label': 'Kategori', 'endpoint': 'main.kategori', 'active_prefix': 'main.kategori'},
                     {'label': 'Level Harga', 'endpoint': 'main.harga_level', 'active_prefix': 'main.harga_level'}
@@ -289,7 +291,8 @@
                 'label': 'Utilitas',
                 'icon': 'fa-sliders-h',
                 'links': [
-                    {'label': 'Pembayaran Piutang', 'endpoint': 'main.pembayaran_piutang', 'active_prefix': 'main.pembayaran_piutang'}
+                    {'label': 'Pembayaran Piutang', 'endpoint': 'main.pembayaran_piutang', 'active_prefix': 'main.pembayaran_piutang'},
+                    {'label': 'Kelola Harga', 'endpoint': 'main.kelola_harga', 'active_prefix': 'main.kelola_harga'}
                 ]
             },
             {
@@ -340,19 +343,27 @@
                     <li class="sidebar-header">Menu</li>
 
                     {% for item in primary_links %}
-                        {% set is_active = current.startswith(item.active_prefix) %}
-                        <li class="sidebar-item {% if is_active %}active{% endif %}">
-                            <a class="sidebar-link" href="{{ url_for(item.endpoint) }}">
-                                <i class="align-middle fas {{ item.icon }}"></i> <span class="align-middle">{{ item.label }}</span>
-                            </a>
-                        </li>
+                        {% if not (session.get('role') == 'gudang' and item.label == 'Data Penjualan') %}
+                            {% set is_active = current.startswith(item.active_prefix) %}
+                            <li class="sidebar-item {% if is_active %}active{% endif %}">
+                                <a class="sidebar-link" href="{{ url_for(item.endpoint) }}">
+                                    <i class="align-middle fas {{ item.icon }}"></i> <span class="align-middle">{{ item.label }}</span>
+                                </a>
+                            </li>
+                        {% endif %}
                     {% endfor %}
 
                     {% for group in grouped_links %}
                         {% set ns = namespace(group_active=false) %}
                         {% for entry in group.links %}
-                            {% if current.startswith(entry.active_prefix) %}
-                                {% set ns.group_active = true %}
+                            {% if entry.active_endpoints is defined %}
+                                {% if current in entry.active_endpoints %}
+                                    {% set ns.group_active = true %}
+                                {% endif %}
+                            {% else %}
+                                {% if current.startswith(entry.active_prefix) %}
+                                    {% set ns.group_active = true %}
+                                {% endif %}
                             {% endif %}
                         {% endfor %}
                         {% set collapse_id = "sidebar-group-" ~ loop.index %}
@@ -363,7 +374,12 @@
                             <div class="collapse {% if ns.group_active %}show{% endif %}" id="{{ collapse_id }}">
                                 <ul class="sidebar-dropdown list-unstyled">
                                     {% for entry in group.links %}
-                                        <li class="sidebar-item {% if current.startswith(entry.active_prefix) %}active{% endif %}">
+                                        {% if entry.active_endpoints is defined %}
+                                            {% set entry_active = current in entry.active_endpoints %}
+                                        {% else %}
+                                            {% set entry_active = current.startswith(entry.active_prefix) %}
+                                        {% endif %}
+                                        <li class="sidebar-item {% if entry_active %}active{% endif %}">
                                             <a class="sidebar-link" href="{{ url_for(entry.endpoint) }}">{{ entry.label }}</a>
                                         </li>
                                     {% endfor %}

@@ -181,11 +181,14 @@
                     <div class="chart-shell mb-3">
                         <canvas id="categoryChart"></canvas>
                     </div>
-                    <ul class="list-unstyled mb-0">
+                    <ul class="list-unstyled mb-0 category-list">
                         {% for entry in category_distribution[:5] %}
-                        <li class="d-flex justify-content-between mb-2">
-                            <span>{{ entry.label }}</span>
-                            <strong>{{ entry.stock }}</strong>
+                        <li class="d-flex justify-content-between mb-2 category-item" data-category-label="{{ entry.label }}">
+                            <div class="d-flex align-items-center">
+                                <span class="category-dot" aria-hidden="true"></span>
+                                <span class="category-name">{{ entry.label }}</span>
+                            </div>
+                            <strong class="category-value">{{ entry.stock }}</strong>
                         </li>
                         {% endfor %}
                     </ul>
@@ -209,23 +212,81 @@
         if (!canvas || !dataset.length) return;
         const labels = dataset.map(item => item.label);
         const data = dataset.map(item => item.stock);
+        const palette = [
+            '#2563eb',
+            '#16a34a',
+            '#f59e0b',
+            '#ec4899',
+            '#14b8a6',
+            '#9333ea',
+            '#0ea5e9',
+            '#f97316',
+            '#22c55e',
+            '#e11d48'
+        ];
+        const colors = labels.map((_, index) => palette[index % palette.length]);
+        const totalStock = data.reduce((sum, value) => sum + value, 0);
+
+        const centerLabelPlugin = {
+            id: 'centerLabel',
+            beforeDraw(chart) {
+                const { ctx, chartArea } = chart;
+                if (!chartArea) return;
+                const { left, right, top, bottom } = chartArea;
+                const centerX = (left + right) / 2;
+                const centerY = (top + bottom) / 2;
+
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#0f172a';
+                ctx.font = '700 20px "Inter", "Helvetica Neue", Arial, sans-serif';
+                ctx.fillText(totalStock.toLocaleString('id-ID'), centerX, centerY - 2);
+                ctx.fillStyle = '#64748b';
+                ctx.font = '500 11px "Inter", "Helvetica Neue", Arial, sans-serif';
+                ctx.fillText('Total stok', centerX, centerY + 16);
+                ctx.restore();
+            }
+        };
+
         new Chart(canvas.getContext('2d'), {
             type: 'doughnut',
             data: {
                 labels,
                 datasets: [{
                     data,
-                    backgroundColor: ['#2563eb', '#16a34a', '#f59e0b', '#ec4899', '#14b8a6', '#9333ea']
+                    backgroundColor: colors,
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                    spacing: 2
                 }]
             },
             options: {
-                responsive: false,
+                responsive: true,
                 maintainAspectRatio: false,
-                cutout: '60%',
+                devicePixelRatio: window.devicePixelRatio || 1,
+                cutout: '70%',
                 plugins: {
-                    legend: { position: 'bottom' }
-                }
-            }
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const value = context.parsed || 0;
+                                const label = context.label || '';
+                                return `${label}: ${value.toLocaleString('id-ID')}`;
+                            }
+                        }
+                    }
+                },
+                animation: { duration: 700 }
+            },
+            plugins: [centerLabelPlugin]
+        });
+
+        const colorMap = new Map(labels.map((label, index) => [label, colors[index]]));
+        document.querySelectorAll('.category-item[data-category-label]').forEach((item) => {
+            const label = item.getAttribute('data-category-label') || '';
+            const color = colorMap.get(label) || '#94a3b8';
+            item.style.setProperty('--category-color', color);
         });
     });
 </script>
@@ -384,7 +445,36 @@
         text-overflow: ellipsis;
         margin-top: 0.1rem;
     }
-    .chart-shell { height:240px; }
-    .chart-shell canvas { width:100% !important; height:100% !important; display:block; }
+    .chart-shell {
+        height: 280px;
+        padding: 0.75rem;
+        border-radius: 16px;
+        background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(241, 245, 249, 0.7));
+        border: 1px solid rgba(15, 23, 42, 0.08);
+    }
+    .chart-shell canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+    }
+    .category-list .category-item {
+        gap: 0.75rem;
+    }
+    .category-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--category-color, #94a3b8);
+        box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.06);
+        margin-right: 0.5rem;
+        flex: 0 0 auto;
+    }
+    .category-name {
+        color: #0f172a;
+        font-weight: 600;
+    }
+    .category-value {
+        color: #0f172a;
+    }
 </style>
 {% endblock %}

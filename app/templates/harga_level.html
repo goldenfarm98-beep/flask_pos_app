@@ -19,6 +19,36 @@
         <div class="col-xl-5">
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Import & export level harga</h2>
+                    <p class="text-muted small mb-3">
+                        Unduh template Excel, isi kolom harga, lalu import kembali untuk memperbarui harga level.
+                    </p>
+                    <div class="d-flex flex-wrap mb-3" style="gap: 0.5rem;">
+                        <a href="{{ url_for('main.export_harga_level') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-file-export mr-1"></i>Export data
+                        </a>
+                        <a href="{{ url_for('main.export_harga_level', template=1) }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-file-download mr-1"></i>Download template
+                        </a>
+                    </div>
+                    <form method="POST" action="{{ url_for('main.import_harga_level') }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Import Excel</label>
+                            <input type="file" class="form-control-file" name="file" accept=".xlsx,.xls" required>
+                            <small class="form-text text-muted">
+                                Kolom wajib: Price/Harga. Gunakan Level ID/Name dan Product Code/ID agar dikenali.
+                            </small>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <i class="fas fa-upload mr-1"></i>Import level harga
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
                     <h2 class="h5 font-weight-bold mb-3">Tambah level harga</h2>
                     <form method="POST" autocomplete="off">
                         <input type="hidden" name="action" value="create_level">
@@ -48,7 +78,21 @@
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
                                             <div class="font-weight-semibold">{{ level.name }}</div>
-                                            <small class="text-muted">{{ level.description or 'Tanpa deskripsi' }}</small>
+                                            <small class="text-muted d-block">{{ level.description or 'Tanpa deskripsi' }}</small>
+                                            <small class="text-muted d-block">
+                                                Total biaya aktif:
+                                                {% if level.cost_percent_total or level.cost_nominal_total %}
+                                                    {% if level.cost_percent_total %}
+                                                        {{ '%.2f%%'|format(level.cost_percent_total) }}
+                                                    {% endif %}
+                                                    {% if level.cost_nominal_total %}
+                                                        {% if level.cost_percent_total %} + {% endif %}
+                                                        Rp {{ '{:,.0f}'.format(level.cost_nominal_total).replace(',', '.') }}
+                                                    {% endif %}
+                                                {% else %}
+                                                    -
+                                                {% endif %}
+                                            </small>
                                         </div>
                                         <div class="text-right">
                                             <div class="small text-muted">Pelanggan: {{ level.customer_count }}</div>
@@ -192,43 +236,63 @@
                             <tbody>
                                 {% for level in price_levels %}
                                     {% set costs = price_level_costs.get(level.id, []) %}
-                                    {% if costs %}
-                                        {% for cost in costs %}
-                                            <tr>
-                                                <td>{{ level.name }}</td>
-                                                <td>{{ cost.name }}</td>
-                                                <td>{{ "Persen" if cost.type == "percent" else "Nominal" }}</td>
-                                                <td>{{ cost.formatted_value() }}</td>
-                                                <td>
-                                                    <span class="badge badge-{{ "success" if cost.is_active else "secondary" }}">
-                                                        {{ "Aktif" if cost.is_active else "Nonaktif" }}
-                                                    </span>
-                                                </td>
-                                                <td class="text-right">
-                                                    <form method="POST" class="d-inline mr-2">
-                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                        <input type="hidden" name="action" value="toggle_cost">
-                                                        <input type="hidden" name="cost_id" value="{{ cost.id }}">
-                                                        <button type="submit" class="btn btn-link btn-sm text-primary">
-                                                            {{ "Nonaktifkan" if cost.is_active else "Aktifkan" }}
-                                                        </button>
-                                                    </form>
-                                                    <form method="POST" class="d-inline">
-                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                        <input type="hidden" name="action" value="delete_cost">
-                                                        <input type="hidden" name="cost_id" value="{{ cost.id }}">
-                                                        <button type="submit" class="btn btn-link btn-sm text-danger">
-                                                            Hapus
-                                                        </button>
-                                                    </form>
-                                                </td>
-                                            </tr>
-                                        {% endfor %}
-                                    {% else %}
+                                {% if costs %}
+                                    {% for cost in costs %}
                                         <tr>
-                                            <td colspan="6" class="text-muted small">
-                                                Belum ada biaya otomatis untuk <strong>{{ level.name }}</strong>.
+                                            <td>{{ level.name }}</td>
+                                            <td>{{ cost.name }}</td>
+                                            <td>{{ "Persen" if cost.type == "percent" else "Nominal" }}</td>
+                                            <td>{{ cost.formatted_value() }}</td>
+                                            <td>
+                                                <span class="badge badge-{{ "success" if cost.is_active else "secondary" }}">
+                                                    {{ "Aktif" if cost.is_active else "Nonaktif" }}
+                                                </span>
                                             </td>
+                                            <td class="text-right">
+                                                <form method="POST" class="d-inline mr-2">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                    <input type="hidden" name="action" value="toggle_cost">
+                                                    <input type="hidden" name="cost_id" value="{{ cost.id }}">
+                                                    <button type="submit" class="btn btn-link btn-sm text-primary">
+                                                        {{ "Nonaktifkan" if cost.is_active else "Aktifkan" }}
+                                                    </button>
+                                                </form>
+                                                <form method="POST" class="d-inline">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                    <input type="hidden" name="action" value="delete_cost">
+                                                    <input type="hidden" name="cost_id" value="{{ cost.id }}">
+                                                    <button type="submit" class="btn btn-link btn-sm text-danger">
+                                                        Hapus
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    {% set totals = cost_totals.get(level.id) %}
+                                    <tr class="table-light">
+                                        <td colspan="3"><strong>Total biaya aktif</strong></td>
+                                        <td>
+                                            {% if totals and (totals.percent or totals.nominal) %}
+                                                {% if totals.percent %}
+                                                    {{ '%.2f%%'|format(totals.percent) }}
+                                                {% endif %}
+                                                {% if totals.nominal %}
+                                                    {% if totals.percent %} + {% endif %}
+                                                    Rp {{ '{:,.0f}'.format(totals.nominal).replace(',', '.') }}
+                                                {% endif %}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td colspan="2" class="text-right text-muted small">
+                                            Aktif: {{ totals.active if totals else 0 }}
+                                        </td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="6" class="text-muted small">
+                                            Belum ada biaya otomatis untuk <strong>{{ level.name }}</strong>.
+                                        </td>
                                         </tr>
                                     {% endif %}
                                 {% endfor %}

@@ -47,6 +47,7 @@
         <div class="col-xl-9 order-2 order-xl-1">
             <form method="POST" id="salesForm" autocomplete="off">
                 {{ form.hidden_tag() }}
+                <input type="hidden" name="draft_invoice" value="{{ draft_invoice }}">
 
                 <div class="card sales-meta shadow-sm mb-4">
                     <div class="card-body">
@@ -231,6 +232,9 @@
                             <button type="button" class="btn btn-outline-secondary mr-2 mb-2" id="new-sale"
                                 data-shortcut="F1">
                                 <i class="fas fa-file-medical mr-1"></i>Baru (F1)
+                            </button>
+                            <button type="button" class="btn btn-outline-danger mr-2 mb-2" id="clear-draft">
+                                <i class="fas fa-eraser mr-1"></i>Hapus Draft
                             </button>
                             <button type="button" class="btn btn-outline-secondary mr-2 mb-2" id="cancel-entry"
                                 data-shortcut="F3">
@@ -1039,6 +1043,7 @@
         const quickAddButton = document.getElementById('quick-add');
         const cancelEntryButton = document.getElementById('cancel-entry');
         const newSaleButton = document.getElementById('new-sale');
+        const clearDraftButton = document.getElementById('clear-draft');
         const goBackButton = document.getElementById('go-back');
         const payButton = document.getElementById('pay-button');
         const paymentModal = document.getElementById('paymentModal');
@@ -1112,6 +1117,8 @@
             baseGrand: 0,
             grand: 0,
         };
+        const draftStorageKey = 'salesDraftV1';
+        let isRestoringDraft = false;
 
         function showModal(modalEl) {
             if (!modalEl) {
@@ -1397,6 +1404,135 @@
             emptyRow.classList.toggle('d-none', hasRows);
         }
 
+        function buildDraftPayload() {
+            const items = getRows()
+                .map(row => ({
+                    product_id: row.dataset.productId,
+                    qty: parseNumber(row.dataset.qty),
+                    price: parseNumber(row.dataset.price),
+                    discount: parseNumber(row.dataset.discountPercent),
+                    tax: parseNumber(row.dataset.taxPercent)
+                }))
+                .filter(item => item.product_id && item.qty > 0);
+            return {
+                items,
+                customer_id: customerSelect ? customerSelect.value : '',
+                customer_label: customerInput ? customerInput.value : '',
+                price_level_id: priceLevelSelect ? priceLevelSelect.value : '',
+                shipping_fee: shippingFeeInput ? shippingFeeInput.value : '',
+                payment_method: paymentMethodSelect ? paymentMethodSelect.value : '',
+                payment_channel_id: paymentChannelSelect ? paymentChannelSelect.value : '',
+                due_date: dueDateInput ? dueDateInput.value : '',
+                expedition_id: expeditionSelect ? expeditionSelect.value : '',
+                amount_paid: amountPaidInput ? amountPaidInput.value : '',
+                updated_at: Date.now()
+            };
+        }
+
+        function saveDraft() {
+            if (isRestoringDraft) {
+                return;
+            }
+            if (!window.localStorage) {
+                return;
+            }
+            const payload = buildDraftPayload();
+            if (!payload.items.length && !payload.customer_label) {
+                return;
+            }
+            localStorage.setItem(draftStorageKey, JSON.stringify(payload));
+        }
+
+        function clearDraft() {
+            if (!window.localStorage) {
+                return;
+            }
+            localStorage.removeItem(draftStorageKey);
+        }
+
+        function restoreDraft() {
+            if (!window.localStorage) {
+                return;
+            }
+            const raw = localStorage.getItem(draftStorageKey);
+            if (!raw) {
+                return;
+            }
+            let draft = null;
+            try {
+                draft = JSON.parse(raw);
+            } catch (error) {
+                clearDraft();
+                return;
+            }
+            if (!draft || !Array.isArray(draft.items)) {
+                return;
+            }
+            isRestoringDraft = true;
+
+            if (customerSelect && draft.customer_id) {
+                customerSelect.value = draft.customer_id;
+            }
+            if (customerInput && draft.customer_label) {
+                customerInput.value = draft.customer_label;
+            }
+            if (priceLevelSelect) {
+                priceLevelSelect.value = draft.price_level_id || '';
+                manualPriceLevelId = draft.price_level_id ? String(draft.price_level_id) : null;
+            }
+            if (expeditionSelect && draft.expedition_id) {
+                expeditionSelect.value = draft.expedition_id;
+            }
+            if (shippingFeeInput && draft.shipping_fee !== undefined) {
+                shippingFeeInput.value = draft.shipping_fee;
+                shippingFeeValue = Math.max(0, parseNumber(draft.shipping_fee));
+            }
+            if (paymentMethodSelect && draft.payment_method) {
+                paymentMethodSelect.value = draft.payment_method;
+                applyPaymentMethodState();
+            }
+            if (paymentChannelSelect && draft.payment_channel_id) {
+                paymentChannelSelect.value = draft.payment_channel_id;
+            }
+            if (dueDateInput && draft.due_date) {
+                dueDateInput.value = draft.due_date;
+            }
+            if (amountPaidInput && draft.amount_paid) {
+                amountPaidInput.value = draft.amount_paid;
+            }
+
+            getRows().forEach(row => row.remove());
+            resetProductStockMap();
+            draft.items.forEach(item => {
+                const productId = String(item.product_id || '');
+                const product = productMap.get(productId);
+                if (!product) {
+                    return;
+                }
+                const qty = clamp(item.qty, 1);
+                const price = clamp(item.price ?? product.price ?? 0, 0);
+                const discount = clamp(item.discount ?? 0, 0, 100);
+                const tax = clamp(item.tax ?? 0, 0);
+                const availableStock = getAvailableStock(productId);
+                const remainingStock = Math.max(0, availableStock - qty);
+                setAvailableStock(productId, remainingStock);
+                const row = buildRow({
+                    product,
+                    qty,
+                    price,
+                    discount,
+                    tax,
+                    stockBefore: availableStock,
+                    stockAfter: remainingStock
+                });
+                itemsTableBody.appendChild(row);
+            });
+            toggleEmptyState();
+            refreshRowNumbers();
+            updateTotals();
+            isRestoringDraft = false;
+        }
+
         function renderSummary(key, value, isCurrency = true) {
             const nodes = summaryNodes[key];
             if (!nodes) {
@@ -1485,6 +1621,7 @@
                 totalWeightInput.value = weight.toFixed(2);
             }
             updatePaymentSummary();
+            saveDraft();
         }
 
         function updatePaymentSummary() {
@@ -2078,6 +2215,7 @@
             updateCurrentPriceLevel(false);
             applyCustomerSelectionFromSelect();
             updateCustomerMeta();
+            clearDraft();
         }
 
         function updateCustomerMeta() {
@@ -2191,6 +2329,14 @@
             });
         }
 
+        if (clearDraftButton) {
+            clearDraftButton.addEventListener('click', () => {
+                if (confirm('Hapus draft transaksi saat ini?')) {
+                    resetSaleForm();
+                }
+            });
+        }
+
         if (goBackButton) {
             goBackButton.addEventListener('click', () => {
                 window.history.back();
@@ -2207,6 +2353,14 @@
         function openPaymentModal() {
             if (getRows().length === 0) {
                 alert('Tambahkan minimal satu produk sebelum menyimpan penjualan.');
+                return;
+            }
+            if (customerSelect && (!customerSelect.value || customerSelect.value === '0')) {
+                alert('Pilih pelanggan sebelum menyimpan transaksi.');
+                if (customerInput) {
+                    customerInput.classList.add('is-invalid');
+                    customerInput.focus();
+                }
                 return;
             }
             if (shippingFeeInput) {
@@ -2303,7 +2457,18 @@
                 if (getRows().length === 0) {
                     event.preventDefault();
                     alert('Tambahkan minimal satu produk sebelum menyimpan penjualan.');
+                    return;
                 }
+                if (customerSelect && (!customerSelect.value || customerSelect.value === '0')) {
+                    event.preventDefault();
+                    alert('Pilih pelanggan sebelum menyimpan transaksi.');
+                    if (customerInput) {
+                        customerInput.classList.add('is-invalid');
+                        customerInput.focus();
+                    }
+                    return;
+                }
+                saveDraft();
             });
         }
 
@@ -2343,6 +2508,22 @@
             });
         }
 
+        [
+            customerInput,
+            customerSelect,
+            priceLevelSelect,
+            shippingFeeInput,
+            paymentMethodSelect,
+            paymentChannelSelect,
+            dueDateInput,
+            expeditionSelect,
+            amountPaidInput
+        ].forEach(element => {
+            if (!element) return;
+            element.addEventListener('input', saveDraft);
+            element.addEventListener('change', saveDraft);
+        });
+
         document.addEventListener('keydown', event => {
             if (event.key === 'F1') {
                 event.preventDefault();
@@ -2368,6 +2549,7 @@
             }
         });
 
+        restoreDraft();
         applyCustomerSelectionFromSelect();
         updateCustomerMeta();
         syncProductInputToId(false);
