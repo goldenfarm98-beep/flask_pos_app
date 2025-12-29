@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Preview Laporan Supplier</title>
+    <style>
+        :root {
+            color-scheme: only light;
+        }
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            color: #0f172a;
+            margin: 24px;
+            background: #f8fafc;
+        }
+        .action-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .action-left {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            border: 1px solid #0f172a;
+            background: #0f172a;
+            color: #fff;
+            padding: 8px 14px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .btn-outline {
+            background: #fff;
+            color: #0f172a;
+        }
+        .btn-success {
+            background: #16a34a;
+            border-color: #16a34a;
+        }
+        .report-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 12px;
+            gap: 16px;
+            background: #fff;
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .company-info {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .company-logo {
+            width: 64px;
+            height: 64px;
+            object-fit: contain;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            padding: 4px;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin: 0 0 4px 0;
+        }
+        .meta {
+            color: #475569;
+            font-size: 0.9rem;
+        }
+        .summary-row {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            color: #334155;
+            margin: 12px 0 18px;
+            font-size: 0.9rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        thead th {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            text-align: left;
+            color: #475569;
+            border-bottom: 1px solid #cbd5f5;
+            padding: 8px 6px;
+            background: #f1f5f9;
+        }
+        tbody td {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 8px 6px;
+            font-size: 0.9rem;
+        }
+        @media print {
+            body {
+                margin: 0;
+                background: #fff;
+            }
+            .action-bar {
+                display: none;
+            }
+            .report-header {
+                box-shadow: none;
+                border-radius: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="action-bar">
+        <div class="action-left">
+            <button type="button" class="btn" onclick="window.print()">Cetak</button>
+            <a class="btn btn-success" href="{{ url_for('main.laporan_supplier_export', search=search_query) }}">Export Excel</a>
+        </div>
+        <a class="btn btn-outline" href="{{ url_for('main.laporan_supplier') }}">Kembali</a>
+    </div>
+
+    <div class="report-header">
+        <div class="company-info">
+            {% if company_profile.logo_url %}
+            <img src="{{ company_profile.logo_url }}" alt="Logo" class="company-logo">
+            {% endif %}
+            <div>
+                <h1>{{ company_profile.name }}</h1>
+                <div class="meta">{{ company_profile.address }}, {{ company_profile.city }}</div>
+                <div class="meta">Telp: {{ company_profile.phone }} • {{ company_profile.email }}</div>
+                {% if company_profile.website %}
+                <div class="meta">{{ company_profile.website }}</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="meta">
+            <div><strong>Laporan Data Supplier</strong></div>
+            <div>Dicetak: {{ printed_at.strftime('%d %b %Y %H:%M') }}</div>
+        </div>
+    </div>
+
+    <div class="summary-row">
+        <span>Total supplier: {{ total }}</span>
+        <span>Menampilkan: {{ filtered_total }}</span>
+        {% if search_query %}<span>Kata kunci: {{ search_query }}</span>{% endif %}
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nama</th>
+                <th>Kontak</th>
+                <th>Telepon</th>
+                <th>Email</th>
+                <th>Nama Bank</th>
+                <th>No Rekening</th>
+                <th>Nama Rekening</th>
+                <th>Alamat</th>
+                <th>Website</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if suppliers %}
+                {% for supplier in suppliers %}
+                <tr>
+                    <td>{{ supplier.id }}</td>
+                    <td>{{ supplier.name }}</td>
+                    <td>{{ supplier.contact_person or '-' }}</td>
+                    <td>{{ supplier.phone | normalize_phone or '-' }}</td>
+                    <td>{{ supplier.email or '-' }}</td>
+                    <td>{{ supplier.bank_name or '-' }}</td>
+                    <td>{{ supplier.bank_account or '-' }}</td>
+                    <td>{{ supplier.account_name or '-' }}</td>
+                    <td>{{ supplier.address or '-' }}</td>
+                    <td>{{ supplier.website or '-' }}</td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="10">Tidak ada data supplier.</td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</body>
+</html>

@@ -1,0 +1,822 @@
+{% extends "base.html" %}
+
+{% block title %}Kelola Harga{% endblock %}
+
+{% block content %}
+<section class="marketplace-pricing">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+        <div>
+            <h1 class="h4 font-weight-bold mb-1">Kelola Harga Marketplace</h1>
+            <p class="text-muted mb-0">Hitung harga jual marketplace berdasarkan HPP, packing, target laba, dan fee.</p>
+        </div>
+        <span class="badge badge-pill badge-light">Utilitas</span>
+    </div>
+
+    <div class="row align-items-start">
+        <div class="col-lg-5">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Input perhitungan</h2>
+                    <form method="POST" id="pricingForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="save">
+                        <input type="hidden" name="product_id" id="pricing_product_id">
+                        {% if form_data.record_id %}
+                            <input type="hidden" name="record_id" value="{{ form_data.record_id }}">
+                        {% endif %}
+                        <div class="form-row">
+                            <div class="form-group col-md-8 position-relative">
+                                <label class="font-weight-semibold">Nama produk</label>
+                                <input type="text" class="form-control" id="pricing_product_name" name="product_name" value="{{ form_data.product_name }}" autocomplete="off">
+                                <div class="product-suggestion-panel shadow-sm" id="pricing_product_suggestions" hidden></div>
+                                <small class="form-text text-muted" id="pricing-product-helper">Ketik nama/kode/SKU untuk memilih produk.</small>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label class="font-weight-semibold">SKU</label>
+                                <input type="text" class="form-control" id="pricing_product_sku" name="sku" value="{{ form_data.sku }}">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">HPP / Modal (C)</label>
+                            <input type="number" class="form-control form-control-lg" name="cost" step="0.01" min="0" value="{{ form_data.cost }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Packing / Handling (P)</label>
+                            <input type="number" class="form-control form-control-lg" name="packing" step="0.01" min="0" value="{{ form_data.packing }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Target laba bersih (T)</label>
+                            <input type="number" class="form-control form-control-lg" name="target_profit" step="0.01" min="0" value="{{ form_data.target_profit }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold mb-0">Marketplace fee</label>
+                            <div class="alert alert-light border-dashed mt-2 mb-0">
+                                Fee mengikuti total biaya aktif (persen) di Level Harga.
+                                <a href="{{ url_for('main.harga_level') }}" class="text-primary font-weight-semibold">Kelola Level Harga</a>.
+                            </div>
+                            <div class="mt-2">
+                                {% if has_price_levels %}
+                                    <span class="badge badge-success">Tersinkron dengan Level Harga</span>
+                                {% else %}
+                                    <span class="badge badge-warning">Belum tersinkron (pakai default)</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Pembulatan harga</label>
+                            <select class="custom-select" name="rounding_mode" id="roundingMode">
+                                {% for option in rounding_options %}
+                                    <option value="{{ option.value }}" {% if form_data.rounding_mode == option.value %}selected{% endif %}>{{ option.label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Harga jual manual (opsional)</label>
+                            <input type="number" class="form-control" id="manualPrice" step="0.01" min="0" placeholder="Isi untuk cek laba bersih">
+                        </div>
+                        <div class="d-flex flex-wrap" style="gap: 0.5rem;">
+                            <button type="submit" class="btn btn-primary flex-fill">
+                                <i class="fas fa-save mr-1"></i>Simpan setting
+                            </button>
+                            <a href="{{ url_for('main.kelola_harga') }}" class="btn btn-outline-secondary flex-fill">
+                                Reset
+                            </a>
+                            <button type="button" class="btn btn-success flex-fill" id="applyPricingButton" {% if not has_price_levels %}disabled{% endif %}>
+                                <i class="fas fa-check-circle mr-1"></i>Terapkan ke level harga
+                            </button>
+                            <button type="button" class="btn btn-outline-primary flex-fill" id="syncPricingButton" {% if not has_price_levels %}disabled{% endif %}>
+                                <i class="fas fa-sync-alt mr-1"></i>Recalculate &amp; Sync
+                            </button>
+                        </div>
+                        <div class="small text-muted mt-2" id="syncFeedback" role="status" aria-live="polite"></div>
+                        {% if not has_price_levels %}
+                            <small class="form-text text-muted mt-2">Buat level harga terlebih dahulu agar bisa diterapkan.</small>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h3 class="h6 font-weight-bold mb-1">Riwayat setting</h3>
+                            <p class="small text-muted mb-0">Maksimal 50 data terakhir.</p>
+                        </div>
+                        <span class="badge badge-light">{{ records|length }} data</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="text-uppercase small text-muted">
+                                <tr>
+                                    <th>Produk</th>
+                                    <th>Base</th>
+                                    <th>Target</th>
+                                    <th>Pembulatan</th>
+                                    <th class="text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for rec in records %}
+                                    <tr>
+                                        <td>
+                                            <div class="font-weight-semibold">{{ rec.product_name }}</div>
+                                            <small class="text-muted">SKU: {{ rec.sku }}</small>
+                                        </td>
+                                        <td>Rp {{ '{:,.0f}'.format(rec.base).replace(',', '.') }}</td>
+                                        <td>Rp {{ '{:,.0f}'.format(rec.target_profit).replace(',', '.') }}</td>
+                                        <td>{{ rec.rounding }}</td>
+                                        <td class="text-right">
+                                            <a href="{{ url_for('main.kelola_harga', load=rec.id) }}" class="btn btn-sm btn-outline-primary">
+                                                Gunakan
+                                            </a>
+                                            <form method="POST" class="d-inline">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="record_id" value="{{ rec.id }}">
+                                                <button type="submit" class="btn btn-sm btn-link text-danger"
+                                                    onclick="return confirm('Hapus setting ini?')">
+                                                    Hapus
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                {% if not records %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">Belum ada setting tersimpan.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 font-weight-bold mb-3">Hasil perhitungan</h2>
+                    <div class="row">
+                        {% for level in marketplace_levels %}
+                        <div class="col-md-6 mb-3">
+                            <div class="result-card" data-marketplace-card data-fee-percent="{{ level.fee_percent }}" data-fee-nominal="{{ level.fee_nominal }}">
+                                <div class="result-header">
+                                    <div>
+                                        <h3>{{ level.name }}</h3>
+                                        <span class="result-sub">Fee: <span data-role="fee-label">{{ '%.2f%%'|format(level.fee_percent) }}</span></span>
+                                    </div>
+                                    <span class="badge badge-soft">Marketplace</span>
+                                </div>
+                                <div class="result-grid">
+                                    <div>
+                                        <span class="label" data-role="base-label">Base (C+P)</span>
+                                        <div class="value" data-role="base">Rp 0</div>
+                                    </div>
+                                    <div>
+                                        <span class="label">BEP</span>
+                                        <div class="value" data-role="bep">Rp 0</div>
+                                    </div>
+                                    <div>
+                                        <span class="label">Harga jual</span>
+                                        <div class="value highlight" data-role="price">Rp 0</div>
+                                        <small class="muted" data-role="raw"></small>
+                                    </div>
+                                    <div>
+                                        <span class="label">Laba bersih</span>
+                                        <div class="value" data-role="profit">Rp 0</div>
+                                    </div>
+                                </div>
+                                <div class="result-note" data-role="note"></div>
+                                <div class="result-note text-muted" data-role="manual"></div>
+                                <div class="result-note text-muted" data-role="nominal"></div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="alert alert-light border-dashed mb-0">
+                        Pembulatan selalu ke atas agar laba bersih tidak turun di bawah target.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="modal fade" id="applyPricingModal" tabindex="-1" role="dialog" aria-labelledby="applyPricingLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <form method="POST" id="applyPricingForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="apply_levels">
+                <input type="hidden" name="product_id" id="apply_product_id">
+                <input type="hidden" name="cost" id="apply_cost">
+                <input type="hidden" name="packing" id="apply_packing">
+                <input type="hidden" name="target_profit" id="apply_target_profit">
+                <input type="hidden" name="rounding_mode" id="apply_rounding_mode">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="applyPricingLabel">Terapkan Harga ke Level</h5>
+                    <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex align-items-start justify-content-between flex-wrap mb-3">
+                        <div>
+                            <div class="font-weight-semibold" id="apply_product_name">-</div>
+                            <small class="text-muted">SKU: <span id="apply_product_sku">-</span></small>
+                        </div>
+                        <span class="badge badge-light" id="apply_rounding_label">Pembulatan -</span>
+                    </div>
+                    <div class="alert alert-warning d-none" id="applyPricingAlert"></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="text-uppercase small text-muted">
+                                <tr>
+                                    <th>Pilih</th>
+                                    <th>Level</th>
+                                    <th>Fee</th>
+                                    <th>Biaya Nominal</th>
+                                    <th>Harga Lama</th>
+                                    <th>Harga Baru</th>
+                                    <th>Laba Bersih</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="applyPricingRows"></tbody>
+                        </table>
+                    </div>
+                    <small class="text-muted d-block mt-2">Centang level yang ingin diperbarui.</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check-circle mr-1"></i>Terapkan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="marketplaceLevelsJson">{{ marketplace_levels|tojson }}</script>
+
+<style>
+    .marketplace-pricing .card {
+        border-radius: 16px;
+    }
+    .result-card {
+        border-radius: 16px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        padding: 1rem;
+        background: #fff;
+        height: 100%;
+    }
+    .result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .result-header h3 {
+        font-size: 1rem;
+        margin-bottom: 0.2rem;
+        font-weight: 700;
+    }
+    .result-sub {
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+    .result-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+    .result-grid .label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        color: #94a3b8;
+        letter-spacing: 0.06em;
+    }
+    .result-grid .value {
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .result-grid .value.highlight {
+        color: #1d4ed8;
+        font-size: 1.05rem;
+    }
+    .result-note {
+        margin-top: 0.8rem;
+        font-size: 0.85rem;
+        color: #0f172a;
+        font-weight: 600;
+    }
+    .result-note.warning {
+        color: #b45309;
+    }
+    .result-note.success {
+        color: #15803d;
+    }
+    .muted {
+        color: #94a3b8;
+        font-size: 0.75rem;
+    }
+    .badge-soft {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.2rem 0.65rem;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.12);
+        color: #1d4ed8;
+        font-weight: 600;
+    }
+    .product-suggestion-panel {
+        position: absolute;
+        inset: auto 0 0;
+        margin-top: 0.55rem;
+        background: #fff;
+        border-radius: 0.9rem;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        max-height: 220px;
+        overflow-y: auto;
+        width: 100%;
+        z-index: 1050;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.15);
+        padding: 0.35rem;
+        display: none;
+    }
+    .product-suggestion-panel.is-visible {
+        display: block;
+    }
+    .product-suggestion-item {
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: transparent;
+        padding: 0.65rem 0.75rem;
+        border-radius: 0.75rem;
+        transition: background 0.2s ease;
+        font-size: 0.95rem;
+        color: #0f172a;
+        cursor: pointer;
+    }
+    .product-suggestion-item + .product-suggestion-item {
+        margin-top: 0.2rem;
+    }
+    .product-suggestion-item:hover,
+    .product-suggestion-item:focus-visible {
+        background: rgba(59, 130, 246, 0.1);
+    }
+    .product-suggestion-item strong {
+        display: block;
+        font-weight: 600;
+    }
+    .product-suggestion-item span {
+        font-size: 0.85rem;
+        color: #475569;
+    }
+    .marketplace-pricing .alert.border-dashed {
+        border: 1px dashed rgba(15, 23, 42, 0.18);
+        color: #475569;
+    }
+    @media (max-width: 991px) {
+        .result-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const form = document.getElementById("pricingForm");
+        const manualInput = document.getElementById("manualPrice");
+        const roundingSelect = document.getElementById("roundingMode");
+        const productNameInput = document.getElementById("pricing_product_name");
+        const productSkuInput = document.getElementById("pricing_product_sku");
+        const productIdInput = document.getElementById("pricing_product_id");
+        const productPanel = document.getElementById("pricing_product_suggestions");
+        const productHelper = document.getElementById("pricing-product-helper");
+        const PRODUCT_SEARCH_URL = "{{ url_for('main.get_products') }}";
+        const resultCards = Array.from(document.querySelectorAll("[data-marketplace-card]"));
+        const applyButton = document.getElementById("applyPricingButton");
+        const syncButton = document.getElementById("syncPricingButton");
+        const applyModal = document.getElementById("applyPricingModal");
+        const applyForm = document.getElementById("applyPricingForm");
+        const applyRows = document.getElementById("applyPricingRows");
+        const applyAlert = document.getElementById("applyPricingAlert");
+        const applyProductName = document.getElementById("apply_product_name");
+        const applyProductSku = document.getElementById("apply_product_sku");
+        const applyRoundingLabel = document.getElementById("apply_rounding_label");
+        const applyProductIdInput = document.getElementById("apply_product_id");
+        const applyCostInput = document.getElementById("apply_cost");
+        const applyPackingInput = document.getElementById("apply_packing");
+        const applyTargetInput = document.getElementById("apply_target_profit");
+        const applyRoundingInput = document.getElementById("apply_rounding_mode");
+        const marketplaceLevelsEl = document.getElementById("marketplaceLevelsJson");
+        const marketplaceLevels = marketplaceLevelsEl ? JSON.parse(marketplaceLevelsEl.textContent) : [];
+        const hasPriceLevels = {{ "true" if has_price_levels else "false" }};
+        const syncFeedback = document.getElementById("syncFeedback");
+        let selectedProduct = null;
+
+        const getNumber = (value) => {
+            if (value === null || value === undefined) return 0;
+            const normalized = String(value).replace(/[^0-9.,-]/g, "").replace(",", ".");
+            const parsed = Number(normalized);
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        const formatCurrency = (value, withDecimals = false) => {
+            const number = Number(value) || 0;
+            return (
+                "Rp " +
+                number.toLocaleString("id-ID", {
+                    minimumFractionDigits: withDecimals ? 2 : 0,
+                    maximumFractionDigits: withDecimals ? 2 : 0,
+                })
+            );
+        };
+
+        const roundUpToMultiple = (value, step) => {
+            if (step <= 0) return Math.ceil(value);
+            return Math.ceil(value / step) * step;
+        };
+
+        const roundPsych900 = (value) => {
+            const base = Math.floor(value / 1000) * 1000;
+            let candidate = base + 900;
+            if (candidate < value) {
+                candidate += 1000;
+            }
+            return candidate;
+        };
+
+        const applyRounding = (value, mode) => {
+            if (!Number.isFinite(value)) return 0;
+            if (mode === "round_100") return roundUpToMultiple(value, 100);
+            if (mode === "round_500") return roundUpToMultiple(value, 500);
+            if (mode === "round_1000") return roundUpToMultiple(value, 1000);
+            if (mode === "round_900") return roundPsych900(value);
+            return Math.ceil(value);
+        };
+
+        const getFeeValue = (input) => {
+            const raw = getNumber(input.value);
+            if (raw > 1) return raw / 100;
+            return raw;
+        };
+
+        const updateResults = () => {
+            if (!form) return;
+            const cost = getNumber(form.cost.value);
+            const packing = getNumber(form.packing.value);
+            const target = getNumber(form.target_profit.value);
+            const roundingMode = roundingSelect ? roundingSelect.value : "round_100";
+            const manualPrice = manualInput ? getNumber(manualInput.value) : 0;
+
+            resultCards.forEach((card) => {
+                const feePercent = getNumber(card.dataset.feePercent);
+                const feeNominal = getNumber(card.dataset.feeNominal);
+                const base = cost + packing;
+                const baseWithNominal = base + feeNominal;
+                const fee = Math.min(Math.max(feePercent / 100, 0), 0.95);
+                const bep = fee < 1 ? baseWithNominal / (1 - fee) : 0;
+                const rawPrice = fee < 1 ? (baseWithNominal + target) / (1 - fee) : 0;
+                const roundedPrice = applyRounding(rawPrice, roundingMode);
+                const netProfit = roundedPrice * (1 - fee) - baseWithNominal;
+                const marginTip = target > 0 && baseWithNominal > 0 && target < baseWithNominal * 0.1;
+                const targetHit = netProfit + 0.0001 >= target;
+
+                const baseEl = card.querySelector('[data-role="base"]');
+                const baseLabelEl = card.querySelector('[data-role="base-label"]');
+                const bepEl = card.querySelector('[data-role="bep"]');
+                const priceEl = card.querySelector('[data-role="price"]');
+                const rawEl = card.querySelector('[data-role="raw"]');
+                const profitEl = card.querySelector('[data-role="profit"]');
+                const noteEl = card.querySelector('[data-role="note"]');
+                const manualEl = card.querySelector('[data-role="manual"]');
+                const nominalEl = card.querySelector('[data-role="nominal"]');
+
+                if (baseEl) baseEl.textContent = formatCurrency(baseWithNominal);
+                if (baseLabelEl) {
+                    baseLabelEl.textContent = feeNominal > 0 ? "Base (C+P+biaya)" : "Base (C+P)";
+                }
+                if (bepEl) bepEl.textContent = formatCurrency(bep, true);
+                if (priceEl) priceEl.textContent = formatCurrency(roundedPrice);
+                if (rawEl) {
+                    rawEl.textContent =
+                        roundingMode === "none"
+                            ? `Harga dasar: ${formatCurrency(rawPrice, true)}`
+                            : "";
+                }
+                if (profitEl) profitEl.textContent = formatCurrency(netProfit);
+
+                if (noteEl) {
+                    noteEl.classList.remove("warning", "success");
+                    if (!targetHit) {
+                        noteEl.textContent = "Peringatan: laba bersih hasil pembulatan di bawah target.";
+                        noteEl.classList.add("warning");
+                    } else if (marginTip) {
+                        noteEl.textContent = "Margin tipis: target laba di bawah 10% dari base.";
+                        noteEl.classList.add("warning");
+                    } else {
+                        noteEl.textContent = "Target laba aman, hasil >= target.";
+                        noteEl.classList.add("success");
+                    }
+                }
+
+                if (manualEl) {
+                    if (manualPrice > 0) {
+                        const manualNet = manualPrice * (1 - fee) - baseWithNominal;
+                        manualEl.textContent = `Laba bersih harga manual: ${formatCurrency(manualNet)}`;
+                    } else {
+                        manualEl.textContent = "";
+                    }
+                }
+
+                if (nominalEl) {
+                    nominalEl.textContent =
+                        feeNominal > 0
+                            ? `Biaya nominal aktif (dihitung): ${formatCurrency(feeNominal)}`
+                            : "";
+                }
+            });
+        };
+
+        const setSyncFeedback = (message, tone = "muted") => {
+            if (!syncFeedback) return;
+            syncFeedback.textContent = message || "";
+            syncFeedback.classList.remove("text-muted", "text-danger", "text-success", "text-info");
+            if (tone === "danger") {
+                syncFeedback.classList.add("text-danger");
+            } else if (tone === "success") {
+                syncFeedback.classList.add("text-success");
+            } else if (tone === "info") {
+                syncFeedback.classList.add("text-info");
+            } else {
+                syncFeedback.classList.add("text-muted");
+            }
+        };
+
+        const showApplyAlert = (message) => {
+            if (!applyAlert) return;
+            if (message) {
+                applyAlert.textContent = message;
+                applyAlert.classList.remove("d-none");
+                setSyncFeedback(message, "danger");
+            } else {
+                applyAlert.textContent = "";
+                applyAlert.classList.add("d-none");
+                setSyncFeedback("", "muted");
+            }
+        };
+
+        const buildApplyPreview = () => {
+            if (!form || !applyRows) return false;
+            if (!hasPriceLevels || !marketplaceLevels.length) {
+                showApplyAlert("Level harga belum tersedia.");
+                return false;
+            }
+            const productId = productIdInput ? productIdInput.value : "";
+            if (!productId) {
+                if (productHelper) {
+                    productHelper.textContent = "Pilih produk dari suggestion untuk diterapkan.";
+                    productHelper.classList.add("text-danger");
+                }
+                showApplyAlert("Produk belum dipilih.");
+                return false;
+            }
+            const cost = getNumber(form.cost.value);
+            const packing = getNumber(form.packing.value);
+            const target = getNumber(form.target_profit.value);
+            if (cost < 0 || packing < 0 || target < 0) {
+                showApplyAlert("Pastikan HPP, packing, dan target laba valid.");
+                return false;
+            }
+
+            if (applyProductIdInput) applyProductIdInput.value = productId;
+            if (applyCostInput) applyCostInput.value = cost;
+            if (applyPackingInput) applyPackingInput.value = packing;
+            if (applyTargetInput) applyTargetInput.value = target;
+            if (applyRoundingInput && roundingSelect) {
+                applyRoundingInput.value = roundingSelect.value;
+            }
+            if (applyProductName) {
+                applyProductName.textContent = productNameInput ? productNameInput.value : "-";
+            }
+            if (applyProductSku) {
+                applyProductSku.textContent = productSkuInput ? productSkuInput.value || "-" : "-";
+            }
+            if (applyRoundingLabel && roundingSelect) {
+                const selectedOption = roundingSelect.selectedOptions[0];
+                applyRoundingLabel.textContent = selectedOption ? selectedOption.textContent : "Pembulatan -";
+            }
+
+            const base = cost + packing;
+            const levelPriceMap = new Map();
+            if (selectedProduct && Array.isArray(selectedProduct.price_levels)) {
+                selectedProduct.price_levels.forEach((entry) => {
+                    if (entry && entry.level_id) {
+                        levelPriceMap.set(entry.level_id, entry.price);
+                    }
+                });
+            }
+
+            applyRows.innerHTML = "";
+            marketplaceLevels.forEach((level, index) => {
+                const feePercent = getNumber(level.fee_percent);
+                const feeNominal = getNumber(level.fee_nominal);
+                const fee = Math.min(Math.max(feePercent / 100, 0), 0.95);
+                const baseWithNominal = base + feeNominal;
+                const rawPrice = fee < 1 ? (baseWithNominal + target) / (1 - fee) : 0;
+                const roundedPrice = applyRounding(rawPrice, roundingSelect ? roundingSelect.value : "round_100");
+                const netProfit = roundedPrice * (1 - fee) - baseWithNominal;
+                const targetHit = netProfit + 0.0001 >= target;
+                const oldPrice = levelPriceMap.has(level.id) ? levelPriceMap.get(level.id) : null;
+
+                const row = document.createElement("tr");
+                if (!targetHit) {
+                    row.classList.add("table-warning");
+                }
+                row.innerHTML = `
+                    <td>
+                        <input type="checkbox" name="level_ids" value="${level.id}" checked>
+                    </td>
+                    <td>${level.name || "-"}</td>
+                    <td>${feePercent.toFixed(2)}%</td>
+                    <td>${feeNominal > 0 ? formatCurrency(feeNominal) : "-"}</td>
+                    <td>${oldPrice !== null ? formatCurrency(oldPrice) : "-"}</td>
+                    <td class="font-weight-semibold">${formatCurrency(roundedPrice)}</td>
+                    <td>${formatCurrency(netProfit)}</td>
+                    <td>${targetHit ? "<span class=\"badge badge-success\">OK</span>" : "<span class=\"badge badge-warning\">Di bawah target</span>"}</td>
+                `;
+                applyRows.appendChild(row);
+            });
+            showApplyAlert("");
+            return true;
+        };
+
+        const openApplyModal = () => {
+            if (!applyModal) return;
+            if (window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(applyModal).show();
+            } else {
+                applyModal.classList.add("show");
+                applyModal.style.display = "block";
+            }
+        };
+
+        updateResults();
+
+        if (form) {
+            form.addEventListener("input", updateResults);
+        }
+        if (manualInput) {
+            manualInput.addEventListener("input", updateResults);
+        }
+        if (applyButton) {
+            applyButton.addEventListener("click", function () {
+                if (buildApplyPreview()) {
+                    openApplyModal();
+                }
+            });
+        }
+        if (syncButton && applyForm) {
+            syncButton.addEventListener("click", function () {
+                if (!buildApplyPreview()) {
+                    return;
+                }
+                const hasWarnings = applyRows && applyRows.querySelector("tr.table-warning");
+                const message = hasWarnings
+                    ? "Ada level dengan laba di bawah target. Tetap sinkronkan semua level?"
+                    : "Hitung ulang & sinkron semua level harga untuk produk ini?";
+                if (!window.confirm(message)) {
+                    return;
+                }
+                setSyncFeedback("Sinkronisasi sedang diproses...", "info");
+                applyForm
+                    .querySelectorAll('input[name="level_ids"]')
+                    .forEach((checkbox) => {
+                        checkbox.checked = true;
+                    });
+                applyForm.submit();
+            });
+        }
+
+        if (productNameInput && productPanel) {
+            let debounceTimer = null;
+            let lastFetchController = null;
+
+            const showSuggestions = () => {
+                productPanel.classList.add("is-visible");
+                productPanel.hidden = false;
+            };
+
+            const hideSuggestions = () => {
+                productPanel.classList.remove("is-visible");
+                productPanel.hidden = true;
+            };
+
+            const renderSuggestions = (items) => {
+                productPanel.innerHTML = "";
+                if (!items.length) {
+                    productPanel.innerHTML = '<div class="px-2 py-2 text-muted small">Produk tidak ditemukan.</div>';
+                    showSuggestions();
+                    return;
+                }
+                items.forEach((item) => {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "product-suggestion-item";
+                    const titleNode = document.createElement("strong");
+                    titleNode.textContent = item.nama_produk || "-";
+                    const metaNode = document.createElement("span");
+                    const skuLabel = item.sku ? `SKU ${item.sku}` : "SKU -";
+                    metaNode.textContent = `${item.kode_produk || "-"} • ${skuLabel}`;
+                    button.appendChild(titleNode);
+                    button.appendChild(metaNode);
+                    button.addEventListener("click", function () {
+                        productNameInput.value = item.nama_produk || "";
+                        if (productSkuInput) {
+                            productSkuInput.value = item.sku || "";
+                        }
+                        selectedProduct = item;
+                        if (productIdInput) {
+                            productIdInput.value = item.id || "";
+                        }
+                        if (productHelper) {
+                            productHelper.textContent = "Produk dipilih dari master.";
+                            productHelper.classList.remove("text-danger");
+                        }
+                        hideSuggestions();
+                    });
+                    productPanel.appendChild(button);
+                });
+                showSuggestions();
+            };
+
+            const fetchProducts = (term) => {
+                if (!term) {
+                    hideSuggestions();
+                    return;
+                }
+                if (lastFetchController) {
+                    lastFetchController.abort();
+                }
+                lastFetchController = new AbortController();
+                const signal = lastFetchController.signal;
+                fetch(`${PRODUCT_SEARCH_URL}?q=${encodeURIComponent(term)}`, {
+                    headers: { Accept: "application/json" },
+                    signal,
+                })
+                    .then((response) => {
+                        if (!response.ok) throw new Error("Gagal memuat produk");
+                        return response.json();
+                    })
+                    .then((data) => {
+                        const items = Array.isArray(data.products) ? data.products : [];
+                        renderSuggestions(items.slice(0, 12));
+                    })
+                    .catch((error) => {
+                        if (error.name === "AbortError") return;
+                        productPanel.innerHTML = '<div class="px-2 py-2 text-danger small">Tidak dapat mengambil data.</div>';
+                        showSuggestions();
+                    });
+            };
+
+            productNameInput.addEventListener("input", function () {
+                const term = this.value.trim();
+                selectedProduct = null;
+                if (productIdInput) {
+                    productIdInput.value = "";
+                }
+                if (productHelper) {
+                    productHelper.textContent = "Ketik nama/kode/SKU untuk memilih produk.";
+                    productHelper.classList.remove("text-danger");
+                }
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    fetchProducts(term);
+                }, 250);
+            });
+
+            productNameInput.addEventListener("focus", function () {
+                if (productPanel.innerHTML.trim()) {
+                    showSuggestions();
+                }
+            });
+
+            document.addEventListener("click", function (event) {
+                if (
+                    !productPanel.contains(event.target) &&
+                    event.target !== productNameInput
+                ) {
+                    hideSuggestions();
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}
