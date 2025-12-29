@@ -39,6 +39,7 @@
                     <table class="table table-bordered table-hover">
                         <thead class="thead-light">
                             <tr>
+                                <th>ID</th>
                                 <th>Nama Kategori</th>
                                 <th>Aksi</th>
                             </tr>
@@ -46,6 +47,7 @@
                         <tbody id="kategoriTable">
                             {% for kategori in kategoris %}
                             <tr>
+                                <td>{{ kategori.id }}</td>
                                 <td>{{ kategori.name }}</td>
                                 <td>
                                     <a href="/kategori/edit/{{ kategori.id }}" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i> Edit</a>

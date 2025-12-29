@@ -211,6 +211,7 @@ url_for('main.supplier') %}
                     <table class="table table-modern mb-0">
                         <thead>
                             <tr>
+                                <th>ID</th>
                                 <th>Nama & Kontak</th>
                                 <th>No. Telepon</th>
                                 <th>Email</th>
@@ -220,7 +221,8 @@ url_for('main.supplier') %}
                         </thead>
                         <tbody id="supplier-table-body" data-csrf="{{ csrf_token() }}">
                             {% for supplier in suppliers %}
-                            <tr data-filter-text="{{ (supplier.name or '') | lower }}">
+                            <tr data-filter-text="{{ (supplier.id ~ ' ' ~ (supplier.name or '') ~ ' ' ~ (supplier.contact_person or '') ~ ' ' ~ (supplier.phone or '') ~ ' ' ~ (supplier.email or '') ~ ' ' ~ (supplier.address or '') ~ ' ' ~ (supplier.website or '')) | lower }}">
+                                <td class="font-weight-semibold text-muted">{{ supplier.id }}</td>
                                 <td>
                                     <div class="font-weight-semibold">{{ supplier.name }}</div>
                                     <small class="text-muted d-block">PIC: {{ supplier.contact_person or '-' }}</small>
@@ -284,7 +286,7 @@ url_for('main.supplier') %}
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="5" class="text-center text-muted py-4">Belum ada supplier sesuai filter.
+                                <td colspan="6" class="text-center text-muted py-4">Belum ada supplier sesuai filter.
                             Tambahkan supplier baru atau ubah pencarian.</td>
                             </tr>
                             {% endfor %}
@@ -631,8 +633,21 @@ url_for('main.supplier') %}
 
         function buildRow(item) {
             const phone = normalizePhone(item.phone);
+            const filterText = [
+                item.id,
+                item.name,
+                item.contact_person,
+                item.phone,
+                item.email,
+                item.address,
+                item.website,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
             return `
-                <tr data-filter-text="${(item.name || '').toLowerCase()}">
+                <tr data-filter-text="${filterText}">
+                    <td class="font-weight-semibold text-muted">${item.id || '-'}</td>
                     <td>
                         <div class="font-weight-semibold">${item.name || '-'}</div>
                         <small class="text-muted d-block">PIC: ${item.contact_person || '-'}</small>
@@ -676,7 +691,7 @@ url_for('main.supplier') %}
 
         function renderFetched(list) {
             if (!tableBody) return;
-            tableBody.innerHTML = list.map(buildRow).join('') || '<tr><td colspan="5" class="text-center text-muted py-4">Tidak ada hasil</td></tr>';
+            tableBody.innerHTML = list.map(buildRow).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">Tidak ada hasil</td></tr>';
         }
 
         function restoreOriginal() {

@@ -155,6 +155,32 @@ class PriceLevelCost(db.Model):
         return f"<PriceLevelCost {self.name} ({self.type}={self.value})>"
 
 
+class MarketplacePricingSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    product_name = db.Column(db.String(150), nullable=True)
+    sku = db.Column(db.String(80), nullable=True)
+    cost = db.Column(db.Float, nullable=False, default=0.0)
+    packing = db.Column(db.Float, nullable=False, default=0.0)
+    target_profit = db.Column(db.Float, nullable=False, default=0.0)
+    fee_primary = db.Column(db.Float, nullable=False, default=0.18)
+    fee_secondary = db.Column(db.Float, nullable=False, default=0.105)
+    rounding_mode = db.Column(db.String(30), nullable=False, default="round_100")
+    created_by = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    creator = db.relationship(
+        "User", backref=db.backref("marketplace_pricing_settings", lazy=True)
+    )
+
+    def __repr__(self):
+        return f"<MarketplacePricingSetting {self.id} {self.product_name or '-'}>"
+
+
 class Pelanggan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     pelanggan_id = db.Column(db.String(50), unique=True, nullable=False)
@@ -186,9 +212,48 @@ class Expedisi(db.Model):
     phone = db.Column(db.String(50), nullable=True)
     address = db.Column(db.String(200), nullable=True)
     note = db.Column(db.String(255), nullable=True)
+    volume_divisor = db.Column(db.Float, nullable=True, default=6000.0)
 
     def __repr__(self):
         return f"<Expedisi {self.name}>"
+
+
+class ExpedisiVolumetricItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    expedisi_id = db.Column(
+        db.Integer, db.ForeignKey("expedisi.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id = db.Column(
+        db.Integer, db.ForeignKey("produk.id", ondelete="CASCADE"), nullable=False
+    )
+    packaging = db.Column(db.String(50), nullable=False)
+    qty_per_pack = db.Column(db.Integer, nullable=False, default=1)
+    length_cm = db.Column(db.Float, nullable=False)
+    width_cm = db.Column(db.Float, nullable=False)
+    height_cm = db.Column(db.Float, nullable=False)
+    actual_weight = db.Column(db.Float, nullable=True)
+    use_volumetric = db.Column(db.Boolean, nullable=False, default=True)
+    note = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    expedisi = db.relationship(
+        "Expedisi", backref=db.backref("volumetric_items", cascade="all, delete-orphan")
+    )
+    produk = db.relationship(
+        "Produk", backref=db.backref("volumetric_items", cascade="all, delete-orphan")
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "expedisi_id",
+            "product_id",
+            "packaging",
+            name="uq_expedisi_product_packaging",
+        ),
+    )
 
 
 class PaymentChannel(db.Model):
