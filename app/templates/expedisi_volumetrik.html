@@ -1,0 +1,493 @@
+{% extends "base.html" %}
+
+{% block title %}Volumetrik Expedisi{% endblock %}
+
+{% block content %}
+<section class="volumetric-settings">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+        <div>
+            <h1 class="h4 font-weight-bold mb-1">Volumetrik Expedisi</h1>
+            <p class="text-muted mb-0">Simpan produk yang menggunakan berat volume saat dikirim.</p>
+        </div>
+        <span class="badge badge-pill badge-light">Master Data</span>
+    </div>
+
+    <div class="row align-items-start">
+        <div class="col-lg-5">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h6 font-weight-bold mb-3">
+                        {% if edit_item %}Ubah data volumetrik{% else %}Tambah data volumetrik{% endif %}
+                    </h2>
+                    <form method="POST" id="volumetricForm" autocomplete="off">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="save">
+                        {% if edit_item %}
+                            <input type="hidden" name="item_id" value="{{ edit_item.id }}">
+                        {% endif %}
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Expedisi</label>
+                            <select class="custom-select" name="expedisi_id" id="volumetric_expedisi" required>
+                                <option value="">Pilih expedisi</option>
+                                {% for exp in expedisi_list %}
+                                    <option value="{{ exp.id }}"
+                                            data-factor="{{ exp.volume_divisor or 0 }}"
+                                            {% if edit_item and edit_item.expedisi_id == exp.id %}selected{% endif %}>
+                                        {{ exp.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted d-block mt-1">
+                                Faktor volume: <span id="volumetricFactorLabel">-</span> cm³/kg
+                            </small>
+                        </div>
+                        <div class="form-group position-relative">
+                            <label class="font-weight-semibold">Produk</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="volumetric_product_name"
+                                placeholder="Ketik nama atau kode produk"
+                                value="{% if edit_item and edit_item.produk %}{{ edit_item.produk.nama_produk }} ({{ edit_item.produk.kode_produk }}){% endif %}"
+                                required
+                            >
+                            <input type="hidden" name="product_id" id="volumetric_product_id" value="{% if edit_item %}{{ edit_item.product_id }}{% endif %}">
+                            <div class="product-suggestion-panel shadow-sm" id="volumetric_product_suggestions"></div>
+                            <small class="form-text text-muted" id="volumetric-product-helper">
+                                Pilih produk dari suggestion agar tersimpan benar.
+                            </small>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-7">
+                                <label class="font-weight-semibold">Kemasan</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    name="packaging"
+                                    list="packagingOptions"
+                                    placeholder="Roll / Ball / Dus"
+                                    value="{% if edit_item %}{{ edit_item.packaging }}{% endif %}"
+                                    required
+                                >
+                                <datalist id="packagingOptions">
+                                    <option value="Roll"></option>
+                                    <option value="Ball"></option>
+                                    <option value="Dus"></option>
+                                    <option value="Karung"></option>
+                                </datalist>
+                            </div>
+                            <div class="form-group col-md-5">
+                                <label class="font-weight-semibold">Qty per kemasan</label>
+                                <input
+                                    type="number"
+                                    class="form-control"
+                                    name="qty_per_pack"
+                                    min="1"
+                                    step="1"
+                                    value="{% if edit_item %}{{ edit_item.qty_per_pack }}{% else %}1{% endif %}"
+                                    required
+                                >
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
+                                <label class="font-weight-semibold">Panjang (cm)</label>
+                                <input type="number" class="form-control" name="length_cm" step="0.01" min="0.01"
+                                    value="{% if edit_item %}{{ edit_item.length_cm }}{% endif %}" required>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label class="font-weight-semibold">Lebar (cm)</label>
+                                <input type="number" class="form-control" name="width_cm" step="0.01" min="0.01"
+                                    value="{% if edit_item %}{{ edit_item.width_cm }}{% endif %}" required>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label class="font-weight-semibold">Tinggi (cm)</label>
+                                <input type="number" class="form-control" name="height_cm" step="0.01" min="0.01"
+                                    value="{% if edit_item %}{{ edit_item.height_cm }}{% endif %}" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label class="font-weight-semibold">Berat aktual (kg)</label>
+                                <input type="number" class="form-control" name="actual_weight" step="0.01" min="0"
+                                    value="{% if edit_item %}{{ edit_item.actual_weight or '' }}{% endif %}">
+                            </div>
+                            <div class="form-group col-md-6 d-flex align-items-end">
+                                <div class="custom-control custom-switch">
+                                    <input
+                                        type="checkbox"
+                                        class="custom-control-input"
+                                        id="useVolumetric"
+                                        name="use_volumetric"
+                                        value="1"
+                                        {% if edit_item %}{% if edit_item.use_volumetric %}checked{% endif %}{% else %}checked{% endif %}
+                                    >
+                                    <label class="custom-control-label" for="useVolumetric">Selalu pakai berat volume</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Catatan</label>
+                            <input type="text" class="form-control" name="note" placeholder="Opsional"
+                                value="{% if edit_item %}{{ edit_item.note or '' }}{% endif %}">
+                        </div>
+                        <div class="alert alert-light border-dashed mb-3" id="volumetricPreview">
+                            Berat volume: 0 kg · Berat tagihan: 0 kg
+                        </div>
+                        <div class="d-flex flex-wrap" style="gap: 0.5rem;">
+                            <button type="submit" class="btn btn-primary flex-fill">
+                                <i class="fas fa-save mr-1"></i>Simpan
+                            </button>
+                            <a href="{{ url_for('main.expedisi_volumetrik') }}" class="btn btn-outline-secondary flex-fill">
+                                Reset
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="h6 font-weight-bold mb-3">Faktor volume per expedisi</h3>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Expedisi</th>
+                                    <th class="text-right">Faktor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for exp in expedisi_list %}
+                                    <tr>
+                                        <td>{{ exp.name }}</td>
+                                        <td class="text-right">{{ exp.volume_divisor or '-' }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="2" class="text-muted text-center">Belum ada expedisi.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <small class="text-muted d-block mt-2">
+                        Ubah faktor volume di menu Expedisi jika diperlukan.
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+                        <h2 class="h6 font-weight-bold mb-0">Daftar produk volumetrik</h2>
+                        <form method="GET" class="form-inline">
+                            <input
+                                type="text"
+                                name="q"
+                                class="form-control form-control-sm"
+                                placeholder="Cari produk/expedisi/kemasan"
+                                value="{{ search_query }}"
+                            >
+                        </form>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="text-uppercase small text-muted">
+                                <tr>
+                                    <th>Produk</th>
+                                    <th>Expedisi</th>
+                                    <th>Kemasan</th>
+                                    <th>Dimensi</th>
+                                    <th>Faktor</th>
+                                    <th class="text-right">Berat Volume</th>
+                                    <th class="text-right">Berat Aktual</th>
+                                    <th class="text-right">Tagihan</th>
+                                    <th>Status</th>
+                                    <th class="text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in items %}
+                                    <tr>
+                                        <td>
+                                            <div class="font-weight-semibold">{{ item.product_name }}</div>
+                                            <small class="text-muted">{{ item.product_code }}</small>
+                                        </td>
+                                        <td>{{ item.expedisi_name }}</td>
+                                        <td>{{ item.packaging }} ({{ item.qty_per_pack }})</td>
+                                        <td>{{ '%.2f'|format(item.length_cm) }} x {{ '%.2f'|format(item.width_cm) }} x {{ '%.2f'|format(item.height_cm) }}</td>
+                                        <td>{{ '%.0f'|format(item.expedisi_factor) }}</td>
+                                        <td class="text-right">{{ '%.2f'|format(item.volume_weight) }} kg</td>
+                                        <td class="text-right">
+                                            {% if item.actual_weight is not none %}
+                                                {{ '%.2f'|format(item.actual_weight) }} kg
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-right">{{ '%.2f'|format(item.chargeable_weight) }} kg</td>
+                                        <td>
+                                            {% if item.use_volumetric %}
+                                                <span class="badge badge-info">Volumetrik</span>
+                                            {% else %}
+                                                <span class="badge badge-secondary">Perbandingan</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-right">
+                                            <a href="{{ url_for('main.expedisi_volumetrik', edit=item.id) }}" class="btn btn-sm btn-warning">
+                                                Edit
+                                            </a>
+                                            <form method="POST" class="d-inline">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="item_id" value="{{ item.id }}">
+                                                <button type="submit" class="btn btn-sm btn-link text-danger"
+                                                    onclick="return confirm('Hapus data volumetrik ini?')">
+                                                    Hapus
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="10" class="text-center text-muted">Belum ada data volumetrik.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .volumetric-settings .card {
+        border-radius: 16px;
+    }
+    .volumetric-settings .alert.border-dashed {
+        border: 1px dashed rgba(15, 23, 42, 0.15);
+        color: #475569;
+    }
+    .product-suggestion-panel {
+        position: absolute;
+        inset: auto 0 0;
+        margin-top: 0.55rem;
+        background: #fff;
+        border-radius: 0.9rem;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        max-height: 220px;
+        overflow-y: auto;
+        width: 100%;
+        z-index: 1050;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.15);
+        padding: 0.35rem;
+        display: none;
+    }
+    .product-suggestion-panel.is-visible {
+        display: block;
+    }
+    .product-suggestion-item {
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: transparent;
+        padding: 0.65rem 0.75rem;
+        border-radius: 0.75rem;
+        transition: background 0.2s ease;
+        font-size: 0.95rem;
+        color: #0f172a;
+        cursor: pointer;
+    }
+    .product-suggestion-item + .product-suggestion-item {
+        margin-top: 0.2rem;
+    }
+    .product-suggestion-item:hover,
+    .product-suggestion-item:focus-visible {
+        background: rgba(59, 130, 246, 0.1);
+    }
+    .product-suggestion-item strong {
+        display: block;
+        font-weight: 600;
+    }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const PRODUCT_SEARCH_URL = "{{ url_for('main.get_products') }}";
+        const productInput = document.getElementById("volumetric_product_name");
+        const productIdInput = document.getElementById("volumetric_product_id");
+        const suggestionsPanel = document.getElementById("volumetric_product_suggestions");
+        const helperText = document.getElementById("volumetric-product-helper");
+        const form = document.getElementById("volumetricForm");
+        const expedisiSelect = document.getElementById("volumetric_expedisi");
+        const factorLabel = document.getElementById("volumetricFactorLabel");
+        const preview = document.getElementById("volumetricPreview");
+        const useVolumetricInput = document.getElementById("useVolumetric");
+
+        if (!productInput || !productIdInput || !suggestionsPanel || !helperText || !form) {
+            return;
+        }
+
+        let debounceTimer = null;
+        let lastFetchController = null;
+
+        const setHelperMessage = (message, tone = "muted") => {
+            helperText.textContent = message;
+            helperText.classList.remove("text-muted", "text-danger", "text-success");
+            if (tone === "danger") {
+                helperText.classList.add("text-danger");
+            } else if (tone === "success") {
+                helperText.classList.add("text-success");
+            } else {
+                helperText.classList.add("text-muted");
+            }
+        };
+
+        const hideSuggestions = () => {
+            suggestionsPanel.classList.remove("is-visible");
+        };
+
+        const showSuggestions = () => {
+            suggestionsPanel.classList.add("is-visible");
+        };
+
+        const clearSuggestions = () => {
+            suggestionsPanel.innerHTML = "";
+            hideSuggestions();
+        };
+
+        const selectProduct = (product) => {
+            productInput.value = `${product.nama_produk} (${product.kode_produk})`;
+            productIdInput.value = product.id;
+            setHelperMessage(`Produk "${product.nama_produk}" dipilih.`, "success");
+            clearSuggestions();
+        };
+
+        const renderSuggestions = (items) => {
+            suggestionsPanel.innerHTML = "";
+            if (!items.length) {
+                suggestionsPanel.innerHTML = '<div class="px-2 py-3 text-muted small">Tidak ada produk yang cocok.</div>';
+                showSuggestions();
+                return;
+            }
+            items.forEach((item) => {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "product-suggestion-item";
+                const titleNode = document.createElement("strong");
+                titleNode.textContent = item.nama_produk || "-";
+                const metaNode = document.createElement("span");
+                metaNode.textContent = `${item.kode_produk || "-"} · SKU ${item.sku || "-"}`;
+                button.appendChild(titleNode);
+                button.appendChild(metaNode);
+                button.addEventListener("click", function () {
+                    selectProduct(item);
+                });
+                suggestionsPanel.appendChild(button);
+            });
+            showSuggestions();
+        };
+
+        const fetchProducts = (term) => {
+            if (!term) {
+                clearSuggestions();
+                return;
+            }
+            if (lastFetchController) {
+                lastFetchController.abort();
+            }
+            lastFetchController = new AbortController();
+            fetch(`${PRODUCT_SEARCH_URL}?q=${encodeURIComponent(term)}`, {
+                headers: { Accept: "application/json" },
+                signal: lastFetchController.signal,
+            })
+                .then((response) => {
+                    if (!response.ok) throw new Error("Gagal memuat produk");
+                    return response.json();
+                })
+                .then((data) => {
+                    const items = Array.isArray(data.products) ? data.products : [];
+                    renderSuggestions(items.slice(0, 12));
+                })
+                .catch((error) => {
+                    if (error.name === "AbortError") return;
+                    suggestionsPanel.innerHTML = '<div class="px-2 py-3 text-danger small">Tidak dapat memuat data.</div>';
+                    showSuggestions();
+                });
+        };
+
+        const getNumber = (value) => {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        const formatNumber = (value) => {
+            return getNumber(value).toLocaleString("id-ID", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+        };
+
+        const getSelectedFactor = () => {
+            if (!expedisiSelect || !expedisiSelect.selectedOptions.length) return 0;
+            const selected = expedisiSelect.selectedOptions[0];
+            return getNumber(selected.dataset.factor);
+        };
+
+        const updatePreview = () => {
+            const factor = getSelectedFactor();
+            if (factorLabel) {
+                factorLabel.textContent = factor > 0 ? factor.toLocaleString("id-ID") : "-";
+            }
+            if (!preview) return;
+            const length = getNumber(form.length_cm.value);
+            const width = getNumber(form.width_cm.value);
+            const height = getNumber(form.height_cm.value);
+            const actual = getNumber(form.actual_weight.value);
+            const volumeWeight = factor > 0 ? (length * width * height) / factor : 0;
+            const useVol = useVolumetricInput ? useVolumetricInput.checked : true;
+            const chargeable = useVol ? volumeWeight : Math.max(actual, volumeWeight);
+            preview.textContent = `Berat volume: ${formatNumber(volumeWeight)} kg · Berat tagihan: ${formatNumber(chargeable)} kg`;
+        };
+
+        productInput.addEventListener("input", function () {
+            const term = this.value.trim();
+            productIdInput.value = "";
+            setHelperMessage("Pilih produk dari suggestion agar tersimpan benar.");
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => fetchProducts(term), 250);
+        });
+
+        productInput.addEventListener("focus", function () {
+            if (suggestionsPanel.innerHTML.trim()) {
+                showSuggestions();
+            }
+        });
+
+        document.addEventListener("click", function (event) {
+            if (!suggestionsPanel.contains(event.target) && event.target !== productInput) {
+                hideSuggestions();
+            }
+        });
+
+        if (expedisiSelect) {
+            expedisiSelect.addEventListener("change", updatePreview);
+        }
+        if (useVolumetricInput) {
+            useVolumetricInput.addEventListener("change", updatePreview);
+        }
+        ["length_cm", "width_cm", "height_cm", "actual_weight"].forEach((field) => {
+            if (form[field]) {
+                form[field].addEventListener("input", updatePreview);
+            }
+        });
+
+        updatePreview();
+    });
+</script>
+{% endblock %}
