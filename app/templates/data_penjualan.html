@@ -240,6 +240,15 @@
                                                         <a href="{{ url_for('main.penjualan_surat_jalan', sale_id=sale.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noreferrer">
                                                             <i class="fas fa-truck-loading mr-1"></i>Surat jalan
                                                         </a>
+                                                        {% if session.get('role') == 'admin' %}
+                                                        <form action="{{ url_for('main.delete_penjualan', sale_id=sale.id) }}" method="POST" onsubmit="return confirm('Hapus penjualan {{ sale.no_faktur }} secara permanen? Tindakan ini tidak bisa dibatalkan.');">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                            <input type="hidden" name="next" value="{{ request.full_path }}">
+                                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                                <i class="fas fa-trash-alt mr-1"></i>Hapus permanen
+                                                            </button>
+                                                        </form>
+                                                        {% endif %}
                                                     </div>
                                                     <div class="table-responsive">
                                                         <table class="table table-sm mb-0">

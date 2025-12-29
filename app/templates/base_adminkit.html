@@ -41,6 +41,13 @@
                         <i class="align-middle" data-feather="shopping-cart"></i> <span class="align-middle">Penjualan</span>
                     </a>
                 </li>
+                {% if session.get('role') != 'gudang' %}
+                <li class="sidebar-item">
+                    <a class="sidebar-link" href="{{ url_for('main.data_penjualan') }}">
+                        <i class="align-middle" data-feather="list"></i> <span class="align-middle">Data Penjualan</span>
+                    </a>
+                </li>
+                {% endif %}
                 <li class="sidebar-item">
                     <a class="sidebar-link" href="{{ url_for('main.pembelian') }}">
                         <i class="align-middle" data-feather="clipboard"></i> <span class="align-middle">Pembelian</span>

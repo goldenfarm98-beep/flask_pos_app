@@ -122,7 +122,7 @@
                                     <small class="text-muted">Lokasi: {{ entry.location }}</small>
                                 </div>
                                 <div class="text-right">
-                                    <div class="font-weight-semibold">{{ entry.items }} item</div>
+                                    <div class="font-weight-semibold">{{ entry['items'] }} item</div>
                                     <small class="text-muted">Selisih {{ entry.diff }}</small>
                                 </div>
                             </div>
@@ -160,10 +160,143 @@
         const dataset = dataScript ? JSON.parse(dataScript.textContent || '[]') : [];
         const canvas = document.getElementById('opnameChart');
         if (!canvas || !dataset.length) return;
+        const toNumber = (value) => Number(value) || 0;
         const labels = dataset.map(item => item.label);
-        const sessionData = dataset.map(item => item.sessions);
-        const overData = dataset.map(item => item.over);
-        const shortData = dataset.map(item => item.short);
+        const sessionData = dataset.map(item => toNumber(item.sessions));
+        const overData = dataset.map(item => toNumber(item.over));
+        const shortData = dataset.map(item => toNumber(item.short));
+        const formatNumber = (value) => Number(value || 0).toLocaleString('id-ID');
+        const maxValueRaw = Math.max(
+            0,
+            ...sessionData,
+            ...overData,
+            ...shortData.map((value) => Math.abs(value))
+        );
+        const minValueRaw = Math.min(0, ...shortData);
+        const safeMax = Number.isFinite(maxValueRaw) && maxValueRaw > 0 ? maxValueRaw : 1;
+        const safeMin = Number.isFinite(minValueRaw) ? minValueRaw : 0;
+        const pad = Math.max(1, Math.ceil(safeMax * 0.2));
+        const minPad = Math.min(0, safeMin - Math.ceil(Math.abs(safeMin) * 0.2));
+
+        const gradientFill = (context, topColor, bottomColor) => {
+            const chart = context.chart;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) {
+                return topColor;
+            }
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            gradient.addColorStop(0, topColor);
+            gradient.addColorStop(1, bottomColor);
+            return gradient;
+        };
+
+        const isChartV2 = Boolean(Chart?.defaults?.global);
+        if (Chart?.defaults?.font?.family !== undefined) {
+            Chart.defaults.font.family = "'Inter', 'Helvetica Neue', Arial, sans-serif";
+        } else if (Chart?.defaults?.global) {
+            Chart.defaults.global.defaultFontFamily = "'Inter', 'Helvetica Neue', Arial, sans-serif";
+        }
+
+        const datasetBase = {
+            borderWidth: 1,
+            borderSkipped: false,
+            maxBarThickness: 28
+        };
+        const roundedConfig = isChartV2 ? {} : { borderRadius: 8 };
+        const optionsBase = {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' }
+        };
+        if (!isChartV2) {
+            optionsBase.devicePixelRatio = window.devicePixelRatio || 1;
+            optionsBase.scales = {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#64748b', font: { size: 11, weight: '600' } }
+                },
+                y: {
+                    suggestedMin: minPad,
+                    suggestedMax: safeMax + pad,
+                    ticks: {
+                        color: '#64748b',
+                        callback: (value) => formatNumber(value),
+                        font: { size: 11, weight: '600' }
+                    },
+                    grid: {
+                        color: (context) =>
+                            context.tick.value === 0
+                                ? 'rgba(15, 23, 42, 0.18)'
+                                : 'rgba(15, 23, 42, 0.08)'
+                    }
+                }
+            };
+            optionsBase.plugins = {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 18,
+                        color: '#475569',
+                        font: { size: 12, weight: '600' }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    titleColor: '#f8fafc',
+                    bodyColor: '#f8fafc',
+                    padding: 12,
+                    callbacks: {
+                        label: (context) => {
+                            const value = context.parsed.y || 0;
+                            return `${context.dataset.label}: ${formatNumber(value)}`;
+                        }
+                    }
+                }
+            };
+        } else {
+            optionsBase.scales = {
+                xAxes: [{
+                    gridLines: { display: false },
+                    ticks: { fontColor: '#64748b', fontStyle: '600' }
+                }],
+                yAxes: [{
+                    ticks: {
+                        suggestedMin: minPad,
+                        suggestedMax: safeMax + pad,
+                        callback: (value) => formatNumber(value),
+                        fontColor: '#64748b',
+                        fontStyle: '600'
+                    },
+                    gridLines: {
+                        color: 'rgba(15, 23, 42, 0.08)',
+                        zeroLineColor: 'rgba(15, 23, 42, 0.18)'
+                    }
+                }]
+            };
+            optionsBase.legend = {
+                position: 'bottom',
+                labels: {
+                    usePointStyle: true,
+                    boxWidth: 8,
+                    fontColor: '#475569'
+                }
+            };
+            optionsBase.tooltips = {
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                titleFontColor: '#f8fafc',
+                bodyFontColor: '#f8fafc',
+                callbacks: {
+                    label: (tooltipItem, data) => {
+                        const value = tooltipItem.yLabel || 0;
+                        const label = data.datasets[tooltipItem.datasetIndex].label || '';
+                        return `${label}: ${formatNumber(value)}`;
+                    }
+                }
+            };
+        }
+
         new Chart(canvas.getContext('2d'), {
             type: 'bar',
             data: {
@@ -172,30 +305,46 @@
                     {
                         label: 'Sesi',
                         data: sessionData,
-                        backgroundColor: 'rgba(37, 99, 235, 0.6)'
+                        backgroundColor: (context) =>
+                            gradientFill(context, 'rgba(37, 99, 235, 0.9)', 'rgba(37, 99, 235, 0.25)'),
+                        borderColor: 'rgba(37, 99, 235, 0.9)',
+                        ...datasetBase,
+                        ...roundedConfig
                     },
                     {
                         label: 'Selisih +',
                         data: overData,
-                        backgroundColor: 'rgba(16, 185, 129, 0.6)'
+                        backgroundColor: (context) =>
+                            gradientFill(context, 'rgba(16, 185, 129, 0.85)', 'rgba(16, 185, 129, 0.2)'),
+                        borderColor: 'rgba(16, 185, 129, 0.85)',
+                        ...datasetBase,
+                        ...roundedConfig
                     },
                     {
                         label: 'Selisih -',
                         data: shortData,
-                        backgroundColor: 'rgba(248, 113, 113, 0.6)'
+                        backgroundColor: (context) =>
+                            gradientFill(context, 'rgba(248, 113, 113, 0.85)', 'rgba(248, 113, 113, 0.2)'),
+                        borderColor: 'rgba(248, 113, 113, 0.9)',
+                        ...datasetBase,
+                        ...roundedConfig
                     }
                 ]
             },
-            options: {
-                responsive: false,
-                maintainAspectRatio: false,
-                interaction: { intersect: false, mode: 'index' },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
+            options: optionsBase,
+            plugins: [{
+                id: 'shadow',
+                beforeDatasetsDraw(chart) {
+                    const { ctx } = chart;
+                    ctx.save();
+                    ctx.shadowColor = 'rgba(15, 23, 42, 0.12)';
+                    ctx.shadowBlur = 12;
+                    ctx.shadowOffsetY = 6;
+                },
+                afterDatasetsDraw(chart) {
+                    chart.ctx.restore();
                 }
-            }
+            }]
         });
     });
 </script>
@@ -224,7 +373,11 @@
     }
     .metric-body .metric-value { font-size: 1.6rem; font-weight: 700; }
     .chart-shell {
-        height: 260px;
+        height: 320px;
+        padding: 0.75rem 0.75rem 0.25rem;
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.7));
+        border: 1px solid rgba(15, 23, 42, 0.08);
     }
 
     .chart-shell canvas {
