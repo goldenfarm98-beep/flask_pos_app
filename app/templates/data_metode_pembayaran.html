@@ -7,7 +7,7 @@
 {% set is_editing = edit_channel is not none %}
 <div class="container mt-4">
     <h2 class="text-center"><i class="fas fa-credit-card"></i> Data Metode Pembayaran</h2>
-    <p class="text-center text-muted">Kelola master kartu/bank untuk laporan pembayaran.</p>
+    <p class="text-center text-muted">Kelola master kartu, transfer, dan QRIS untuk laporan pembayaran.</p>
     <div class="row mt-4">
         <div class="col-md-6">
             <div class="card shadow-sm">
@@ -17,7 +17,7 @@
                         action="{% if is_editing %}/metode_pembayaran/edit/{{ edit_channel.id }}{% else %}/metode_pembayaran{% endif %}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="form-group">
-                            <label for="name">Nama Kartu / Bank</label>
+                            <label for="name">Nama Kartu / Bank / QRIS</label>
                             <input type="text" class="form-control" id="name" name="name" placeholder="BCA, BNI, Mandiri"
                                 value="{% if is_editing %}{{ edit_channel.name }}{% endif %}" required>
                         </div>
@@ -27,6 +27,8 @@
                                 {% set selected_type = edit_channel.channel_type if is_editing else 'Kartu' %}
                                 <option value="Kartu" {% if selected_type == 'Kartu' %}selected{% endif %}>Kartu</option>
                                 <option value="Tunai" {% if selected_type == 'Tunai' %}selected{% endif %}>Tunai</option>
+                                <option value="Transfer" {% if selected_type == 'Transfer' %}selected{% endif %}>Transfer</option>
+                                <option value="QRIS" {% if selected_type == 'QRIS' %}selected{% endif %}>QRIS</option>
                                 <option value="Tempo" {% if selected_type == 'Tempo' %}selected{% endif %}>Tempo</option>
                             </select>
                         </div>

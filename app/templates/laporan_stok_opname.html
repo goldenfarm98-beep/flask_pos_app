@@ -44,7 +44,13 @@
                 </div>
                 <div class="metric-body">
                     <small class="text-muted text-uppercase">{{ card.label }}</small>
-                    <div class="metric-value">{{ '{:,}'.format(card.value).replace(',', '.') }}</div>
+                    <div class="metric-value">
+                        {% if card.label == 'Selisih -' %}
+                            {{ '{:,}'.format(card.value | abs).replace(',', '.') }}
+                        {% else %}
+                            {{ '{:,}'.format(card.value).replace(',', '.') }}
+                        {% endif %}
+                    </div>
                     <p class="small text-muted mb-0">{{ card.subtitle }}</p>
                 </div>
             </div>
@@ -124,6 +130,7 @@
                                 <div class="text-right">
                                     <div class="font-weight-semibold">{{ entry['items'] }} item</div>
                                     <small class="text-muted">Selisih {{ entry.diff }}</small>
+                                    <small class="text-muted d-block">+{{ entry.plus }} / -{{ entry.minus }}</small>
                                 </div>
                             </div>
                         </li>

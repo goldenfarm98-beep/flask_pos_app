@@ -5,14 +5,107 @@
 {% block content %}
 <div class="dashboard-main">
     <div class="dashboard-main-inner">
-            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
-                <div>
+            <div class="dashboard-hero mb-4">
+                <div class="hero-content">
+                    <span class="hero-eyebrow">Dashboard</span>
                     <h2 class="mb-2">Welcome, {{ username }}</h2>
                     <p class="text-muted mb-0">Gunakan menu di sisi kiri untuk mengelola penjualan, pembelian, dan data master.</p>
+                    <div class="hero-actions">
+                        {% if is_inventory_only %}
+                            <a href="{{ url_for('main.produk') }}" class="btn btn-primary btn-sm">
+                                <i class="fas fa-box-open mr-1"></i>Kelola Produk
+                            </a>
+                            <a href="{{ url_for('main.pembelian_po_list') }}" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-clipboard-list mr-1"></i>Purchase Order
+                            </a>
+                        {% else %}
+                            <a href="{{ url_for('main.penjualan') }}" class="btn btn-primary btn-sm">
+                                <i class="fas fa-cash-register mr-1"></i>Mulai Penjualan
+                            </a>
+                            <a href="{{ url_for('main.laporan_penjualan_report') }}" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-chart-line mr-1"></i>Lihat Laporan
+                            </a>
+                        {% endif %}
+                    </div>
                 </div>
+                {% if summary %}
+                <div class="hero-stats">
+                    {% if is_inventory_only %}
+                        <div class="hero-stat">
+                            <span class="metric-label text-uppercase">Jumlah Produk</span>
+                            <div class="metric-value text-primary mt-1">{{ summary.product_count }}</div>
+                            <small class="text-muted">Produk aktif</small>
+                        </div>
+                        <div class="hero-stat">
+                            <span class="metric-label text-uppercase">Stok Kritis</span>
+                            <div class="metric-value text-danger mt-1">{{ summary.low_stock_count }}</div>
+                            <small class="text-muted">Butuh restock</small>
+                        </div>
+                    {% else %}
+                        <div class="hero-stat">
+                            <span class="metric-label text-uppercase">Net Hari Ini</span>
+                            <div class="metric-value text-success mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.today_net_revenue).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Transaksi: {{ summary.today_transactions }}</small>
+                        </div>
+                        <div class="hero-stat">
+                            <span class="metric-label text-uppercase">Bulanan (net)</span>
+                            <div class="metric-value text-primary mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.month_net_revenue).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Transaksi: {{ summary.month_transactions }}</small>
+                        </div>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
 
-            {% if summary %}
+            {% if is_admin %}
+            <div class="card shadow-sm mb-4">
+                <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
+                    <div class="mb-3 mb-md-0">
+                        <h5 class="mb-1">Admin Tools</h5>
+                        <p class="text-muted mb-0">Tutup otomatis semua shift lama yang belum ditutup (sebelum hari ini).</p>
+                    </div>
+                    <form method="POST" action="{{ url_for('main.shift_auto_close') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ request.full_path }}">
+                        <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Tutup semua shift lama yang belum ditutup?')">
+                            <i class="fas fa-broom mr-1"></i>Auto-close Semua Shift Lama
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if is_admin and auto_closed_shift_log and auto_closed_shift_log.count %}
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0">Shift yang ditutup otomatis</h5>
+                        <span class="badge badge-pill badge-danger">{{ auto_closed_shift_log.count }}</span>
+                    </div>
+                    <ul class="list-unstyled mb-0">
+                        {% for item in auto_closed_shift_log.items %}
+                        <li class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                            <div class="font-weight-semibold">
+                                <a class="text-dark" href="{{ url_for('main.shift_user_detail', user_id=item.user_id) }}">
+                                    {{ item.user }}
+                                </a>
+                            </div>
+                            <div class="text-muted small">{{ item.shift_date }} • {{ item.opened_at }}-{{ item.closed_at }}</div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% if auto_closed_shift_log.extra_count %}
+                        <div class="small text-muted mt-2">+{{ auto_closed_shift_log.extra_count }} shift lainnya.</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if summary and is_admin %}
             <div class="row">
                 <div class="col-md-3">
                     <div class="card analytics-card border-0 shadow-sm mb-4">
@@ -54,13 +147,137 @@
                             <div class="metric-value text-warning mt-1">
                                 {{ 'Rp {:,.0f}'.format(summary.average_ticket).replace(',', '.') }}
                             </div>
-                            <small class="text-muted">Pelanggan aktif: {{ summary.customer_count }}</small>
+                            <small class="text-muted">Pelanggan terdaftar: {{ summary.customer_count }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Hari Ini (net)</span>
+                            <div class="metric-value text-success mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.today_net_revenue).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Transaksi: {{ summary.today_transactions }}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Jumlah Produk</span>
+                            <div class="metric-value text-primary mt-1">
+                                {{ summary.product_count }}
+                            </div>
+                            <small class="text-muted">Produk terdaftar aktif</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Stok Kritis</span>
+                            <div class="metric-value text-danger mt-1">
+                                {{ summary.low_stock_count }}
+                            </div>
+                            <small class="text-muted">Butuh restock segera</small>
                         </div>
                     </div>
                 </div>
             </div>
             {% endif %}
 
+            {% if summary and is_sales_role and not is_admin %}
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Hari Ini (net)</span>
+                            <div class="metric-value text-success mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.today_net_revenue).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Transaksi: {{ summary.today_transactions }}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Bulanan (net)</span>
+                            <div class="metric-value text-primary mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.month_net_revenue).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Transaksi: {{ summary.month_transactions }}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Rata-rata Order</span>
+                            <div class="metric-value text-warning mt-1">
+                                {{ 'Rp {:,.0f}'.format(summary.average_ticket).replace(',', '.') }}
+                            </div>
+                            <small class="text-muted">Nilai per transaksi</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Pelanggan</span>
+                            <div class="metric-value text-info mt-1">
+                                {{ summary.customer_count }}
+                            </div>
+                            <small class="text-muted">Terdaftar aktif</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if summary and is_inventory_only %}
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Jumlah Produk</span>
+                            <div class="metric-value text-primary mt-1">
+                                {{ summary.product_count }}
+                            </div>
+                            <small class="text-muted">Produk terdaftar</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Stok Kritis</span>
+                            <div class="metric-value text-danger mt-1">
+                                {{ summary.low_stock_count }}
+                            </div>
+                            <small class="text-muted">Butuh restock</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card analytics-card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <span class="metric-label text-uppercase">Supplier Aktif</span>
+                            <div class="metric-value text-success mt-1">
+                                {{ supplier_count }}
+                            </div>
+                            <small class="text-muted">Partner pemasok</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if is_sales_role %}
             <div class="row">
                 <div class="col-lg-6">
                     <div class="card shadow-sm mb-4">
@@ -113,6 +330,36 @@
                         </div>
                     </div>
 
+                    {% if is_inventory_role %}
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Stok Perlu Perhatian</h5>
+                            <span class="badge badge-pill badge-warning text-dark">Kritis</span>
+                        </div>
+                        <div class="card-body">
+                            {% if low_stock_products %}
+                                <ul class="list-group list-group-flush">
+                                    {% for product in low_stock_products %}
+                                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="font-weight-semibold">{{ product.nama_produk }}</div>
+                                            <small class="text-muted">Stok: {{ product.stok_lama or 0 }} | Minimal: {{ product.stok_minimal or 0 }}</small>
+                                        </div>
+                                        <a href="{{ url_for('main.produk', edit=product.id) }}" class="btn btn-sm btn-outline-primary">Kelola</a>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted mb-0">Tidak ada produk dengan stok kritis.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% elif is_inventory_only %}
+            <div class="row">
+                <div class="col-lg-12">
                     <div class="card shadow-sm mb-4">
                         <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">Stok Perlu Perhatian</h5>
@@ -138,47 +385,266 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
 
+            <div class="row">
+                {% if is_admin or is_sales_staff %}
+                <div class="col-lg-4">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-white border-0">
+                            <h5 class="mb-0">Piutang Jatuh Tempo</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <div class="metric-label text-uppercase">Total overdue</div>
+                                    <div class="font-weight-bold text-danger">
+                                        {{ 'Rp {:,.0f}'.format(overdue_summary.total).replace(',', '.') }}
+                                    </div>
+                                </div>
+                                <span class="badge badge-pill badge-danger">
+                                    {{ overdue_summary.count }} faktur
+                                </span>
+                            </div>
+                            {% if overdue_rows %}
+                                <ul class="list-group list-group-flush">
+                                    {% for row in overdue_rows %}
+                                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <a class="font-weight-semibold text-navy"
+                                                href="{{ url_for('main.pembayaran_piutang', open_id=row.id) }}">
+                                                {{ row.invoice }}
+                                            </a>
+                                            <small class="text-muted">{{ row.customer_name }} • {{ row.due_date.strftime('%d %b %Y') if row.due_date else '-' }}</small>
+                                        </div>
+                                        <span class="badge badge-light text-danger">
+                                            {{ 'Rp {:,.0f}'.format(row.outstanding).replace(',', '.') }}
+                                        </span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted mb-0">Tidak ada piutang jatuh tempo.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if is_sales_role %}
+                <div class="col-lg-4">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-white border-0">
+                            <h5 class="mb-0">Shift Aktif</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div class="metric-label text-uppercase">Jumlah shift</div>
+                                <span class="badge badge-pill badge-success">{{ active_shifts|length }}</span>
+                            </div>
+                            {% if active_shifts %}
+                                <ul class="list-group list-group-flush">
+                                    {% for shift in active_shifts %}
+                                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="font-weight-semibold">{{ shift.username }}</div>
+                                            <small class="text-muted">
+                                                {{ shift.shift_date.strftime('%d %b %Y') if shift.shift_date else '-' }} • {{ shift.opened_at.strftime('%H:%M') if shift.opened_at else '-' }}
+                                            </small>
+                                        </div>
+                                        <span class="badge badge-light">Aktif</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted mb-0">Belum ada shift aktif.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-white border-0">
+                            <h5 class="mb-0">Transaksi Terakhir</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if recent_sales %}
+                                <ul class="list-group list-group-flush">
+                                    {% for sale in recent_sales %}
+                                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="font-weight-semibold">{{ sale.invoice }}</div>
+                                            <small class="text-muted">
+                                                {{ sale.customer_name }} • {{ sale.sale_date.strftime('%d %b %Y') if sale.sale_date else '-' }} • {{ sale.payment_method }}
+                                            </small>
+                                        </div>
+                                        <span class="badge badge-light text-primary">
+                                            {{ 'Rp {:,.0f}'.format(sale.total).replace(',', '.') }}
+                                        </span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted mb-0">Belum ada transaksi.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if is_admin %}
             <div class="row">
                 <div class="col-md-4">
                     <div class="card mb-4 shadow-sm">
                         <div class="card-body">
                             <h5 class="card-title">Produk</h5>
                             <p class="card-text text-muted">Kelola katalog barang dan stok dengan mudah.</p>
-                            <a href="/produk" class="btn btn-primary btn-sm">Lihat Produk</a>
+                            <a href="{{ url_for('main.produk') }}" class="btn btn-primary btn-sm">Kelola Produk</a>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="card mb-4 shadow-sm">
                         <div class="card-body">
-                            <h5 class="card-title">Sales</h5>
-                            <p class="card-text text-muted">Pantau performa penjualan dan transaksi terbaru.</p>
-                            <a href="/penjualan" class="btn btn-success btn-sm">Mulai Penjualan</a>
+                            <h5 class="card-title">Penjualan</h5>
+                            <p class="card-text text-muted">Buka transaksi baru atau cek status penjualan.</p>
+                            <a href="{{ url_for('main.penjualan') }}" class="btn btn-success btn-sm">Mulai Penjualan</a>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="card mb-4 shadow-sm">
                         <div class="card-body">
-                            <h5 class="card-title">Profile</h5>
-                            <p class="card-text text-muted">Perbarui informasi akun dan kredensial Anda.</p>
-                            <a href="/profile" class="btn btn-warning btn-sm">Edit Profile</a>
+                            <h5 class="card-title">Pembelian</h5>
+                            <p class="card-text text-muted">Catat faktur pembelian dan restock stok.</p>
+                            <a href="{{ url_for('main.pembelian') }}" class="btn btn-outline-primary btn-sm">Buka Pembelian</a>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+            {% elif is_inventory_only %}
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Produk</h5>
+                            <p class="card-text text-muted">Pantau stok dan lakukan penyesuaian barang.</p>
+                            <a href="{{ url_for('main.produk') }}" class="btn btn-primary btn-sm">Kelola Produk</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Purchase Order</h5>
+                            <p class="card-text text-muted">Review PO sebelum diterima.</p>
+                            <a href="{{ url_for('main.pembelian_po_list') }}" class="btn btn-outline-primary btn-sm">Lihat PO</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Pembelian</h5>
+                            <p class="card-text text-muted">Input faktur pembelian dari supplier.</p>
+                            <a href="{{ url_for('main.pembelian') }}" class="btn btn-success btn-sm">Input Pembelian</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% elif is_sales_role %}
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Penjualan</h5>
+                            <p class="card-text text-muted">Mulai transaksi atau lanjutkan draft.</p>
+                            <a href="{{ url_for('main.penjualan') }}" class="btn btn-success btn-sm">Mulai Penjualan</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Quotation</h5>
+                            <p class="card-text text-muted">Siapkan penawaran untuk customer.</p>
+                            <a href="{{ url_for('main.quotation_list') }}" class="btn btn-outline-primary btn-sm">Kelola Quotation</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Data Penjualan</h5>
+                            <p class="card-text text-muted">Lihat riwayat transaksi terbaru.</p>
+                            <a href="{{ url_for('main.data_penjualan') }}" class="btn btn-primary btn-sm">Riwayat Penjualan</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
     </div>
 </div>
 
 <style>
     .dashboard-main {
-        padding: 1rem 1.5rem;
+        padding: 1.5rem 2rem 2.5rem;
+        background: linear-gradient(180deg, rgba(248, 250, 252, 0.9), rgba(255, 255, 255, 0.95));
     }
     .dashboard-main-inner {
-        max-width: 1200px;
-        margin: 0 auto;
+        max-width: 100%;
+        margin: 0;
+    }
+    .dashboard-hero {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+        padding: 1.75rem;
+        border-radius: 20px;
+        background: linear-gradient(135deg, rgba(226, 232, 240, 0.6), rgba(224, 231, 255, 0.45));
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
+    }
+    .hero-content {
+        flex: 1 1 320px;
+        min-width: 260px;
+    }
+    .hero-eyebrow {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: #64748b;
+        font-weight: 600;
+    }
+    .hero-actions {
+        margin-top: 1rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+    }
+    .hero-actions .btn {
+        border-radius: 999px;
+        padding: 0.4rem 1rem;
+    }
+    .hero-stats {
+        flex: 1 1 320px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+    .hero-stat {
+        background: #fff;
+        border-radius: 16px;
+        padding: 1rem 1.1rem;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }
+    .dashboard-main .metric-label {
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        color: #6b7280;
     }
     .analytics-card .metric-label {
         font-size: 0.75rem;
@@ -188,6 +654,38 @@
     .analytics-card .metric-value {
         font-size: 1.6rem;
         font-weight: 700;
+        line-height: 1.1;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    .analytics-card {
+        border-radius: 18px;
+        position: relative;
+        overflow: hidden;
+    }
+    .analytics-card::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 4px;
+        width: 100%;
+        background: linear-gradient(90deg, rgba(59, 130, 246, 0.5), rgba(34, 197, 94, 0.5));
+        opacity: 0.7;
+    }
+    @media (max-width: 992px) {
+        .dashboard-main {
+            padding: 1.25rem 1.25rem 2rem;
+        }
+    }
+    @media (max-width: 576px) {
+        .dashboard-hero {
+            padding: 1.25rem;
+        }
+        .hero-actions .btn {
+            width: 100%;
+            justify-content: center;
+        }
     }
 
 </style>

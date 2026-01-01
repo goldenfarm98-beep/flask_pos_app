@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Quotation{% endblock %}
+
+{% block content %}
+<section class="quotation-page">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+        <div>
+            <h1 class="h4 font-weight-bold mb-1">Quotation</h1>
+            <p class="text-muted mb-0">Kelola penawaran harga sebelum transaksi diselesaikan.</p>
+        </div>
+        <div class="btn-group mt-2 mt-md-0">
+            <a href="{{ url_for('main.penjualan') }}" class="btn btn-sm btn-primary">
+                <i class="fas fa-file-invoice mr-1"></i>Buat quotation
+            </a>
+            <a href="{{ url_for('main.quotation_list', status='all') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-list mr-1"></i>Semua
+            </a>
+        </div>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center mb-3">
+        {% set draft_count = status_counts.get('draft', 0) %}
+        {% set cancelled_count = status_counts.get('cancelled', 0) %}
+        {% set converted_count = status_counts.get('converted', 0) %}
+        <div class="btn-group btn-group-sm">
+            <a href="{{ url_for('main.quotation_list', status='draft') }}"
+               class="btn {{ 'btn-primary' if status_filter == 'draft' else 'btn-outline-secondary' }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Tampilkan quotation draft">
+                Draft ({{ draft_count }})
+            </a>
+            <a href="{{ url_for('main.quotation_list', status='converted') }}"
+               class="btn {{ 'btn-primary' if status_filter == 'converted' else 'btn-outline-secondary' }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Tampilkan quotation yang sudah dikonversi">
+                Terkonversi ({{ converted_count }})
+            </a>
+            <a href="{{ url_for('main.quotation_list', status='cancelled') }}"
+               class="btn {{ 'btn-primary' if status_filter == 'cancelled' else 'btn-outline-secondary' }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Tampilkan quotation yang dibatalkan">
+                Batal ({{ cancelled_count }})
+            </a>
+            <a href="{{ url_for('main.quotation_list', status='all') }}"
+               class="btn {{ 'btn-primary' if status_filter == 'all' else 'btn-outline-secondary' }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Tampilkan semua quotation">
+                Semua ({{ total_all }})
+            </a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="thead-light">
+                    <tr>
+                        <th class="text-center" style="width: 60px;">#</th>
+                        <th>No Quotation</th>
+                        <th>Tanggal</th>
+                        <th>Pelanggan</th>
+                        <th class="text-center">Item</th>
+                        <th class="text-right">Total</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if quotations %}
+                        {% for quote in quotations %}
+                            {% set customer_name = quote.customer_label or (quote.pelanggan.nama if quote.pelanggan else '-') %}
+                            {% set item_count = quote.items | length %}
+                            <tr>
+                                <td class="text-center align-middle">{{ loop.index }}</td>
+                                <td class="align-middle">
+                                    <div class="font-weight-semibold">{{ quote.quote_number }}</div>
+                                </td>
+                                <td class="align-middle">{{ quote.created_at.strftime('%d %b %Y') if quote.created_at else '-' }}</td>
+                                <td class="align-middle">
+                                    <div class="font-weight-semibold">{{ customer_name }}</div>
+                                    <small class="text-muted">{{ quote.pelanggan.pelanggan_id if quote.pelanggan else '-' }}</small>
+                                </td>
+                                <td class="align-middle text-center">
+                                    <span class="badge badge-soft">{{ item_count }}</span>
+                                </td>
+                                <td class="align-middle text-right font-weight-semibold">
+                                    {{ ('Rp {:,.0f}'.format(quote.grand_total or 0)).replace(',', '.') }}
+                                </td>
+                                <td class="align-middle text-center">
+                                    {% if quote.status == 'cancelled' %}
+                                        <span class="badge badge-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Quotation dibatalkan">Batal</span>
+                                    {% elif quote.status == 'converted' %}
+                                        <span class="badge badge-success" data-bs-toggle="tooltip" data-bs-placement="top" title="Sudah menjadi penjualan">Terkonversi</span>
+                                    {% else %}
+                                        <span class="badge badge-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="Belum menjadi penjualan">Draft</span>
+                                    {% endif %}
+                                </td>
+                                <td class="align-middle text-center">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="{{ url_for('main.quotation_print', quotation_id=quote.id) }}" target="_blank" class="btn btn-outline-primary" data-bs-toggle="tooltip" data-bs-placement="top" title="Cetak quotation">
+                                            <i class="fas fa-print"></i>
+                                        </a>
+                                        {% if quote.status == 'converted' and quote.converted_sale_id %}
+                                            <a href="{{ url_for('main.penjualan_invoice', sale_id=quote.converted_sale_id) }}" target="_blank" class="btn btn-outline-info" data-bs-toggle="tooltip" data-bs-placement="top" title="Lihat invoice penjualan">
+                                                <i class="fas fa-receipt"></i>
+                                            </a>
+                                        {% elif quote.status != 'cancelled' %}
+                                            <a href="{{ url_for('main.quotation_convert', quotation_id=quote.id) }}" class="btn btn-outline-success" data-bs-toggle="tooltip" data-bs-placement="top" title="Konversi ke penjualan">
+                                                <i class="fas fa-share"></i>
+                                            </a>
+                                            <form method="POST" action="{{ url_for('main.quotation_cancel', quotation_id=quote.id) }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <input type="hidden" name="next" value="{{ request.full_path }}">
+                                                <button type="submit" class="btn btn-outline-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="Batalkan quotation" onclick="return confirm('Batalkan quotation ini?')">
+                                                    <i class="fas fa-ban"></i>
+                                                </button>
+                                            </form>
+                                        {% else %}
+                                            <button class="btn btn-outline-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Quotation dibatalkan" disabled>
+                                                <i class="fas fa-ban"></i>
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-4">Belum ada quotation.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}

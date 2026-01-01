@@ -5,7 +5,6 @@ except ModuleNotFoundError:  # fallback kalau dependency belum terpasang
         return False
 
 load_dotenv()  # akan membaca file .env di root project, no-op jika modul tidak tersedia
-from datetime import datetime
 import re
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -14,6 +13,7 @@ from flask_wtf import CSRFProtect
 
 
 from .config_db import load_env_once, resolve_database_uri, resolve_secret_key
+from .time_utils import local_now
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -68,7 +68,7 @@ def create_app():
 
     @app.context_processor
     def inject_template_globals():
-        return {"current_year": datetime.utcnow().year}
+        return {"current_year": local_now().year}
 
     @app.shell_context_processor
     def _ctx():

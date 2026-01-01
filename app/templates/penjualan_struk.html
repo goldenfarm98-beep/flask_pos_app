@@ -1,13 +1,24 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Struk Penjualan</title>
     <style>
         :root {
-            --receipt-width: 58mm;
-            --receipt-font: 12.5px;
+            --receipt-width: 80mm;
+            --receipt-font-size: {{ receipt_settings.font_size }}px;
+            --receipt-font-family: "{{ receipt_settings.font_family|e }}",
+            "IBM Plex Mono",
+            "Liberation Mono",
+            "DejaVu Sans Mono",
+            "Courier New",
+            Courier,
+            monospace;
+            --receipt-text-color: #000;
+            --receipt-muted-color: #111;
+            --receipt-font-weight: {{ receipt_settings.font_weight }};
         }
 
         * {
@@ -16,17 +27,17 @@
 
         body {
             margin: 0;
-            font-family: "Courier New", Courier, monospace;
+            font-family: var(--receipt-font-family);
             background: #f5f7fb;
-            color: #000;
+            color: var(--receipt-text-color);
             -webkit-font-smoothing: none;
             text-rendering: optimizeSpeed;
-            font-weight: 600;
+            font-weight: var(--receipt-font-weight);
             -webkit-text-size-adjust: 100%;
         }
 
         .muted {
-            color: #000;
+            color: var(--receipt-muted-color);
         }
 
         .action-bar {
@@ -80,17 +91,17 @@
             background: #fff;
             padding: 8px 10px;
             box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
-            font-size: var(--receipt-font);
+            font-size: var(--receipt-font-size);
             line-height: 1.25;
-            font-weight: 600;
+            font-weight: var(--receipt-font-weight);
         }
 
         .receipt h1 {
-            font-size: 13px;
+            font-size: var(--receipt-font-size);
             margin: 0 0 4px;
             text-align: center;
             letter-spacing: 0.4px;
-            font-weight: 700;
+            font-weight: var(--receipt-font-weight);
         }
 
         .receipt .center {
@@ -98,7 +109,7 @@
         }
 
         .receipt .muted {
-            color: #6b7280;
+            color: var(--receipt-muted-color);
         }
 
         .receipt .divider {
@@ -115,66 +126,113 @@
         }
 
         .receipt .item-name {
-            font-weight: 700;
+            font-weight: 600;
             margin-top: 6px;
         }
 
         .receipt .meta-line,
         .receipt .item-line,
         .receipt .total-line {
-            letter-spacing: 0.2px;
+            letter-spacing: 0;
         }
 
         .receipt .total-line strong {
-            font-weight: 700;
+            font-weight: 600;
         }
 
         .receipt .footer-note {
             margin-top: 8px;
             text-align: center;
+            font-weight: 500;
+        }
+
+        .receipt .promo-block {
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .receipt .promo-label {
             font-weight: 600;
         }
 
+        .receipt .promo-qr {
+            width: 120px;
+            height: 120px;
+            margin: 6px auto 0;
+        }
+
+        .receipt .promo-qr img,
+        .receipt .promo-qr canvas {
+            display: block;
+            width: 120px;
+            height: 120px;
+        }
+
+        .receipt .promo-barcode-value {
+            margin-top: 4px;
+            font-size: 10px;
+            word-break: break-all;
+            letter-spacing: 0.02em;
+        }
+
+        .receipt .promo-block.qr-ready .promo-barcode-value {
+            display: none;
+        }
+
         @media print {
+            :root {
+                --receipt-font-size: {{ receipt_settings.font_size_print }}px;
+            }
+
             html,
             body {
                 width: var(--receipt-width);
                 margin: 0;
             }
+
             body {
                 background: #fff;
+                -webkit-font-smoothing: none;
+                text-rendering: geometricPrecision;
             }
+
             * {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-                color: #000 !important;
+                color: var(--receipt-text-color) !important;
             }
+
             .action-bar {
                 display: none !important;
             }
+
             .receipt-wrapper {
                 padding: 0;
             }
+
             .receipt {
                 width: var(--receipt-width);
                 box-shadow: none;
-                padding: 6px 8px;
-                font-weight: 600;
+                padding: 6px;
+                font-weight: var(--receipt-font-weight);
             }
         }
     </style>
     <style id="receipt-print-size"></style>
 </head>
+
 <body>
     <div class="action-bar">
         <div>
-            <strong>Struk 58mm</strong>
+            <strong>Struk 80mm</strong>
             <div class="muted">Preview struk setelah transaksi disimpan.</div>
         </div>
         <div class="btn-group">
             <button class="btn btn-primary" onclick="window.print()">Cetak Struk</button>
-            <a class="btn btn-outline" href="{{ url_for('main.penjualan_invoice', sale_id=sale.id) }}" target="_blank" rel="noreferrer">Cetak Invoice</a>
-            <a class="btn btn-outline" href="{{ url_for('main.penjualan_surat_jalan', sale_id=sale.id) }}" target="_blank" rel="noreferrer">Surat Jalan</a>
+            <a class="btn btn-outline" href="{{ url_for('main.penjualan_invoice', sale_id=sale.id) }}" target="_blank"
+                rel="noreferrer">Cetak Invoice</a>
+            <a class="btn btn-outline" href="{{ url_for('main.penjualan_surat_jalan', sale_id=sale.id) }}"
+                target="_blank" rel="noreferrer">Surat Jalan</a>
             <a class="btn btn-outline" href="{{ url_for('main.penjualan') }}">Kembali</a>
         </div>
     </div>
@@ -189,42 +247,65 @@
 
             <div class="divider"></div>
 
-            <div class="meta-line"><span>Tanggal</span><span>{{ sale.tanggal_penjualan.strftime('%d/%m/%Y') if sale.tanggal_penjualan else '-' }}</span></div>
+            <div class="meta-line"><span>Tanggal</span><span>{{ sale.tanggal_penjualan.strftime('%d/%m/%Y') if
+                    sale.tanggal_penjualan else '-' }}</span></div>
             <div class="meta-line"><span>Transaksi</span><span>{{ sale.no_faktur }}</span></div>
-            <div class="meta-line"><span>Operator</span><span>{{ sale.sales.username if sale.sales else '-' }}</span></div>
-            <div class="meta-line"><span>Pelanggan</span><span>{{ sale.pelanggan.nama if sale.pelanggan else 'Umum' }}</span></div>
-            <div class="meta-line"><span>Telepon</span><span>{{ (sale.pelanggan.kontak or '-') if sale.pelanggan else '-' }}</span></div>
+            <div class="meta-line"><span>Operator</span><span>{{ sale.sales.username if sale.sales else '-' }}</span>
+            </div>
+            <div class="meta-line"><span>Pelanggan</span><span>{{ sale.pelanggan.nama if sale.pelanggan else 'Umum'
+                    }}</span></div>
+            <div class="meta-line"><span>Telepon</span><span>{{ (sale.pelanggan.kontak or '-') if sale.pelanggan else
+                    '-' }}</span></div>
 
             <div class="divider"></div>
 
             {% for item in items %}
-                <div class="item-name">{{ item.name }}</div>
-                <div class="item-line">
-                    <span>{{ item.qty }} x {{ ('Rp {:,.0f}'.format(item.price)).replace(',', '.') }}</span>
-                    <span>{{ ('Rp {:,.0f}'.format(item.total)).replace(',', '.') }}</span>
-                </div>
+            <div class="item-name">{{ item.name }}</div>
+            <div class="item-line">
+                <span>{{ item.qty }} x {{ ('Rp {:,.0f}'.format(item.price)).replace(',', '.') }}</span>
+                <span>{{ ('Rp {:,.0f}'.format(item.total)).replace(',', '.') }}</span>
+            </div>
             {% endfor %}
 
             <div class="divider"></div>
 
             <div class="meta-line"><span>{{ items|sum(attribute='qty') }} items</span><span></span></div>
-            <div class="total-line"><span>PAJAK (PPN)</span><span>{{ ('Rp {:,.0f}'.format(tax_total)).replace(',', '.') }}</span></div>
-            <div class="total-line"><span>DISKON</span><span>{{ ('Rp {:,.0f}'.format(discount_total)).replace(',', '.') }}</span></div>
-            <div class="total-line"><span>BIAYA KIRIM</span><span>{{ ('Rp {:,.0f}'.format(shipping_fee)).replace(',', '.') }}</span></div>
-            <div class="total-line"><strong>GRAND TOTAL</strong><strong>{{ ('Rp {:,.0f}'.format(grand_total)).replace(',', '.') }}</strong></div>
-            <div class="total-line"><span>TUNAI</span><span>{{ ('Rp {:,.0f}'.format(sale.amount_paid or 0)).replace(',', '.') }}</span></div>
-            <div class="total-line"><span>KEMBALI</span><span>{{ ('Rp {:,.0f}'.format(sale.change_due or 0)).replace(',', '.') }}</span></div>
+            <div class="total-line"><span>PAJAK (PPN)</span><span>{{ ('Rp {:,.0f}'.format(tax_total)).replace(',', '.')
+                    }}</span></div>
+            <div class="total-line"><span>DISKON</span><span>{{ ('Rp {:,.0f}'.format(discount_total)).replace(',', '.')
+                    }}</span></div>
+            <div class="total-line"><span>BIAYA KIRIM</span><span>{{ ('Rp {:,.0f}'.format(shipping_fee)).replace(',',
+                    '.') }}</span></div>
+            <div class="total-line"><strong>GRAND TOTAL</strong><strong>{{ ('Rp
+                    {:,.0f}'.format(grand_total)).replace(',', '.') }}</strong></div>
+            <div class="total-line"><span>DIBAYAR</span><span>{{ ('Rp {:,.0f}'.format(sale.amount_paid or
+                    0)).replace(',', '.') }}</span></div>
+            <div class="total-line"><span>KEMBALI</span><span>{{ ('Rp {:,.0f}'.format(sale.change_due or
+                    0)).replace(',', '.') }}</span></div>
 
             <div class="divider"></div>
 
             <div class="meta-line"><span>TOTAL</span><span>{{ '{:.2f}'.format(total_weight) }} Kg</span></div>
-            <div class="meta-line"><span>EXPEDISI</span><span>{{ sale.expedition.name if sale.expedition else '-' }}</span></div>
+            <div class="meta-line"><span>EXPEDISI</span><span>{{ sale.expedition.name if sale.expedition else '-'
+                    }}</span></div>
             <div class="meta-line"><span>BAYAR</span><span>{{ payment_label }}</span></div>
-            {% if payment_label.startswith('Kartu') %}
+            {% if sale.payment_method in ['Transfer', 'QRIS'] or payment_label.startswith('Kartu') %}
             <div class="meta-line"><span>REKENING</span><span>{{ company_profile.bank_info }}</span></div>
             {% endif %}
+            <div class="divider"></div>
+            {% if receipt_settings.show_promo_barcode and receipt_settings.promo_barcode_value %}
+            <div class="promo-block" data-qr-value="{{ receipt_settings.promo_barcode_value }}">
+                {% if receipt_settings.promo_barcode_label %}
+                <div class="promo-label">{{ receipt_settings.promo_barcode_label }}</div>
+                {% endif %}
+                <div class="promo-qr" aria-hidden="true"></div>
+                <div class="promo-barcode-value">{{ receipt_settings.promo_barcode_value }}</div>
+            </div>
+            {% endif %}
 
-            <div class="footer-note">Terima kasih</div>
+            {% if receipt_settings.thank_you_text %}
+            <div class="footer-note">{{ receipt_settings.thank_you_text }}</div>
+            {% endif %}
         </div>
     </div>
     <script>
@@ -238,11 +319,45 @@
             function applyPageSize() {
                 const rect = receipt.getBoundingClientRect();
                 const heightMm = Math.max(80, Math.ceil(rect.height / PX_PER_MM));
-                styleEl.textContent = `@page { size: 58mm ${heightMm}mm; margin: 2mm; }`;
+                styleEl.textContent = `@page { size: 80mm ${heightMm}mm; margin: 0; }`;
             }
             window.addEventListener('beforeprint', applyPageSize);
             applyPageSize();
         })();
     </script>
+    <script>
+        (function () {
+            try {
+                if (window.localStorage) {
+                    localStorage.removeItem('salesDraftV1');
+                }
+            } catch (error) {
+                // Ignore storage errors.
+            }
+        })();
+    </script>
+    <script src="{{ url_for('static', filename='vendor/qrcode.min.js') }}"></script>
+    <script>
+        (function () {
+            const promoBlock = document.querySelector('.promo-block');
+            if (!promoBlock || typeof QRCode === 'undefined') {
+                return;
+            }
+            const value = promoBlock.getAttribute('data-qr-value');
+            const target = promoBlock.querySelector('.promo-qr');
+            if (!value || !target) {
+                return;
+            }
+            const size = 120;
+            new QRCode(target, {
+                text: value,
+                width: size,
+                height: size,
+                correctLevel: QRCode.CorrectLevel.M
+            });
+            promoBlock.classList.add('qr-ready');
+        })();
+    </script>
 </body>
+
 </html>

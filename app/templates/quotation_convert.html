@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Memuat Quotation</title>
+</head>
+<body>
+    <p>Menyiapkan data quotation untuk penjualan...</p>
+    <script>
+        (function () {
+            const payload = {{ payload|tojson }};
+            if (window.localStorage) {
+                localStorage.setItem('salesDraftV1', JSON.stringify(payload));
+            }
+            window.location.href = "{{ url_for('main.penjualan') }}";
+        })();
+    </script>
+</body>
+</html>

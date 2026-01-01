@@ -491,6 +491,17 @@
             dueWrapper.style.display = isChecked ? '' : 'none';
             dueHidden.value = isChecked ? '1' : '0';
         });
+
+        const openId = {{ open_id|tojson }};
+        if (openId) {
+            const target = document.querySelector(
+                `[data-action="open-payment"][data-sale-id="${openId}"]`
+            );
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.click();
+            }
+        }
     })();
 </script>
 {% endblock %}
