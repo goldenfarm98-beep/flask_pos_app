@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan Neraca{% endblock %}
+
+{% block content %}
+{% macro format_currency(value) -%}
+    {{ ('Rp {:,.0f}'.format(value or 0)).replace(',', '.') }}
+{%- endmacro %}
+{% macro format_number(value) -%}
+    {{ '{:,}'.format(value or 0).replace(',', '.') }}
+{%- endmacro %}
+
+<section class="balance-sheet">
+    <div class="card shadow-sm border-0 mb-4 report-hero">
+        <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
+            <div class="flex-fill pr-lg-4">
+                <p class="eyebrow text-uppercase mb-2">Laporan Neraca</p>
+                <h1 class="display-5 mb-2 text-navy">Ringkasan posisi keuangan</h1>
+                <p class="mb-0 text-muted">Pantau keseimbangan aset, liabilitas, dan ekuitas pada periode yang dipilih.</p>
+            </div>
+            <div class="report-period text-lg-right mt-4 mt-lg-0">
+                <small class="text-uppercase text-muted d-block">Periode</small>
+                <div class="h4 font-weight-bold mb-1">{{ range_label }}</div>
+                <span class="badge badge-pill badge-soft-primary">
+                    {{ format_currency(total_le) }} liabilitas + ekuitas
+                </span>
+            </div>
+        </div>
+        <div class="card-footer bg-transparent">
+            <form class="form-row align-items-end" method="get">
+                <div class="form-group col-md-4 mb-0">
+                    <label for="start_date" class="text-muted small text-uppercase">Mulai</label>
+                    <input type="date" id="start_date" name="start_date" class="form-control form-control-lg" value="{{ filter_values.start_date }}">
+                </div>
+                <div class="form-group col-md-4 mb-0">
+                    <label for="end_date" class="text-muted small text-uppercase">Sampai</label>
+                    <input type="date" id="end_date" name="end_date" class="form-control form-control-lg" value="{{ filter_values.end_date }}">
+                </div>
+                <div class="form-group col-md-3 mb-0">
+                    <div class="custom-control custom-checkbox mt-4">
+                        <input type="checkbox" class="custom-control-input" id="show_zero" name="show_zero" value="1" {% if filter_values.show_zero %}checked{% endif %}>
+                        <label class="custom-control-label text-muted" for="show_zero">Tampilkan saldo nol</label>
+                    </div>
+                </div>
+                <div class="form-group col-md-1 mb-0">
+                    <button class="btn btn-primary btn-lg btn-block" type="submit">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row summary-grid">
+        {% for card in summary_cards %}
+        <div class="col-md-6 col-xl-3 mb-4">
+            <div class="metric-card shadow-sm h-100">
+                <div class="metric-icon {{ card.accent }}">
+                    <i class="fas {{ card.icon }}"></i>
+                </div>
+                <div class="metric-body">
+                    <small class="text-uppercase text-muted">{{ card.label }}</small>
+                    <div class="metric-value">{{ format_currency(card.value) }}</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if warning_message %}
+        <div class="alert alert-warning border-0 shadow-sm">
+            Total aset tidak sama dengan total liabilitas + ekuitas. Selisih {{ format_currency(warning_message) }}.
+        </div>
+    {% endif %}
+
+    {% for key in ['asset', 'liability', 'equity'] %}
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <p class="eyebrow text-uppercase mb-1">{{ type_labels[key] }}</p>
+                    <h3 class="h5 mb-0">Daftar akun {{ type_labels[key]|lower }}</h3>
+                </div>
+                <span class="badge badge-pill badge-light">{{ groups[key]|length }} akun</span>
+            </div>
+            {% if groups[key] %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="text-uppercase small text-muted">
+                            <tr>
+                                <th>Kode</th>
+                                <th>Akun</th>
+                                <th class="text-right">Debit</th>
+                                <th class="text-right">Kredit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in groups[key] %}
+                            <tr>
+                                <td class="font-weight-semibold">{{ row.code }}</td>
+                                <td>{{ row.name }}</td>
+                                <td class="text-right text-success">{{ format_currency(row.debit) }}</td>
+                                <td class="text-right text-danger">{{ format_currency(row.credit) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="font-weight-semibold">
+                                <td colspan="2">Total {{ type_labels[key] }}</td>
+                                <td class="text-right text-success">{{ format_currency(totals[key].debit) }}</td>
+                                <td class="text-right text-danger">{{ format_currency(totals[key].credit) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted mb-0">Belum ada saldo {{ type_labels[key]|lower }} pada periode ini.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</section>
+{% endblock %}
