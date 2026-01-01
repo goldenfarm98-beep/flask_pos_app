@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Laporan Piutang{% endblock %}
+{% block title %}Laporan Utang{% endblock %}
 
 {% macro format_currency(value) -%}
     {{ ('Rp {:,.0f}'.format(value or 0)).replace(',', '.') }}
@@ -10,30 +10,30 @@
 {%- endmacro %}
 
 {% block content %}
-<section class="receivable-report">
-    <div class="card shadow-sm border-0 mb-4 receivable-hero">
+<section class="payable-report">
+    <div class="card shadow-sm border-0 mb-4 payable-hero">
         <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center">
             <div class="flex-fill pr-lg-4">
-                <p class="eyebrow text-uppercase mb-2">Piutang Tempo</p>
+                <p class="eyebrow text-uppercase mb-2">Utang Supplier</p>
                 <h1 class="display-5 mb-2 text-navy">Pantau jatuh tempo pembayaran</h1>
-                <p class="mb-0 text-muted">Daftar penjualan tempo, status jatuh tempo, dan sisa tagihan.</p>
+                <p class="mb-0 text-muted">Daftar pembelian tempo, status jatuh tempo, dan sisa kewajiban.</p>
             </div>
             <div class="report-kpi text-lg-right mt-4 mt-lg-0">
-                <small class="text-uppercase text-muted d-block">Total piutang terbuka</small>
+                <small class="text-uppercase text-muted d-block">Total utang terbuka</small>
                 <div class="h3 font-weight-bold mb-1">{{ format_currency(total_outstanding) }}</div>
                 <span class="badge badge-pill badge-soft-danger">Overdue {{ format_number(overdue_count) }}</span>
             </div>
         </div>
         <div class="card-footer bg-transparent">
-            <form class="receivable-filter" method="get">
+            <form class="payable-filter" method="get">
                 <div class="form-row">
                     <div class="form-group col-lg-4 col-md-6 mb-3">
-                        <label class="text-muted small text-uppercase">Cari faktur / pelanggan / sales</label>
+                        <label class="text-muted small text-uppercase">Cari faktur / supplier</label>
                         <div class="input-group">
                             <div class="input-group-prepend">
                                 <span class="input-group-text"><i class="fas fa-search"></i></span>
                             </div>
-                            <input type="text" class="form-control" name="search" placeholder="Misal: F2025 / Andi" value="{{ filter_values.search }}">
+                            <input type="text" class="form-control" name="search" placeholder="Misal: PB-2025 / Supplier" value="{{ filter_values.search }}">
                         </div>
                     </div>
                     <div class="form-group col-lg-2 col-md-6 mb-3">
@@ -69,28 +69,17 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group col-lg-3 col-md-6 mb-3">
-                        <label class="text-muted small text-uppercase">Pelanggan</label>
-                        <select class="custom-select" name="pelanggan">
-                            <option value="">Semua pelanggan</option>
-                            {% for pelanggan in customer_options %}
-                                <option value="{{ pelanggan.id }}" {% if filter_values.pelanggan == pelanggan.id %}selected{% endif %}>
-                                    {{ pelanggan.nama }} ({{ pelanggan.pelanggan_id }})
+                        <label class="text-muted small text-uppercase">Supplier</label>
+                        <select class="custom-select" name="supplier">
+                            <option value="">Semua supplier</option>
+                            {% for supplier in supplier_options %}
+                                <option value="{{ supplier.id }}" {% if filter_values.supplier == supplier.id %}selected{% endif %}>
+                                    {{ supplier.name }}
                                 </option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="form-group col-lg-3 col-md-6 mb-3">
-                        <label class="text-muted small text-uppercase">Sales</label>
-                        <select class="custom-select" name="sales">
-                            <option value="">Semua sales</option>
-                            {% for sales in sales_options %}
-                                <option value="{{ sales.id }}" {% if filter_values.sales == sales.id %}selected{% endif %}>
-                                    {{ sales.username }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="form-group col-lg-2 col-md-6 mb-3">
                         <label class="text-muted small text-uppercase">Per halaman</label>
                         <select name="per_page" class="custom-select">
                             {% for candidate in [10, 20, 30, 50] %}
@@ -98,12 +87,12 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="form-group col-lg-4 col-md-6 d-flex align-items-end justify-content-between flex-wrap mb-0">
+                    <div class="form-group col-lg-6 d-flex align-items-end justify-content-between flex-wrap mb-0">
                         <div class="small text-muted mt-2">
                             Tanpa tanggal: {{ format_number(no_due_count) }} faktur
                         </div>
                         <div class="mt-3 mt-md-0">
-                            <a href="{{ url_for('main.laporan_piutang') }}" class="btn btn-outline-secondary btn-sm">
+                            <a href="{{ url_for('main.laporan_utang') }}" class="btn btn-outline-secondary btn-sm">
                                 <i class="fas fa-sync-alt mr-1"></i>Reset
                             </a>
                             <button type="submit" class="btn btn-primary btn-sm ml-2">
@@ -143,7 +132,7 @@
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div>
-                    <p class="eyebrow text-uppercase mb-1">Aging piutang</p>
+                    <p class="eyebrow text-uppercase mb-1">Aging utang</p>
                     <h3 class="h5 mb-0">Kelompok umur tagihan</h3>
                 </div>
                 <span class="badge badge-pill badge-light">{{ aging_cards|length }} bucket</span>
@@ -170,8 +159,8 @@
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
                 <div>
-                    <p class="eyebrow text-uppercase mb-1">Daftar piutang</p>
-                    <h3 class="h5 mb-0">Faktur tempo</h3>
+                    <p class="eyebrow text-uppercase mb-1">Daftar utang</p>
+                    <h3 class="h5 mb-0">Faktur tempo supplier</h3>
                 </div>
                 <span class="badge badge-pill badge-light">{{ format_number(pagination.total_records) }} faktur</span>
             </div>
@@ -189,14 +178,13 @@
                     {% endif %}
                 </div>
             {% endif %}
-            {% if receivable_rows %}
+            {% if payable_rows %}
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle receivable-table mb-0">
+                    <table class="table table-hover align-middle payable-table mb-0">
                         <thead class="text-uppercase small text-muted">
                             <tr>
                                 <th>Faktur</th>
-                                <th>Pelanggan</th>
-                                <th>Sales</th>
+                                <th>Supplier</th>
                                 <th>Jatuh tempo</th>
                                 <th class="text-right">Total</th>
                                 <th class="text-right">Dibayar</th>
@@ -206,17 +194,15 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for row in receivable_rows %}
+                            {% for row in payable_rows %}
                                 <tr>
                                     <td>
                                         <div class="font-weight-semibold text-navy">{{ row.invoice }}</div>
-                                        <small class="text-muted">Tanggal {{ format_date(row.sale_date) }}</small>
+                                        <small class="text-muted">Tanggal {{ format_date(row.purchase_date) }}</small>
                                     </td>
                                     <td>
-                                        <div class="font-weight-semibold">{{ row.customer_name }}</div>
-                                        <small class="text-muted">{{ row.customer_code }}</small>
+                                        <div class="font-weight-semibold">{{ row.supplier_name }}</div>
                                     </td>
-                                    <td>{{ row.sales_name }}</td>
                                     <td>
                                         <div class="font-weight-semibold">
                                             {{ format_date(row.due_date) if row.due_date else '-' }}
@@ -232,12 +218,13 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-right">
-                                        <a href="{{ url_for('main.penjualan_invoice', sale_id=row.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noreferrer">
-                                            <i class="fas fa-file-invoice mr-1"></i>Invoice
-                                        </a>
-                                        <a href="{{ url_for('main.penjualan_receipt', sale_id=row.id) }}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noreferrer">
-                                            <i class="fas fa-receipt mr-1"></i>Struk
-                                        </a>
+                                        {% if row.outstanding > 0 %}
+                                            <a href="{{ url_for('main.pembayaran_utang', open_id=row.id) }}" class="btn btn-sm btn-primary">
+                                                <i class="fas fa-coins mr-1"></i>Bayar
+                                            </a>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                             {% endfor %}
@@ -247,7 +234,7 @@
             {% else %}
                 <div class="text-center text-muted py-5">
                     <i class="fas fa-inbox fa-2x mb-2"></i>
-                    <div>Belum ada data piutang tempo sesuai filter.</div>
+                    <div>Belum ada data utang tempo sesuai filter.</div>
                 </div>
             {% endif %}
         </div>
@@ -276,11 +263,11 @@
 </section>
 
 <style>
-    .receivable-hero {
+    .payable-hero {
         border-radius: 18px;
         background: #f8fafc;
     }
-    .receivable-hero .display-5 {
+    .payable-hero .display-5 {
         font-weight: 700;
     }
     .summary-card {
@@ -320,7 +307,7 @@
         font-weight: 700;
         margin: 0.15rem 0 0.35rem;
     }
-    .receivable-table thead th {
+    .payable-table thead th {
         text-transform: uppercase;
         font-size: 0.75rem;
         letter-spacing: 0.05em;

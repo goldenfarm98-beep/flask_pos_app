@@ -76,7 +76,11 @@
 
     {% if warning_message %}
         <div class="alert alert-warning border-0 shadow-sm">
+            <i class="fas fa-exclamation-triangle mr-2"></i>
             Total debit dan kredit belum seimbang. Selisih {{ format_currency(warning_message) }}.
+            <div class="small text-muted mt-2">
+                Periksa saldo awal, jurnal penyesuaian, atau akun dengan saldo di sisi yang tidak normal (baris disorot).
+            </div>
         </div>
     {% endif %}
 
@@ -103,7 +107,7 @@
                         </thead>
                         <tbody>
                             {% for row in trial_rows %}
-                            <tr>
+                            <tr class="{% if row.is_abnormal %}table-warning{% endif %}">
                                 <td class="font-weight-semibold">{{ row.code }}</td>
                                 <td>{{ row.name }}</td>
                                 <td class="text-muted">{{ row.type_label }}</td>

@@ -243,6 +243,7 @@
                         <li class="mb-3">• Kunci transaksi penjualan/pembelian saat opname untuk menghindari selisih baru.</li>
                         <li class="mb-3">• Gunakan alat scan barcode untuk mempercepat input produk.</li>
                         <li class="mb-3">• Tambahkan catatan pada item berselisih besar agar mudah ditindaklanjuti.</li>
+                        <li class="mb-3">• Jika akun penyesuaian persediaan sudah diset, jurnal koreksi akan dibuat otomatis.</li>
                         <li>• Unduh laporan dari menu laporan stok untuk arsip audit.</li>
                     </ul>
                 </div>
@@ -482,7 +483,16 @@
                     .then(response => response.json().then(body => ({ ok: response.ok, body })))
                     .then(({ ok, body }) => {
                         if (ok && body.success) {
-                            alert(body.message || 'Stock opname tersimpan.');
+                            let message = body.message || 'Stock opname tersimpan.';
+                            if (body.journal) {
+                                if (body.journal.reference) {
+                                    message += `\nJurnal penyesuaian: ${body.journal.reference}`;
+                                }
+                                if (body.journal.warning) {
+                                    message += `\n${body.journal.warning}`;
+                                }
+                            }
+                            alert(message);
                             window.location.reload();
                         } else {
                             alert(body.message || 'Gagal menyimpan stock opname.');
