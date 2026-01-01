@@ -4122,6 +4122,8 @@ def check_produk_barcode():
 @roles_required(*ADMIN_ONLY)
 def akun():
     _ensure_table(Account)
+    _ensure_table(AccountingSetting)
+    _ensure_table(JournalLine)
     if request.method == "POST":
         code = (request.form.get("code") or "").strip().upper()
         name = (request.form.get("name") or "").strip()
@@ -4156,6 +4158,9 @@ def akun():
         flash("Akun berhasil ditambahkan.", "success")
         return redirect(url_for("main.akun"))
 
+    edit_id = _parse_int_param(request.args.get("edit"))
+    edit_account = Account.query.get(edit_id) if edit_id else None
+
     accounts = Account.query.order_by(Account.code.asc()).all()
     type_labels = {
         "asset": "Aset",
@@ -4189,7 +4194,108 @@ def akun():
         accounts=accounts,
         summary_cards=summary_cards,
         type_labels=type_labels,
+        edit_account=edit_account,
     )
+
+
+@bp.route("/akun/edit/<int:account_id>", methods=["POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def akun_edit(account_id):
+    _ensure_table(Account)
+    _ensure_table(AccountingSetting)
+    account = Account.query.get_or_404(account_id)
+
+    code = (request.form.get("code") or "").strip().upper()
+    name = (request.form.get("name") or "").strip()
+    acc_type = (request.form.get("type") or "").strip().lower()
+    parent_id = request.form.get("parent_id")
+    is_active = request.form.get("is_active", "1") == "1"
+
+    valid_types = {"asset", "liability", "equity", "income", "expense"}
+    if not code or not name or acc_type not in valid_types:
+        flash("Kode, nama, dan tipe akun wajib diisi.", "warning")
+        return redirect(url_for("main.akun", edit=account.id))
+    if Account.query.filter(Account.code == code, Account.id != account.id).first():
+        flash(f"Kode akun {code} sudah digunakan.", "warning")
+        return redirect(url_for("main.akun", edit=account.id))
+
+    parent = None
+    if parent_id:
+        try:
+            parent = Account.query.get(int(parent_id))
+        except (TypeError, ValueError):
+            parent = None
+    if parent and parent.id == account.id:
+        flash("Akun induk tidak boleh sama dengan akun yang diedit.", "warning")
+        return redirect(url_for("main.akun", edit=account.id))
+
+    account.code = code
+    account.name = name
+    account.type = acc_type
+    account.parent = parent
+    account.is_active = is_active
+    db.session.commit()
+    flash("Akun berhasil diperbarui.", "success")
+    return redirect(url_for("main.akun"))
+
+
+@bp.route("/akun/toggle/<int:account_id>", methods=["POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def akun_toggle(account_id):
+    _ensure_table(Account)
+    account = Account.query.get_or_404(account_id)
+    account.is_active = not account.is_active
+    db.session.commit()
+    status_label = "diaktifkan" if account.is_active else "dinonaktifkan"
+    flash(f"Akun berhasil {status_label}.", "success")
+    return redirect(url_for("main.akun"))
+
+
+@bp.route("/akun/delete/<int:account_id>", methods=["POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def akun_delete(account_id):
+    _ensure_table(Account)
+    _ensure_table(AccountingSetting)
+    _ensure_table(JournalLine)
+    account = Account.query.get_or_404(account_id)
+
+    has_children = Account.query.filter_by(parent_id=account.id).first() is not None
+    has_journal = (
+        JournalLine.query.filter_by(account_id=account.id).first() is not None
+    )
+    used_in_settings = (
+        AccountingSetting.query.filter(
+            or_(
+                AccountingSetting.inventory_account_id == account.id,
+                AccountingSetting.cogs_account_id == account.id,
+                AccountingSetting.inventory_adjustment_account_id == account.id,
+                AccountingSetting.marketplace_expense_account_id == account.id,
+                AccountingSetting.marketplace_payable_account_id == account.id,
+            )
+        ).first()
+        is not None
+    )
+
+    if has_children:
+        flash(
+            "Akun ini memiliki akun turunan. Hapus/ubah dulu akun turunannya.",
+            "warning",
+        )
+        return redirect(url_for("main.akun"))
+    if has_journal or used_in_settings:
+        flash(
+            "Akun ini sudah digunakan. Nonaktifkan saja agar laporan tetap konsisten.",
+            "warning",
+        )
+        return redirect(url_for("main.akun"))
+
+    db.session.delete(account)
+    db.session.commit()
+    flash("Akun berhasil dihapus.", "success")
+    return redirect(url_for("main.akun"))
 
 
 @bp.route("/saldo-awal", methods=["GET", "POST"])
