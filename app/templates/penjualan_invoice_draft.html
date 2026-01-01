@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Invoice {{ sale.no_faktur }}</title>
+    <title>Invoice Sementara {{ invoice_number }}</title>
     <style>
         @page {
             size: A4;
@@ -46,6 +46,16 @@
             background: #2563eb;
             color: #fff;
             border-color: #2563eb;
+        }
+
+        .draft-note {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            color: #92400e;
+            font-size: 0.85rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            margin-bottom: 0.8rem;
         }
 
         .header {
@@ -191,10 +201,13 @@
 <body>
     <div class="action-bar">
         <a class="btn btn-primary" href="#" onclick="window.print();return false;">Cetak Invoice</a>
-        <a class="btn" href="{{ url_for('main.penjualan_receipt', sale_id=sale.id) }}">Kembali</a>
+        <a class="btn" href="{{ url_for('main.penjualan') }}">Kembali</a>
     </div>
 
     <div class="page">
+        <div class="draft-note">
+            Invoice ini bersifat sementara (proforma) dan belum tercatat sebagai penjualan.
+        </div>
         <div class="header">
             <div class="logo">
                 {% if company_profile.logo_url %}
@@ -210,20 +223,20 @@
                 <div>{{ company_profile.phone }}</div>
                 <div>{{ company_profile.website }}</div>
             </div>
-            <div class="doc-title">INVOICE</div>
+            <div class="doc-title">INVOICE SEMENTARA</div>
         </div>
 
         <div class="meta-grid">
             <table>
                 <tr><td><strong>Kepada Yth.</strong></td><td></td></tr>
-                <tr><td>Nama</td><td>: {{ sale.pelanggan.nama if sale.pelanggan else 'Customer' }}</td></tr>
-                <tr><td>No. Telp</td><td>: {{ sale.pelanggan.kontak if sale.pelanggan else '-' }}</td></tr>
-                <tr><td>Alamat</td><td>: {{ sale.pelanggan.alamat if sale.pelanggan else '-' }}</td></tr>
+                <tr><td>Nama</td><td>: {{ customer.name }}</td></tr>
+                <tr><td>No. Telp</td><td>: {{ customer.phone }}</td></tr>
+                <tr><td>Alamat</td><td>: {{ customer.address }}</td></tr>
             </table>
             <table>
-                <tr><td>Sales</td><td>: {{ sale.sales.username if sale.sales else '-' }}</td></tr>
-                <tr><td>No. Invoice</td><td>: {{ sale.no_faktur }}</td></tr>
-                <tr><td>Tanggal</td><td>: {{ sale.tanggal_penjualan.strftime('%d %b %Y') if sale.tanggal_penjualan else '-' }}</td></tr>
+                <tr><td>Sales</td><td>: {{ sales_name }}</td></tr>
+                <tr><td>No. Invoice</td><td>: {{ invoice_number }}</td></tr>
+                <tr><td>Tanggal</td><td>: {{ invoice_date.strftime('%d %b %Y') if invoice_date else '-' }}</td></tr>
                 <tr><td>Pembayaran</td><td>: {{ payment_label }}</td></tr>
             </table>
         </div>
@@ -263,8 +276,8 @@
         <div class="summary">
             <div>
                 <div><strong>Total Berat</strong> : {{ '{:.2f}'.format(total_weight) }} Kg</div>
-                <div><strong>Expedisi</strong> : {{ sale.expedition.name if sale.expedition else '-' }}</div>
-                {% if sale.payment_method in ['Transfer', 'QRIS'] %}
+                <div><strong>Expedisi</strong> : {{ expedition_name }}</div>
+                {% if payment_method in ['Transfer', 'QRIS'] %}
                 <div><strong>Note</strong> : Pembayaran ke {{ company_profile.bank_info }}</div>
                 {% endif %}
             </div>

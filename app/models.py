@@ -1,5 +1,5 @@
 from app import db
-from datetime import datetime
+from app.time_utils import local_now, local_today
 
 
 class User(db.Model):
@@ -19,7 +19,7 @@ class PasswordResetToken(db.Model):
     token = db.Column(db.String(128), unique=True, nullable=False, index=True)
     expires_at = db.Column(db.DateTime, nullable=False)
     used = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
 
     user = db.relationship('User', backref=db.backref('reset_tokens', lazy=True, cascade='all, delete-orphan'))
 
@@ -143,8 +143,8 @@ class PriceLevelCost(db.Model):
     type = db.Column(db.Enum('percent', 'nominal', name='price_level_cost_type'), nullable=False, default='percent')
     value = db.Column(db.Float, nullable=False, default=0.0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
+    updated_at = db.Column(db.DateTime, nullable=False, default=local_now, onupdate=local_now)
 
     def formatted_value(self):
         if self.type == 'percent':
@@ -168,9 +168,9 @@ class MarketplacePricingSetting(db.Model):
     created_by = db.Column(
         db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
     updated_at = db.Column(
-        db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        db.DateTime, nullable=False, default=local_now, onupdate=local_now
     )
 
     creator = db.relationship(
@@ -234,9 +234,9 @@ class ExpedisiVolumetricItem(db.Model):
     actual_weight = db.Column(db.Float, nullable=True)
     use_volumetric = db.Column(db.Boolean, nullable=False, default=True)
     note = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
     updated_at = db.Column(
-        db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        db.DateTime, nullable=False, default=local_now, onupdate=local_now
     )
 
     expedisi = db.relationship(
@@ -264,6 +264,93 @@ class PaymentChannel(db.Model):
 
     def __repr__(self):
         return f"<PaymentChannel {self.name}>"
+
+
+class CashierShift(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False
+    )
+    shift_date = db.Column(db.Date, nullable=False)
+    opened_at = db.Column(db.DateTime, nullable=False, default=local_now)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    closed_by = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    forced_close = db.Column(db.Boolean, nullable=False, default=False)
+    note = db.Column(db.String(255), nullable=True)
+
+    user = db.relationship("User", foreign_keys=[user_id], backref="cashier_shifts")
+    closed_by_user = db.relationship(
+        "User", foreign_keys=[closed_by], backref="cashier_shift_closures"
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id", "shift_date", name="uq_cashier_shift_user_date"
+        ),
+    )
+
+    @property
+    def is_open(self):
+        return self.closed_at is None
+
+    def __repr__(self):
+        return f"<CashierShift {self.id} user={self.user_id} date={self.shift_date}>"
+
+
+class PurchaseOrder(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    po_number = db.Column(db.String(50), unique=True, nullable=False)
+    supplier_id = db.Column(db.Integer, db.ForeignKey("supplier.id", ondelete="SET NULL"), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default="draft")
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
+    updated_at = db.Column(db.DateTime, nullable=False, default=local_now, onupdate=local_now)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    approved_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    sent_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    received_at = db.Column(db.DateTime, nullable=True)
+    received_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    expected_date = db.Column(db.Date, nullable=True)
+    note = db.Column(db.String(255), nullable=True)
+    tax_percent = db.Column(db.Float, nullable=False, default=0.0)
+    subtotal_estimate = db.Column(db.Float, nullable=False, default=0.0)
+    tax_total = db.Column(db.Float, nullable=False, default=0.0)
+    shipping_fee = db.Column(db.Float, nullable=False, default=0.0)
+    grand_total_estimate = db.Column(db.Float, nullable=False, default=0.0)
+
+    supplier = db.relationship("Supplier", backref=db.backref("purchase_orders", lazy=True))
+    creator = db.relationship("User", foreign_keys=[created_by], backref=db.backref("purchase_orders_created", lazy=True))
+    approver = db.relationship("User", foreign_keys=[approved_by], backref=db.backref("purchase_orders_approved", lazy=True))
+    sender = db.relationship("User", foreign_keys=[sent_by], backref=db.backref("purchase_orders_sent", lazy=True))
+    receiver = db.relationship("User", foreign_keys=[received_by], backref=db.backref("purchase_orders_received", lazy=True))
+
+    def __repr__(self):
+        return f"<PurchaseOrder {self.po_number} status={self.status}>"
+
+
+class PurchaseOrderItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_order_id = db.Column(
+        db.Integer, db.ForeignKey("purchase_order.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id = db.Column(db.Integer, db.ForeignKey("produk.id", ondelete="SET NULL"), nullable=True)
+    product_code = db.Column(db.String(50), nullable=True)
+    product_name = db.Column(db.String(150), nullable=False)
+    sku = db.Column(db.String(80), nullable=True)
+    qty = db.Column(db.Float, nullable=False, default=0.0)
+    unit_price = db.Column(db.Float, nullable=False, default=0.0)
+    total_price = db.Column(db.Float, nullable=False, default=0.0)
+
+    purchase_order = db.relationship(
+        "PurchaseOrder", backref=db.backref("items", lazy=True, cascade="all, delete-orphan")
+    )
+    produk = db.relationship("Produk", backref=db.backref("purchase_order_items", lazy=True))
+
+    def __repr__(self):
+        return f"<PurchaseOrderItem {self.product_name} qty={self.qty}>"
 
 
 class Pembelian(db.Model):
@@ -319,9 +406,9 @@ class Penjualan(db.Model):
         db.String(50),
         unique=True,
         nullable=False,
-        default=lambda: f"F{int(datetime.utcnow().timestamp())}",
+        default=lambda: f"F{int(local_now().timestamp())}",
     )
-    tanggal_penjualan = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    tanggal_penjualan = db.Column(db.Date, nullable=False, default=local_today)
     sales_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     pelanggan_id = db.Column(db.Integer, db.ForeignKey("pelanggan.id"), nullable=False)
     price_level_id = db.Column(
@@ -329,6 +416,9 @@ class Penjualan(db.Model):
     )
     expedition_id = db.Column(db.Integer, db.ForeignKey('expedisi.id'), nullable=True)
     payment_channel_id = db.Column(db.Integer, db.ForeignKey('payment_channel.id'), nullable=True)
+    shift_id = db.Column(
+        db.Integer, db.ForeignKey("cashier_shift.id", ondelete="SET NULL"), nullable=True
+    )
     total_harga = db.Column(db.Float, nullable=False)
     shipping_fee = db.Column(db.Float, nullable=False, default=0.0)
     total_weight = db.Column(db.Float, nullable=False, default=0.0)
@@ -344,6 +434,7 @@ class Penjualan(db.Model):
     price_level = db.relationship("PriceLevel", backref="penjualan")
     expedition = db.relationship("Expedisi", backref=db.backref("penjualan", lazy=True))
     payment_channel = db.relationship("PaymentChannel", backref=db.backref("penjualan", lazy=True))
+    shift = db.relationship("CashierShift", backref=db.backref("penjualan", lazy=True))
     accounting_period_id = db.Column(
         db.Integer,
         db.ForeignKey('accounting_period.id', ondelete='SET NULL'),
@@ -379,7 +470,7 @@ class ReceivablePayment(db.Model):
     payment_method = db.Column(db.String(20), nullable=False, default="Tunai")
     reference = db.Column(db.String(100), nullable=True)
     note = db.Column(db.String(255), nullable=True)
-    paid_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    paid_at = db.Column(db.DateTime, nullable=False, default=local_now)
     created_by = db.Column(
         db.Integer,
         db.ForeignKey("user.id", ondelete="SET NULL"),
@@ -407,6 +498,66 @@ class DetailPenjualan(db.Model):
     produk = db.relationship('Produk', backref='detail_penjualan')
 
 
+class Quotation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    quote_number = db.Column(db.String(50), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
+    updated_at = db.Column(db.DateTime, nullable=False, default=local_now, onupdate=local_now)
+    status = db.Column(db.String(20), nullable=False, default="draft")
+    sales_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    pelanggan_id = db.Column(db.Integer, db.ForeignKey("pelanggan.id", ondelete="SET NULL"), nullable=True)
+    customer_label = db.Column(db.String(120), nullable=True)
+    price_level_id = db.Column(db.Integer, db.ForeignKey("price_level.id", ondelete="SET NULL"), nullable=True)
+    expedition_id = db.Column(db.Integer, db.ForeignKey("expedisi.id", ondelete="SET NULL"), nullable=True)
+    payment_channel_id = db.Column(db.Integer, db.ForeignKey("payment_channel.id", ondelete="SET NULL"), nullable=True)
+    payment_method = db.Column(db.String(20), nullable=True)
+    due_date = db.Column(db.Date, nullable=True)
+    subtotal = db.Column(db.Float, nullable=False, default=0.0)
+    discount_total = db.Column(db.Float, nullable=False, default=0.0)
+    tax_total = db.Column(db.Float, nullable=False, default=0.0)
+    shipping_fee = db.Column(db.Float, nullable=False, default=0.0)
+    grand_total = db.Column(db.Float, nullable=False, default=0.0)
+    total_weight = db.Column(db.Float, nullable=False, default=0.0)
+    converted_sale_id = db.Column(
+        db.Integer, db.ForeignKey("penjualan.id", ondelete="SET NULL"), nullable=True
+    )
+
+    sales = db.relationship("User", backref=db.backref("quotations", lazy=True))
+    pelanggan = db.relationship("Pelanggan", backref=db.backref("quotations", lazy=True))
+    price_level = db.relationship("PriceLevel", backref=db.backref("quotations", lazy=True))
+    expedition = db.relationship("Expedisi", backref=db.backref("quotations", lazy=True))
+    payment_channel = db.relationship(
+        "PaymentChannel", backref=db.backref("quotations", lazy=True)
+    )
+    converted_sale = db.relationship(
+        "Penjualan", backref=db.backref("converted_quotations", lazy=True)
+    )
+
+
+class QuotationItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    quotation_id = db.Column(
+        db.Integer, db.ForeignKey("quotation.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id = db.Column(
+        db.Integer, db.ForeignKey("produk.id", ondelete="SET NULL"), nullable=True
+    )
+    product_name = db.Column(db.String(120), nullable=False)
+    sku = db.Column(db.String(80), nullable=True)
+    qty = db.Column(db.Float, nullable=False, default=0.0)
+    price = db.Column(db.Float, nullable=False, default=0.0)
+    discount_pct = db.Column(db.Float, nullable=False, default=0.0)
+    tax_pct = db.Column(db.Float, nullable=False, default=0.0)
+    total = db.Column(db.Float, nullable=False, default=0.0)
+    unit_weight = db.Column(db.Float, nullable=False, default=0.0)
+    total_weight = db.Column(db.Float, nullable=False, default=0.0)
+
+    quotation = db.relationship(
+        "Quotation", backref=db.backref("items", lazy=True, cascade="all, delete-orphan")
+    )
+    produk = db.relationship("Produk", backref=db.backref("quotation_items", lazy=True))
+
+
 class PriceChange(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     product_id = db.Column(db.Integer, db.ForeignKey('produk.id', ondelete='CASCADE'), nullable=False)
@@ -417,7 +568,7 @@ class PriceChange(db.Model):
     margin_before = db.Column(db.Float, nullable=False, default=0.0)
     margin_after = db.Column(db.Float, nullable=False, default=0.0)
     reason = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
 
     product = db.relationship('Produk', backref=db.backref('price_changes', lazy=True))
     user = db.relationship('User', backref=db.backref('price_changes', lazy=True))
@@ -431,7 +582,7 @@ class StockOpnameSession(db.Model):
     note = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), nullable=False, default='draft')
     created_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
     finalized_at = db.Column(db.DateTime, nullable=True)
 
     user = db.relationship('User', backref=db.backref('stock_opname_sessions', lazy=True))
@@ -476,8 +627,18 @@ class AccountingSetting(db.Model):
         db.ForeignKey('account.id', ondelete='SET NULL'),
         nullable=True,
     )
+    marketplace_expense_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey('account.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    marketplace_payable_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey('account.id', ondelete='SET NULL'),
+        nullable=True,
+    )
     updated_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=local_now, onupdate=local_now)
 
     inventory_account = db.relationship(
         'Account',
@@ -489,6 +650,16 @@ class AccountingSetting(db.Model):
         foreign_keys=[cogs_account_id],
         backref=db.backref('cogs_settings', lazy=True),
     )
+    marketplace_expense_account = db.relationship(
+        'Account',
+        foreign_keys=[marketplace_expense_account_id],
+        backref=db.backref('marketplace_expense_settings', lazy=True),
+    )
+    marketplace_payable_account = db.relationship(
+        'Account',
+        foreign_keys=[marketplace_payable_account_id],
+        backref=db.backref('marketplace_payable_settings', lazy=True),
+    )
     updater = db.relationship(
         'User',
         backref=db.backref('accounting_settings', lazy=True),
@@ -497,13 +668,26 @@ class AccountingSetting(db.Model):
     def __repr__(self):
         inv = self.inventory_account.name if self.inventory_account else '-'
         cogs = self.cogs_account.name if self.cogs_account else '-'
-        return f"<AccountingSetting Inventory={inv} COGS={cogs}>"
+        mp_exp = (
+            self.marketplace_expense_account.name
+            if self.marketplace_expense_account
+            else '-'
+        )
+        mp_pay = (
+            self.marketplace_payable_account.name
+            if self.marketplace_payable_account
+            else '-'
+        )
+        return (
+            f"<AccountingSetting Inventory={inv} COGS={cogs} "
+            f"MPExpense={mp_exp} MPPayable={mp_pay}>"
+        )
 
 
 class JournalEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     reference = db.Column(db.String(50), unique=True, nullable=False)
-    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    date = db.Column(db.Date, nullable=False, default=local_today)
     memo = db.Column(db.String(255), nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
     accounting_period_id = db.Column(
@@ -512,7 +696,7 @@ class JournalEntry(db.Model):
         nullable=True,
     )
     is_locked = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
 
     user = db.relationship('User', backref=db.backref('journal_entries', lazy=True))
     accounting_period = db.relationship(
@@ -543,7 +727,7 @@ class AccountingPeriod(db.Model):
     is_locked = db.Column(db.Boolean, nullable=False, default=False)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
     closed_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
     closed_at = db.Column(db.DateTime, nullable=True)
 
     creator = db.relationship(

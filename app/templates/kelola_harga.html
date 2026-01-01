@@ -20,7 +20,7 @@
                     <form method="POST" id="pricingForm">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="save">
-                        <input type="hidden" name="product_id" id="pricing_product_id">
+                        <input type="hidden" name="product_id" id="pricing_product_id" value="{{ form_data.product_id }}">
                         {% if form_data.record_id %}
                             <input type="hidden" name="record_id" value="{{ form_data.record_id }}">
                         {% endif %}
@@ -261,6 +261,7 @@
 </div>
 
 <script type="application/json" id="marketplaceLevelsJson">{{ marketplace_levels|tojson }}</script>
+<script type="application/json" id="loadedProductJson">{{ loaded_product|tojson }}</script>
 
 <style>
     .marketplace-pricing .card {
@@ -417,6 +418,8 @@
         const applyRoundingInput = document.getElementById("apply_rounding_mode");
         const marketplaceLevelsEl = document.getElementById("marketplaceLevelsJson");
         const marketplaceLevels = marketplaceLevelsEl ? JSON.parse(marketplaceLevelsEl.textContent) : [];
+        const loadedProductEl = document.getElementById("loadedProductJson");
+        const loadedProduct = loadedProductEl ? JSON.parse(loadedProductEl.textContent || "null") : null;
         const hasPriceLevels = {{ "true" if has_price_levels else "false" }};
         const syncFeedback = document.getElementById("syncFeedback");
         let selectedProduct = null;
@@ -667,6 +670,21 @@
                 applyModal.style.display = "block";
             }
         };
+
+        if (loadedProduct && productIdInput) {
+            selectedProduct = loadedProduct;
+            productIdInput.value = loadedProduct.id || "";
+            if (productNameInput) {
+                productNameInput.value = loadedProduct.nama_produk || productNameInput.value;
+            }
+            if (productSkuInput) {
+                productSkuInput.value = loadedProduct.sku || productSkuInput.value;
+            }
+            if (productHelper) {
+                productHelper.textContent = "Produk terhubung dari riwayat setting.";
+                productHelper.classList.remove("text-danger");
+            }
+        }
 
         updateResults();
 

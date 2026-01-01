@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+
+{% set editing = is_edit if is_edit is defined else (po is defined and po) %}
+{% block title %}{{ 'Edit PO' if editing else 'Buat PO' }}{% endblock %}
+
+{% block content %}
+<section class="po-form">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+        <div>
+            <h1 class="h4 font-weight-bold mb-1">{{ 'Edit Purchase Order' if editing else 'Buat Purchase Order' }}</h1>
+            <p class="text-muted mb-0">
+                {{ 'Ubah draft PO sebelum approval.' if editing else 'Buat draft PO sebelum approval dan pengiriman.' }}
+            </p>
+        </div>
+        <div class="btn-group mt-2 mt-md-0">
+            <a href="{{ url_for('main.pembelian_po_list') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left mr-1"></i>Kembali
+            </a>
+        </div>
+    </div>
+
+    <form method="post" action="{{ form_action if form_action is defined else '' }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white border-0">
+                <h2 class="h6 font-weight-bold mb-0">Informasi PO</h2>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group col-md-4">
+                        <label class="font-weight-semibold">Nomor PO</label>
+                        <input type="text" class="form-control" value="{{ po.po_number if editing else draft_number }}" readonly>
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label class="font-weight-semibold">Supplier</label>
+                        <select class="custom-select" name="supplier_id" required>
+                            <option value="">Pilih supplier</option>
+                            {% for supplier in supplier_options %}
+                                <option value="{{ supplier.id }}" {% if editing and po.supplier_id == supplier.id %}selected{% endif %}>{{ supplier.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label class="font-weight-semibold">Estimasi datang</label>
+                        <input type="date" class="form-control" name="expected_date" value="{{ po.expected_date.strftime('%Y-%m-%d') if editing and po.expected_date else '' }}">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-4">
+                        <label class="font-weight-semibold">Pajak (%)</label>
+                        <input type="number" class="form-control" name="tax_percent" min="0" max="100" step="0.1" value="{{ po.tax_percent if editing else 0 }}">
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label class="font-weight-semibold">Ongkir</label>
+                        <input type="number" class="form-control" name="shipping_fee" min="0" step="100" value="{{ po.shipping_fee if editing else 0 }}">
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label class="font-weight-semibold">Catatan</label>
+                        <input type="text" class="form-control" name="note" placeholder="Catatan untuk supplier" value="{{ po.note if editing and po.note else '' }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                <h2 class="h6 font-weight-bold mb-0">Item PO</h2>
+                <small class="text-muted">Harga di PO adalah estimasi, invoice bisa berbeda.</small>
+            </div>
+            <div class="card-body">
+                <div class="form-row align-items-start">
+                    <div class="form-group col-md-6">
+                        <label class="font-weight-semibold">Produk</label>
+                        <div class="position-relative">
+                            <input type="text" class="form-control" id="po-product-search" placeholder="Cari nama, kode, atau SKU" autocomplete="off">
+                            <div class="po-product-suggestions shadow-sm" id="po-product-suggestions" hidden></div>
+                        </div>
+                        <small class="text-muted" id="po-product-meta">Pilih produk dari hasil pencarian.</small>
+                    </div>
+                    <div class="form-group col-md-2">
+                        <label class="font-weight-semibold">Qty</label>
+                        <input type="number" class="form-control" id="po-qty" min="0" step="1" value="1">
+                    </div>
+                    <div class="form-group col-md-2">
+                        <label class="font-weight-semibold">Harga Estimasi</label>
+                        <input type="number" class="form-control" id="po-price" min="0" step="100" value="0">
+                    </div>
+                    <div class="form-group col-md-2">
+                        <label class="font-weight-semibold invisible">Aksi</label>
+                        <button type="button" class="btn btn-primary btn-block" id="po-add-item">
+                            <i class="fas fa-plus mr-1"></i>Tambah
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0" id="po-items-table">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Produk</th>
+                                <th class="text-center" style="width: 100px;">Qty</th>
+                                <th class="text-right" style="width: 160px;">Harga</th>
+                                <th class="text-right" style="width: 160px;">Total</th>
+                                <th class="text-center" style="width: 80px;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if editing and po.items %}
+                                {% for item in po.items %}
+                                <tr data-row="true">
+                                    <td>
+                                        <div class="font-weight-semibold">{{ item.product_name }}</div>
+                                        {% if item.product_code %}
+                                        <small class="text-muted">{{ item.product_code }}</small>
+                                        {% endif %}
+                                        <input type="hidden" name="product_id[]" value="{{ item.product_id }}">
+                                    </td>
+                                    <td class="text-center">
+                                        <input type="number" class="form-control form-control-sm" name="qty[]" value="{{ item.qty }}" min="0" step="1">
+                                    </td>
+                                    <td class="text-right">
+                                        <input type="number" class="form-control form-control-sm text-right" name="price[]" value="{{ item.unit_price }}" min="0" step="100">
+                                    </td>
+                                    <td class="text-right">
+                                        <span class="font-weight-semibold" data-total>Rp {{ '{:,.0f}'.format(item.total_price).replace(',', '.') }}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-remove>
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% endif %}
+                            <tr id="po-empty-row" {% if editing and po.items %}style="display: none;"{% endif %}>
+                                <td colspan="5" class="text-center text-muted py-4">Belum ada item PO.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-save mr-2"></i>{{ 'Simpan Perubahan' if editing else 'Simpan Draft PO' }}
+            </button>
+        </div>
+    </form>
+</section>
+
+<script type="application/json" id="po-product-data">{{ product_payload|tojson }}</script>
+
+<style>
+    .po-product-suggestions {
+        position: absolute;
+        top: calc(100% + 0.4rem);
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+        max-height: 260px;
+        overflow-y: auto;
+        z-index: 40;
+    }
+    .po-product-suggestions[hidden] {
+        display: none;
+    }
+    .po-product-suggestions button {
+        width: 100%;
+        background: none;
+        border: 0;
+        padding: 0.6rem 0.9rem;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        font-size: 0.9rem;
+        color: #111827;
+    }
+    .po-product-suggestions button:hover,
+    .po-product-suggestions button:focus {
+        background: rgba(37, 99, 235, 0.08);
+        outline: none;
+    }
+    .po-product-suggestions button.is-active {
+        background: rgba(59, 130, 246, 0.15);
+    }
+    .po-product-suggestions small {
+        color: #6b7280;
+        white-space: nowrap;
+    }
+    .po-product-suggestions .match {
+        background: rgba(250, 204, 21, 0.3);
+        border-radius: 4px;
+        padding: 0 2px;
+    }
+</style>
+
+<script>
+    (function () {
+        const productSearch = document.getElementById('po-product-search');
+        const suggestionBox = document.getElementById('po-product-suggestions');
+        const productMeta = document.getElementById('po-product-meta');
+        const productDataScript = document.getElementById('po-product-data');
+        const products = productDataScript ? JSON.parse(productDataScript.textContent || '[]') : [];
+        const qtyInput = document.getElementById('po-qty');
+        const priceInput = document.getElementById('po-price');
+        const addButton = document.getElementById('po-add-item');
+        const tableBody = document.querySelector('#po-items-table tbody');
+        const emptyRow = document.getElementById('po-empty-row');
+        let selectedProduct = null;
+        let suggestionTimer = null;
+        let activeIndex = -1;
+        let currentMatches = [];
+
+        function formatRupiah(value) {
+            const number = Number(value || 0);
+            return `Rp ${number.toLocaleString('id-ID')}`;
+        }
+
+        function refreshEmptyState() {
+            const rows = tableBody.querySelectorAll('tr[data-row="true"]');
+            if (emptyRow) {
+                emptyRow.style.display = rows.length ? 'none' : '';
+            }
+        }
+
+        function escapeHtml(value) {
+            return (value || '')
+                .toString()
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function highlightMatch(text, query) {
+            const safeText = escapeHtml(text);
+            const safeQuery = escapeHtml(query);
+            if (!safeQuery) {
+                return safeText;
+            }
+            const pattern = safeQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(pattern, 'ig');
+            return safeText.replace(regex, match => `<span class="match">${match}</span>`);
+        }
+
+        function addRow(productId, productName, qty, price) {
+            const total = qty * price;
+            const row = document.createElement('tr');
+            row.dataset.row = 'true';
+            row.innerHTML = `
+                <td>
+                    <div class="font-weight-semibold">${productName}</div>
+                    <input type="hidden" name="product_id[]" value="${productId}">
+                </td>
+                <td class="text-center">
+                    <input type="number" class="form-control form-control-sm" name="qty[]" value="${qty}" min="0" step="1">
+                </td>
+                <td class="text-right">
+                    <input type="number" class="form-control form-control-sm text-right" name="price[]" value="${price}" min="0" step="100">
+                </td>
+                <td class="text-right">
+                    <span class="font-weight-semibold" data-total>${formatRupiah(total)}</span>
+                </td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-remove>
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            tableBody.appendChild(row);
+            refreshEmptyState();
+        }
+
+        function updateRowTotal(row) {
+            const qtyField = row.querySelector('input[name="qty[]"]');
+            const priceField = row.querySelector('input[name="price[]"]');
+            const totalNode = row.querySelector('[data-total]');
+            const qty = Number(qtyField ? qtyField.value : 0);
+            const price = Number(priceField ? priceField.value : 0);
+            if (totalNode) {
+                totalNode.textContent = formatRupiah(qty * price);
+            }
+        }
+
+        function setActiveSuggestion(index) {
+            activeIndex = index;
+            if (!suggestionBox) {
+                return;
+            }
+            const buttons = suggestionBox.querySelectorAll('button[data-index]');
+            buttons.forEach(btn => {
+                const idx = Number(btn.dataset.index);
+                if (idx === activeIndex) {
+                    btn.classList.add('is-active');
+                    btn.scrollIntoView({ block: 'nearest' });
+                } else {
+                    btn.classList.remove('is-active');
+                }
+            });
+        }
+
+        function applySuggestion(product) {
+            selectedProduct = product;
+            if (productSearch) {
+                productSearch.value = `${product.name} (${product.code || product.sku || '-'})`;
+            }
+            if (priceInput) {
+                priceInput.value = Number(product.price || 0);
+            }
+            if (productMeta) {
+                const stockLabel = Number(product.stock || 0).toLocaleString('id-ID');
+                productMeta.textContent = `${product.name} - Stok tersedia: ${stockLabel}`;
+            }
+            if (suggestionBox) {
+                suggestionBox.hidden = true;
+            }
+            activeIndex = -1;
+        }
+
+        function renderSuggestions(matches, query) {
+            if (!suggestionBox) {
+                return;
+            }
+            suggestionBox.innerHTML = '';
+            if (!matches.length) {
+                currentMatches = [];
+                activeIndex = -1;
+                suggestionBox.hidden = true;
+                return;
+            }
+            currentMatches = matches.slice(0, 8);
+            currentMatches.forEach((product, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.dataset.index = index;
+                const codeLabel = product.code || product.sku || '-';
+                const stockLabel = `Stok: ${Number(product.stock || 0).toLocaleString('id-ID')}`;
+                const nameLabel = highlightMatch(`${product.name} (${codeLabel})`, query);
+                button.innerHTML = `<span>${nameLabel}</span><small>${stockLabel}</small>`;
+                button.addEventListener('click', () => {
+                    applySuggestion(product);
+                });
+                suggestionBox.appendChild(button);
+            });
+            suggestionBox.hidden = false;
+            setActiveSuggestion(-1);
+        }
+
+        function handleProductSearch() {
+            if (!productSearch) {
+                return;
+            }
+            const query = productSearch.value.trim().toLowerCase();
+            if (!query) {
+                selectedProduct = null;
+                currentMatches = [];
+                activeIndex = -1;
+                if (productMeta) {
+                    productMeta.textContent = 'Pilih produk dari hasil pencarian.';
+                }
+                if (suggestionBox) {
+                    suggestionBox.hidden = true;
+                }
+                return;
+            }
+            if (suggestionTimer) {
+                clearTimeout(suggestionTimer);
+            }
+            suggestionTimer = setTimeout(() => {
+                const matches = products.filter(product => {
+                    const name = (product.name || '').toLowerCase();
+                    const code = (product.code || '').toLowerCase();
+                    const sku = (product.sku || '').toLowerCase();
+                    return name.includes(query) || code.includes(query) || sku.includes(query);
+                });
+                renderSuggestions(matches, query);
+            }, 150);
+        }
+
+        if (productSearch) {
+            productSearch.addEventListener('input', () => {
+                selectedProduct = null;
+                activeIndex = -1;
+                handleProductSearch();
+            });
+            productSearch.addEventListener('keydown', (event) => {
+                if (!currentMatches.length) {
+                    return;
+                }
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    const nextIndex = activeIndex + 1 >= currentMatches.length ? 0 : activeIndex + 1;
+                    setActiveSuggestion(nextIndex);
+                } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    const prevIndex = activeIndex - 1 < 0 ? currentMatches.length - 1 : activeIndex - 1;
+                    setActiveSuggestion(prevIndex);
+                } else if (event.key === 'Enter') {
+                    if (activeIndex >= 0 && currentMatches[activeIndex]) {
+                        event.preventDefault();
+                        applySuggestion(currentMatches[activeIndex]);
+                    }
+                } else if (event.key === 'Escape') {
+                    if (suggestionBox) {
+                        suggestionBox.hidden = true;
+                    }
+                    activeIndex = -1;
+                }
+            });
+        }
+
+        if (addButton) {
+            addButton.addEventListener('click', () => {
+                if (!selectedProduct || !selectedProduct.id) {
+                    alert('Pilih produk dari hasil pencarian terlebih dahulu.');
+                    return;
+                }
+                const qty = Number(qtyInput ? qtyInput.value : 0);
+                const price = Number(priceInput ? priceInput.value : 0);
+                if (!qty || qty <= 0) {
+                    alert('Qty harus lebih dari 0.');
+                    return;
+                }
+                const codeLabel = selectedProduct.code || selectedProduct.sku || '-';
+                addRow(selectedProduct.id, `${selectedProduct.name} (${codeLabel})`, qty, price);
+                if (qtyInput) {
+                    qtyInput.value = 1;
+                }
+                if (priceInput) {
+                    priceInput.value = 0;
+                }
+                if (productSearch) {
+                    productSearch.value = '';
+                }
+                selectedProduct = null;
+                if (productMeta) {
+                    productMeta.textContent = 'Pilih produk dari hasil pencarian.';
+                }
+                if (suggestionBox) {
+                    suggestionBox.hidden = true;
+                }
+            });
+        }
+
+        tableBody.addEventListener('input', (event) => {
+            const row = event.target.closest('tr[data-row="true"]');
+            if (row) {
+                updateRowTotal(row);
+            }
+        });
+
+        tableBody.addEventListener('click', (event) => {
+            const removeBtn = event.target.closest('[data-remove]');
+            if (!removeBtn) {
+                return;
+            }
+            const row = removeBtn.closest('tr[data-row="true"]');
+            if (row) {
+                row.remove();
+                refreshEmptyState();
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!suggestionBox || !productSearch) {
+                return;
+            }
+            if (!suggestionBox.contains(event.target) && event.target !== productSearch) {
+                suggestionBox.hidden = true;
+            }
+        });
+
+        refreshEmptyState();
+    })();
+</script>
+{% endblock %}

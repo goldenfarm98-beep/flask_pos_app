@@ -9,6 +9,8 @@ from flask import (
     g,
     jsonify,
     current_app,
+    Response,
+    send_from_directory,
 )
 from functools import wraps
 from urllib.parse import urlparse, urljoin
@@ -17,6 +19,7 @@ from collections import defaultdict
 import secrets
 import json
 from datetime import datetime, timedelta
+import csv
 import logging
 from io import BytesIO, StringIO
 import math
@@ -39,6 +42,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
 from app import csrf, normalize_phone
+from app.time_utils import local_now, local_today
 from app.forms import SalesForm
 from app.models import (
     User,
@@ -56,6 +60,8 @@ from app.models import (
     Penjualan,
     ReceivablePayment,
     DetailPenjualan,
+    Quotation,
+    QuotationItem,
     PasswordResetToken,
     PriceLevel,
     ProductPriceLevel,
@@ -63,6 +69,9 @@ from app.models import (
     PriceChange,
     StockOpnameSession,
     StockOpnameItem,
+    CashierShift,
+    PurchaseOrder,
+    PurchaseOrderItem,
     AccountingSetting,
     AccountingPeriod,
     Account,
@@ -105,6 +114,11 @@ def _is_safe_redirect_target(target: str) -> bool:
     ref_url = urlparse(request.host_url)
     test_url = urlparse(urljoin(request.host_url, target))
     return test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc
+
+
+def _resolve_next_target(default_target):
+    next_target = request.form.get("next") or request.referrer or default_target
+    return next_target if _is_safe_redirect_target(next_target) else default_target
 
 
 def _accepts_json():
@@ -178,6 +192,80 @@ def get_current_user():
 
     g._current_user = user
     return user
+
+
+def _get_open_shift(user_id):
+    if not user_id:
+        return None
+    return (
+        CashierShift.query.filter(
+            CashierShift.user_id == user_id,
+            CashierShift.closed_at.is_(None),
+        )
+        .order_by(CashierShift.opened_at.desc())
+        .first()
+    )
+
+
+def _append_shift_note(existing_note, new_note):
+    if not new_note:
+        return existing_note
+    if existing_note:
+        combined = f"{existing_note} | {new_note}"
+    else:
+        combined = new_note
+    return combined[:255]
+
+
+def _auto_close_stale_shifts(actor_id, only_user_id=None, collect=False, log_limit=12):
+    if not actor_id:
+        return {"count": 0, "items": [], "extra_count": 0} if collect else 0
+    today = local_today()
+    now = local_now()
+    query = CashierShift.query.filter(
+        CashierShift.closed_at.is_(None),
+        CashierShift.shift_date < today,
+    )
+    if only_user_id:
+        query = query.filter(CashierShift.user_id == only_user_id)
+    if collect:
+        query = query.options(joinedload(CashierShift.user))
+    stale_shifts = query.order_by(CashierShift.opened_at.asc()).all()
+    if not stale_shifts:
+        return {"count": 0, "items": [], "extra_count": 0} if collect else 0
+    log_items = []
+    extra_count = 0
+    if collect:
+        sample_shifts = stale_shifts[:log_limit]
+        for shift in sample_shifts:
+            log_items.append(
+                {
+                    "user_id": shift.user_id,
+                    "user": shift.user.username if shift.user else "-",
+                    "shift_date": shift.shift_date.strftime("%d %b %Y")
+                    if shift.shift_date
+                    else "-",
+                    "opened_at": shift.opened_at.strftime("%H:%M")
+                    if shift.opened_at
+                    else "-",
+                    "closed_at": now.strftime("%H:%M"),
+                }
+            )
+        extra_count = max(len(stale_shifts) - log_limit, 0)
+    for shift in stale_shifts:
+        shift.closed_at = now
+        shift.closed_by = actor_id
+        shift.forced_close = True
+        note = f"Auto-close {now.strftime('%d/%m/%Y %H:%M')}"
+        shift.note = _append_shift_note(shift.note, note)
+    db.session.commit()
+    if collect:
+        return {
+            "count": len(stale_shifts),
+            "items": log_items,
+            "extra_count": extra_count,
+        }
+    return len(stale_shifts)
 
 
 def login_required(view_func):
@@ -338,7 +426,7 @@ def _create_password_reset_token(user, ttl_hours=1):
         {"used": True}
     )
     token_value = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(hours=ttl_hours)
+    expires_at = local_now() + timedelta(hours=ttl_hours)
     reset_token = PasswordResetToken(
         user_id=user.id, token=token_value, expires_at=expires_at
     )
@@ -354,7 +442,7 @@ def _get_valid_reset_token(token_value):
     if (
         not token
         or token.used
-        or token.expires_at < datetime.utcnow()
+        or token.expires_at < local_now()
         or not token.user
     ):
         return None
@@ -384,6 +472,14 @@ def _parse_date_param(value):
         return None
 
 
+def _parse_bool_param(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def _get_company_profile():
     return {
         "name": os.environ.get("COMPANY_NAME", "GOLDEN FARM 99"),
@@ -399,6 +495,36 @@ def _get_company_profile():
         "bank_info": os.environ.get(
             "COMPANY_BANK_INFO",
             "BCA 5045218560 A.n. Golden Farm 99",
+        ),
+    }
+
+
+def _get_receipt_settings():
+    raw_thank_you = os.environ.get("RECEIPT_THANK_YOU_TEXT")
+    thank_you_text = "Terima kasih" if raw_thank_you is None else raw_thank_you
+
+    raw_font_weight = _parse_int_param(os.environ.get("RECEIPT_FONT_WEIGHT"))
+    font_weight = raw_font_weight if raw_font_weight is not None else 500
+    font_weight = min(700, max(300, font_weight))
+
+    raw_font_size = _parse_float_param(os.environ.get("RECEIPT_FONT_SIZE"))
+    font_size = raw_font_size if raw_font_size is not None else 12.5
+    font_size = min(16.0, max(9.0, font_size))
+    font_size_css = f"{font_size:g}"
+    font_size_print = str(int(round(font_size)))
+
+    font_family = os.environ.get("RECEIPT_FONT_FAMILY") or "Roboto Mono"
+
+    return {
+        "font_family": font_family,
+        "font_weight": font_weight,
+        "font_size": font_size_css,
+        "font_size_print": font_size_print,
+        "thank_you_text": thank_you_text.strip(),
+        "promo_barcode_label": os.environ.get("RECEIPT_PROMO_LABEL", "Promo").strip(),
+        "promo_barcode_value": os.environ.get("RECEIPT_PROMO_BARCODE", "").strip(),
+        "show_promo_barcode": _parse_bool_param(
+            os.environ.get("RECEIPT_SHOW_PROMO_BARCODE", "0")
         ),
     }
 
@@ -521,8 +647,8 @@ def _build_sale_print_payload(sale):
     grand_total = net_subtotal + tax_total + shipping_fee
 
     payment_label = sale.payment_method or "-"
-    if sale.payment_method == "Kartu" and sale.payment_channel:
-        payment_label = f"Kartu - {sale.payment_channel.name}"
+    if sale.payment_method in {"Kartu", "Transfer", "QRIS"} and sale.payment_channel:
+        payment_label = f"{sale.payment_method} - {sale.payment_channel.name}"
 
     return {
         "items": items,
@@ -534,6 +660,93 @@ def _build_sale_print_payload(sale):
         "net_subtotal": net_subtotal,
         "total_weight": total_weight,
         "payment_label": payment_label,
+    }
+
+
+def _build_invoice_payload_from_items(raw_items, shipping_fee=0.0):
+    normalized_items = []
+    for item in raw_items or []:
+        product_id = _parse_int_param(item.get("product_id"))
+        if not product_id:
+            continue
+        qty = _parse_float_param(item.get("qty")) or 0.0
+        if qty <= 0:
+            continue
+        price = _parse_float_param(item.get("price")) or 0.0
+        discount_pct = _parse_tax_value(item.get("discount"), default=0.0)
+        tax_pct = _parse_tax_value(item.get("tax"), default=0.0)
+        normalized_items.append(
+            {
+                "product_id": product_id,
+                "qty": qty,
+                "price": max(0.0, price),
+                "discount_pct": discount_pct,
+                "tax_pct": tax_pct,
+            }
+        )
+
+    product_map = {}
+    if normalized_items:
+        product_ids = [item["product_id"] for item in normalized_items]
+        products = Produk.query.filter(Produk.id.in_(product_ids)).all()
+        product_map = {product.id: product for product in products}
+
+    items = []
+    subtotal = 0.0
+    discount_total = 0.0
+    tax_total = 0.0
+    total_weight = 0.0
+
+    for item in normalized_items:
+        product = product_map.get(item["product_id"])
+        if not product:
+            continue
+        qty = item["qty"]
+        price = item["price"]
+        discount_pct = item["discount_pct"]
+        tax_pct = item["tax_pct"]
+        unit_weight = float(product.berat or 0.0)
+
+        line_subtotal = price * qty
+        line_discount = line_subtotal * (discount_pct / 100.0)
+        taxable = line_subtotal - line_discount
+        line_tax = taxable * (tax_pct / 100.0)
+        line_total = taxable + line_tax
+        line_weight = unit_weight * qty
+
+        subtotal += line_subtotal
+        discount_total += line_discount
+        tax_total += line_tax
+        total_weight += line_weight
+
+        items.append(
+            {
+                "product_id": item["product_id"],
+                "name": product.nama_produk or "-",
+                "sku": product.sku or "-",
+                "qty": qty,
+                "price": price,
+                "discount_pct": discount_pct,
+                "tax_pct": tax_pct,
+                "total": line_total,
+                "unit_weight": unit_weight,
+                "total_weight": line_weight,
+            }
+        )
+
+    shipping_fee = float(_parse_float_param(shipping_fee) or 0.0)
+    net_subtotal = subtotal - discount_total
+    grand_total = net_subtotal + tax_total + shipping_fee
+
+    return {
+        "items": items,
+        "subtotal": subtotal,
+        "discount_total": discount_total,
+        "tax_total": tax_total,
+        "shipping_fee": shipping_fee,
+        "grand_total": grand_total,
+        "net_subtotal": net_subtotal,
+        "total_weight": total_weight,
     }
 
 
@@ -569,7 +782,16 @@ def _build_sales_filters(args):
     if end_date:
         filters.append(Penjualan.tanggal_penjualan <= end_date)
 
-    expr = Penjualan.total_harga - func.coalesce(Penjualan.marketplace_cost_total, 0)
+    expr = case(
+        (
+            Penjualan.total_harga
+            - func.coalesce(Penjualan.marketplace_cost_total, 0)
+            < 0,
+            0,
+        ),
+        else_=Penjualan.total_harga
+        - func.coalesce(Penjualan.marketplace_cost_total, 0),
+    )
     if min_total is not None:
         filters.append(expr >= min_total)
 
@@ -1048,11 +1270,29 @@ def register():
 @roles_required(*ALL_ROLE_CHOICES)
 def dashboard():
     username = session.get("username")
-    today = datetime.utcnow().date()
-    now = datetime.utcnow()
+    role = (session.get("role") or "").lower()
+    is_admin = role == ROLE_ADMIN
+    is_sales_role = role in SALES_ROLES
+    is_inventory_role = role in INVENTORY_ROLES
+    is_cashier = role == ROLE_KASIR
+    is_sales_staff = role == ROLE_SALES
+    is_gudang = role == ROLE_GUDANG
+    is_inventory_only = is_inventory_role and not is_sales_role
+    auto_closed_shift_log = session.pop("auto_closed_shift_log", None)
+    today = local_today()
+    now = local_now()
     month_start = now.replace(day=1).date()
 
-    net_expr = Penjualan.total_harga - func.coalesce(Penjualan.marketplace_cost_total, 0)
+    net_expr = case(
+        (
+            Penjualan.total_harga
+            - func.coalesce(Penjualan.marketplace_cost_total, 0)
+            < 0,
+            0,
+        ),
+        else_=Penjualan.total_harga
+        - func.coalesce(Penjualan.marketplace_cost_total, 0),
+    )
     total_net_revenue = (
         db.session.query(func.coalesce(func.sum(net_expr), 0)).scalar() or 0
     )
@@ -1105,15 +1345,14 @@ def dashboard():
         for row in top_products_raw
     ]
 
+    low_stock_query = Produk.query.filter(
+        Produk.stok_minimal.isnot(None),
+        Produk.stok_minimal > 0,
+        Produk.stok_lama <= Produk.stok_minimal,
+    )
+    low_stock_count = low_stock_query.count()
     low_stock_products = (
-        Produk.query.filter(
-            Produk.stok_minimal.isnot(None),
-            Produk.stok_minimal > 0,
-            Produk.stok_lama <= Produk.stok_minimal,
-        )
-        .order_by(Produk.stok_lama.asc())
-        .limit(5)
-        .all()
+        low_stock_query.order_by(Produk.stok_lama.asc()).limit(5).all()
     )
 
     dashboard_summary = {
@@ -1127,7 +1366,91 @@ def dashboard():
         "month_transactions": month_transactions,
         "customer_count": Pelanggan.query.count(),
         "product_count": Produk.query.count(),
+        "low_stock_count": low_stock_count,
     }
+    supplier_count = Supplier.query.count()
+
+    outstanding_expr = Penjualan.total_harga - func.coalesce(Penjualan.amount_paid, 0)
+    overdue_filters = [
+        Penjualan.payment_method == "Tempo",
+        outstanding_expr > 0,
+        Penjualan.due_date.isnot(None),
+        Penjualan.due_date < today,
+    ]
+    overdue_total = (
+        db.session.query(func.coalesce(func.sum(outstanding_expr), 0))
+        .filter(*overdue_filters)
+        .scalar()
+        or 0
+    )
+    overdue_count = (
+        db.session.query(func.count(Penjualan.id)).filter(*overdue_filters).scalar()
+        or 0
+    )
+    overdue_sales = (
+        Penjualan.query.options(
+            joinedload(Penjualan.pelanggan),
+            joinedload(Penjualan.sales),
+        )
+        .filter(*overdue_filters)
+        .order_by(Penjualan.due_date.asc(), Penjualan.id.desc())
+        .limit(5)
+        .all()
+    )
+    overdue_rows = []
+    for sale in overdue_sales:
+        total = float(sale.total_harga or 0.0)
+        amount_paid = float(sale.amount_paid or 0.0)
+        outstanding = max(total - amount_paid, 0.0)
+        days_overdue = (today - sale.due_date).days if sale.due_date else 0
+        overdue_rows.append(
+            {
+                "id": sale.id,
+                "invoice": sale.no_faktur,
+                "customer_name": sale.pelanggan.nama if sale.pelanggan else "Umum",
+                "due_date": sale.due_date,
+                "outstanding": outstanding,
+                "days_overdue": days_overdue,
+            }
+        )
+
+    active_shifts = (
+        CashierShift.query.options(joinedload(CashierShift.user))
+        .filter(CashierShift.closed_at.is_(None))
+        .order_by(CashierShift.opened_at.desc())
+        .all()
+    )
+    active_shift_rows = [
+        {
+            "id": shift.id,
+            "username": shift.user.username if shift.user else "-",
+            "opened_at": shift.opened_at,
+            "shift_date": shift.shift_date,
+        }
+        for shift in active_shifts
+    ]
+
+    recent_sales = (
+        Penjualan.query.options(
+            joinedload(Penjualan.pelanggan),
+            joinedload(Penjualan.sales),
+        )
+        .order_by(Penjualan.tanggal_penjualan.desc(), Penjualan.id.desc())
+        .limit(5)
+        .all()
+    )
+    recent_rows = [
+        {
+            "id": sale.id,
+            "invoice": sale.no_faktur,
+            "sale_date": sale.tanggal_penjualan,
+            "customer_name": sale.pelanggan.nama if sale.pelanggan else "Umum",
+            "sales_name": sale.sales.username if sale.sales else "-",
+            "payment_method": sale.payment_method or "-",
+            "total": float(sale.total_harga or 0.0),
+        }
+        for sale in recent_sales
+    ]
 
     return render_template(
         "dashboard.html",
@@ -1136,6 +1459,22 @@ def dashboard():
         monthly_trend=monthly_trend,
         top_products=top_products,
         low_stock_products=low_stock_products,
+        supplier_count=supplier_count,
+        overdue_summary={
+            "total": overdue_total,
+            "count": overdue_count,
+        },
+        overdue_rows=overdue_rows,
+        active_shifts=active_shift_rows,
+        recent_sales=recent_rows,
+        is_admin=is_admin,
+        is_sales_role=is_sales_role,
+        is_inventory_role=is_inventory_role,
+        is_inventory_only=is_inventory_only,
+        is_cashier=is_cashier,
+        is_sales_staff=is_sales_staff,
+        is_gudang=is_gudang,
+        auto_closed_shift_log=auto_closed_shift_log,
     )
 
 
@@ -1354,7 +1693,7 @@ def pengaturan_faktur_pajak():
     sales_tax = _get_default_sales_tax()
     purchase_tax = _get_default_purchase_tax()
 
-    now = datetime.utcnow()
+    now = local_now()
     preview_stamp = now.strftime("%Y%m%d%H%M")
     return render_template(
         "pengaturan_faktur_pajak.html",
@@ -1365,6 +1704,56 @@ def pengaturan_faktur_pajak():
         sales_preview=f"{sales_prefix}{preview_stamp}",
         purchase_preview=f"{purchase_prefix}{preview_stamp}",
     )
+
+
+@bp.route("/pengaturan/struk", methods=["GET", "POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pengaturan_struk():
+    settings = _get_receipt_settings()
+
+    if request.method == "POST":
+        font_family = (request.form.get("receipt_font_family") or "").strip()
+        font_weight_raw = request.form.get("receipt_font_weight")
+        font_size_raw = request.form.get("receipt_font_size")
+        thank_you_text = (request.form.get("receipt_thank_you_text") or "").strip()
+        promo_label = (request.form.get("receipt_promo_label") or "").strip()
+        promo_barcode = (request.form.get("receipt_promo_barcode") or "").strip()
+        show_promo_barcode = _parse_bool_param(
+            request.form.get("receipt_show_promo_barcode"), default=False
+        )
+
+        if not font_family:
+            flash("Font struk wajib diisi.", "warning")
+            return redirect(url_for("main.pengaturan_struk"))
+
+        font_weight = _parse_int_param(font_weight_raw)
+        if font_weight is None:
+            font_weight = 500
+        font_weight = min(700, max(300, font_weight))
+
+        font_size = _parse_float_param(font_size_raw)
+        if font_size is None:
+            font_size = 12.5
+        font_size = min(16.0, max(9.0, font_size))
+
+        updates = {
+            "RECEIPT_FONT_FAMILY": font_family,
+            "RECEIPT_FONT_WEIGHT": str(font_weight),
+            "RECEIPT_FONT_SIZE": f"{font_size:g}",
+            "RECEIPT_THANK_YOU_TEXT": thank_you_text,
+            "RECEIPT_PROMO_LABEL": promo_label,
+            "RECEIPT_PROMO_BARCODE": promo_barcode,
+            "RECEIPT_SHOW_PROMO_BARCODE": "1" if show_promo_barcode else "0",
+        }
+        _update_env_file(updates)
+        for key, value in updates.items():
+            os.environ[key] = value
+
+        flash("Pengaturan struk berhasil diperbarui.", "success")
+        return redirect(url_for("main.pengaturan_struk"))
+
+    return render_template("pengaturan_struk.html", settings=settings)
 
 
 @bp.route("/pengaturan/database", methods=["GET", "POST"])
@@ -1408,7 +1797,7 @@ def pengaturan_database():
                 if not _is_allowed_backup_name(safe_name):
                     flash("Format file backup tidak didukung.", "warning")
                     return redirect(url_for("main.pengaturan_database"))
-                stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+                stamp = local_now().strftime("%Y%m%d%H%M%S")
                 stored_name = f"restore_{stamp}_{safe_name}"
                 backup_path = os.path.join(backup_dir, stored_name)
                 uploaded.save(backup_path)
@@ -1465,6 +1854,28 @@ def pengaturan_database():
         backup_supported=backup_supported,
         backups=backups,
     )
+
+
+@bp.route("/pengaturan/database/backup/<path:backup_name>")
+@login_required
+@roles_required(*ADMIN_ONLY)
+def download_db_backup(backup_name):
+    if _resolve_sqlite_path() is None:
+        flash("Download hanya tersedia untuk database SQLite.", "warning")
+        return redirect(url_for("main.pengaturan_database"))
+
+    safe_name = os.path.basename(backup_name or "")
+    if not _is_allowed_backup_name(safe_name):
+        flash("Format file backup tidak didukung.", "warning")
+        return redirect(url_for("main.pengaturan_database"))
+
+    backup_dir = _get_backup_directory()
+    backup_path = os.path.join(backup_dir, safe_name)
+    if not os.path.exists(backup_path):
+        flash("File backup tidak ditemukan.", "warning")
+        return redirect(url_for("main.pengaturan_database"))
+
+    return send_from_directory(backup_dir, safe_name, as_attachment=True, download_name=safe_name)
 
 
 def _normalize_fee(value, default):
@@ -1705,6 +2116,7 @@ def kelola_harga():
             )
             return redirect(url_for("main.kelola_harga"))
 
+    loaded_product = None
     load_id = _parse_int_param(request.args.get("load"))
     if load_id:
         record = MarketplacePricingSetting.query.get(load_id)
@@ -1720,6 +2132,47 @@ def kelola_harga():
                     "record_id": record.id,
                 }
             )
+            product_match = None
+            if record.sku:
+                product_match = Produk.query.filter(
+                    func.lower(Produk.sku) == record.sku.lower()
+                ).first()
+            if not product_match and record.product_name:
+                product_match = Produk.query.filter(
+                    func.lower(Produk.nama_produk) == record.product_name.lower()
+                ).first()
+            if not product_match and record.product_name:
+                product_match = Produk.query.filter(
+                    func.lower(Produk.kode_produk) == record.product_name.lower()
+                ).first()
+            if product_match:
+                form_data["product_id"] = product_match.id
+                form_data["product_name"] = (
+                    product_match.nama_produk or form_data["product_name"]
+                )
+                form_data["sku"] = product_match.sku or form_data["sku"]
+                level_entries = (
+                    ProductPriceLevel.query.options(joinedload(ProductPriceLevel.level))
+                    .filter(ProductPriceLevel.product_id == product_match.id)
+                    .all()
+                )
+                loaded_product = {
+                    "id": product_match.id,
+                    "kode_produk": product_match.kode_produk,
+                    "nama_produk": product_match.nama_produk,
+                    "sku": product_match.sku,
+                    "price_levels": sorted(
+                        [
+                            {
+                                "level_id": entry.level_id,
+                                "level_name": entry.level.name if entry.level else "",
+                                "price": entry.price,
+                            }
+                            for entry in level_entries
+                        ],
+                        key=lambda item: (item.get("level_name") or "").lower(),
+                    ),
+                }
 
     records = (
         MarketplacePricingSetting.query.order_by(
@@ -1751,6 +2204,7 @@ def kelola_harga():
         records=record_rows,
         marketplace_levels=marketplace_levels,
         has_price_levels=has_price_levels,
+        loaded_product=loaded_product,
     )
 
 
@@ -2118,9 +2572,13 @@ def expedisi():
         return redirect("/expedisi")
 
     expedisi_list = Expedisi.query.order_by(Expedisi.name.asc()).all()
-    payment_channels = PaymentChannel.query.filter(
-        PaymentChannel.channel_type == "Kartu"
-    ).order_by(PaymentChannel.name.asc()).all()
+    payment_channels = (
+        PaymentChannel.query.filter(
+            PaymentChannel.channel_type.in_(["Kartu", "Transfer", "QRIS"])
+        )
+        .order_by(PaymentChannel.channel_type.asc(), PaymentChannel.name.asc())
+        .all()
+    )
     return render_template("data_expedisi.html", expedisi_list=expedisi_list)
 
 
@@ -2363,7 +2821,7 @@ def metode_pembayaran():
         if not name:
             flash("Nama metode pembayaran wajib diisi.", "warning")
             return redirect("/metode_pembayaran")
-        if channel_type not in {"Kartu", "Tunai", "Tempo"}:
+        if channel_type not in {"Kartu", "Tunai", "Tempo", "Transfer", "QRIS"}:
             flash("Jenis metode pembayaran tidak valid.", "warning")
             return redirect("/metode_pembayaran")
         existing = PaymentChannel.query.filter(
@@ -2400,7 +2858,7 @@ def edit_metode_pembayaran(channel_id):
         if not name:
             flash("Nama metode pembayaran wajib diisi.", "warning")
             return redirect(url_for("main.edit_metode_pembayaran", channel_id=channel_id))
-        if channel_type not in {"Kartu", "Tunai", "Tempo"}:
+        if channel_type not in {"Kartu", "Tunai", "Tempo", "Transfer", "QRIS"}:
             flash("Jenis metode pembayaran tidak valid.", "warning")
             return redirect(url_for("main.edit_metode_pembayaran", channel_id=channel_id))
         existing = PaymentChannel.query.filter(
@@ -2545,7 +3003,7 @@ def laporan_supplier_preview():
         total=total,
         filtered_total=len(suppliers),
         search_query=search_query,
-        printed_at=datetime.utcnow(),
+        printed_at=local_now(),
         company_profile=_get_company_profile(),
     )
 
@@ -3671,6 +4129,12 @@ def accounting_settings():
     if request.method == "POST":
         inventory_account_id = _parse_int_param(request.form.get("inventory_account"))
         cogs_account_id = _parse_int_param(request.form.get("cogs_account"))
+        marketplace_expense_account_id = _parse_int_param(
+            request.form.get("marketplace_expense_account")
+        )
+        marketplace_payable_account_id = _parse_int_param(
+            request.form.get("marketplace_payable_account")
+        )
         errors = []
 
         if inventory_account_id:
@@ -3680,6 +4144,23 @@ def accounting_settings():
         if cogs_account_id:
             if not Account.query.get(cogs_account_id):
                 errors.append("Akun COGS tidak ditemukan.")
+
+        if marketplace_expense_account_id:
+            if not Account.query.get(marketplace_expense_account_id):
+                errors.append("Akun beban marketplace tidak ditemukan.")
+
+        if marketplace_payable_account_id:
+            if not Account.query.get(marketplace_payable_account_id):
+                errors.append("Akun utang marketplace tidak ditemukan.")
+
+        if (
+            marketplace_expense_account_id
+            and marketplace_payable_account_id
+            and marketplace_expense_account_id == marketplace_payable_account_id
+        ):
+            errors.append(
+                "Akun beban dan utang marketplace tidak boleh sama."
+            )
 
         if errors:
             for message in errors:
@@ -3691,12 +4172,14 @@ def accounting_settings():
 
         settings.inventory_account_id = inventory_account_id
         settings.cogs_account_id = cogs_account_id
+        settings.marketplace_expense_account_id = marketplace_expense_account_id
+        settings.marketplace_payable_account_id = marketplace_payable_account_id
         settings.updated_by = session.get("user_id")
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = local_now()
 
         db.session.add(settings)
         db.session.commit()
-        flash("Pengaturan COGS otomatis berhasil disimpan.", "success")
+        flash("Pengaturan akuntansi otomatis berhasil disimpan.", "success")
         return redirect(url_for("main.accounting_settings"))
 
     auto_count = JournalEntry.query.filter(auto_filter).count()
@@ -3738,7 +4221,7 @@ def accounting_settings():
 @login_required
 @roles_required(*ADMIN_ONLY)
 def close_books():
-    today = datetime.utcnow().date()
+    today = local_today()
     open_period = (
         AccountingPeriod.query.filter_by(status="open")
         .order_by(AccountingPeriod.start_date.desc())
@@ -3860,7 +4343,7 @@ def jurnal():
                 400,
             )
 
-        date_value = _parse_date_param(payload.get("date")) or datetime.utcnow().date()
+        date_value = _parse_date_param(payload.get("date")) or local_today()
         memo = (payload.get("memo") or "").strip()
         reference = (
             payload.get("reference") or ""
@@ -4006,7 +4489,16 @@ def jurnal():
         .limit(10)
         .all()
     )
-    net_expr = Penjualan.total_harga - func.coalesce(Penjualan.marketplace_cost_total, 0)
+    net_expr = case(
+        (
+            Penjualan.total_harga
+            - func.coalesce(Penjualan.marketplace_cost_total, 0)
+            < 0,
+            0,
+        ),
+        else_=Penjualan.total_harga
+        - func.coalesce(Penjualan.marketplace_cost_total, 0),
+    )
     total_net_revenue = (
         db.session.query(func.coalesce(func.sum(net_expr), 0)).scalar() or 0.0
     )
@@ -4020,9 +4512,170 @@ def jurnal():
         accounts=accounts,
         accounts_for_js=accounts_for_js,
         recent_entries=recent_entries,
-        default_date=datetime.utcnow().date().strftime("%Y-%m-%d"),
+        default_date=local_today().strftime("%Y-%m-%d"),
         net_revenue_total=total_net_revenue,
         marketplace_cost_total=total_marketplace_cost,
+    )
+
+
+@bp.route("/biaya-operasional", methods=["GET", "POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def biaya_operasional():
+    _ensure_table(Account)
+    _ensure_table(JournalEntry)
+    _ensure_table(JournalLine)
+
+    expense_accounts = (
+        Account.query.filter_by(type="expense", is_active=True)
+        .order_by(Account.code.asc())
+        .all()
+    )
+    payment_accounts = (
+        Account.query.filter(
+            Account.is_active.is_(True),
+            Account.type.in_(["asset", "liability"]),
+        )
+        .order_by(Account.code.asc())
+        .all()
+    )
+
+    if request.method == "POST":
+        date_value = _parse_date_param(request.form.get("date")) or local_today()
+        expense_account_id = _parse_int_param(request.form.get("expense_account"))
+        payment_account_id = _parse_int_param(request.form.get("payment_account"))
+        amount = _parse_float_param(request.form.get("amount"))
+        note = (request.form.get("note") or "").strip()
+
+        if not amount or amount <= 0:
+            flash("Nominal biaya harus lebih dari 0.", "warning")
+            return redirect(url_for("main.biaya_operasional"))
+
+        expense_account = (
+            Account.query.get(expense_account_id) if expense_account_id else None
+        )
+        payment_account = (
+            Account.query.get(payment_account_id) if payment_account_id else None
+        )
+
+        if (
+            not expense_account
+            or not expense_account.is_active
+            or expense_account.type != "expense"
+        ):
+            flash("Pilih akun beban yang valid.", "warning")
+            return redirect(url_for("main.biaya_operasional"))
+
+        if (
+            not payment_account
+            or not payment_account.is_active
+            or payment_account.type not in ("asset", "liability")
+        ):
+            flash("Pilih akun pembayaran (kas/bank/utang) yang valid.", "warning")
+            return redirect(url_for("main.biaya_operasional"))
+
+        memo_core = note or expense_account.name
+        memo = f"Biaya Operasional - {memo_core}".strip()
+        reference = _generate_journal_reference()
+        entry = JournalEntry(
+            reference=reference,
+            date=date_value,
+            memo=memo,
+            created_by=session.get("user_id"),
+        )
+        db.session.add(entry)
+        db.session.flush()
+        db.session.add(
+            JournalLine(
+                entry_id=entry.id,
+                account_id=expense_account.id,
+                description=note or None,
+                debit=amount,
+                credit=0.0,
+            )
+        )
+        db.session.add(
+            JournalLine(
+                entry_id=entry.id,
+                account_id=payment_account.id,
+                description=note or None,
+                debit=0.0,
+                credit=amount,
+            )
+        )
+        db.session.commit()
+        flash("Biaya operasional berhasil disimpan.", "success")
+        return redirect(url_for("main.biaya_operasional"))
+
+    recent_entries = (
+        JournalEntry.query.options(
+            joinedload(JournalEntry.lines).joinedload(JournalLine.account)
+        )
+        .filter(JournalEntry.memo.like("Biaya Operasional%"))
+        .order_by(JournalEntry.date.desc(), JournalEntry.id.desc())
+        .limit(12)
+        .all()
+    )
+
+    display_entries = []
+    for entry in recent_entries:
+        expense_line = next(
+            (line for line in entry.lines if line.debit and line.debit > 0), None
+        )
+        payment_line = next(
+            (line for line in entry.lines if line.credit and line.credit > 0), None
+        )
+        display_entries.append(
+            {
+                "reference": entry.reference,
+                "date": entry.date,
+                "memo": entry.memo or "",
+                "amount": expense_line.debit if expense_line else 0.0,
+                "expense_account": expense_line.account if expense_line else None,
+                "payment_account": payment_line.account if payment_line else None,
+            }
+        )
+
+    today = local_today()
+    month_start = today.replace(day=1)
+    base_expense_filter = [
+        JournalEntry.memo.like("Biaya Operasional%"),
+        JournalLine.debit > 0,
+    ]
+    total_today = (
+        db.session.query(func.coalesce(func.sum(JournalLine.debit), 0))
+        .join(JournalEntry)
+        .filter(*base_expense_filter, JournalEntry.date == today)
+        .scalar()
+        or 0.0
+    )
+    total_month = (
+        db.session.query(func.coalesce(func.sum(JournalLine.debit), 0))
+        .join(JournalEntry)
+        .filter(
+            *base_expense_filter,
+            JournalEntry.date >= month_start,
+            JournalEntry.date <= today,
+        )
+        .scalar()
+        or 0.0
+    )
+    total_entries = (
+        db.session.query(func.count(JournalEntry.id))
+        .filter(JournalEntry.memo.like("Biaya Operasional%"))
+        .scalar()
+        or 0
+    )
+
+    return render_template(
+        "biaya_operasional.html",
+        expense_accounts=expense_accounts,
+        payment_accounts=payment_accounts,
+        recent_entries=display_entries,
+        default_date=today.strftime("%Y-%m-%d"),
+        total_today=total_today,
+        total_month=total_month,
+        total_entries=total_entries,
     )
 
 
@@ -4823,7 +5476,7 @@ def pelanggan_suggest():
 
 @bp.route("/api/price_level_costs", methods=["GET"])
 @login_required
-@roles_required(*INVENTORY_ROLES)
+@roles_required(*ALL_ROLE_CHOICES)
 def get_price_level_costs():
     level_id = request.args.get("level_id")
     try:
@@ -5155,6 +5808,8 @@ def pembelian():
             logging.exception("Gagal menyimpan pembelian")
             return jsonify({"success": False, "message": f"Error: {str(exc)}"}), 500
 
+    po_id = _parse_int_param(request.args.get("po_id"))
+
     suppliers = Supplier.query.order_by(Supplier.name.asc()).all()
     supplier_payload = [
         {
@@ -5195,6 +5850,54 @@ def pembelian():
         for produk in produk_records
     ]
 
+    default_purchase_tax_value = _get_default_purchase_tax()
+    po_prefill = None
+    if po_id:
+        _ensure_table(PurchaseOrder)
+        _ensure_table(PurchaseOrderItem)
+        po = (
+            PurchaseOrder.query.options(
+                joinedload(PurchaseOrder.items),
+                joinedload(PurchaseOrder.supplier),
+            )
+            .filter(PurchaseOrder.id == po_id)
+            .first()
+        )
+        if not po:
+            flash("PO tidak ditemukan.", "warning")
+        elif po.status != "received":
+            flash("PO belum berstatus received, belum bisa dibuatkan pembelian.", "warning")
+        else:
+            product_lookup = {product["id"]: product for product in product_payload}
+            items = []
+            for item in po.items:
+                product = product_lookup.get(item.product_id)
+                if not product:
+                    continue
+                items.append(
+                    {
+                        "kode_barang": product.get("kode") or "",
+                        "nama_barang": product.get("nama") or "",
+                        "kategori": product.get("kategori") or "Tanpa kategori",
+                        "satuan": product.get("satuan") or "",
+                        "jumlah": float(item.qty or 0),
+                        "harga_beli": float(item.unit_price or 0.0),
+                        "diskon": 0,
+                        "pajak": float(default_purchase_tax_value or 0),
+                        "harga_jual": float(product.get("harga_jual") or 0.0),
+                        "exp_date": None,
+                    }
+                )
+            if items:
+                po_prefill = {
+                    "po_id": po.id,
+                    "po_number": po.po_number,
+                    "supplier_id": po.supplier_id,
+                    "items": items,
+                }
+            else:
+                flash("Item PO tidak ditemukan untuk prefill pembelian.", "warning")
+
     total_invoices = Pembelian.query.count()
     total_spent = (
         db.session.query(func.coalesce(func.sum(BarangPembelian.hpp), 0)).scalar()
@@ -5204,7 +5907,7 @@ def pembelian():
         db.session.query(func.coalesce(func.sum(BarangPembelian.jumlah), 0)).scalar()
         or 0
     )
-    today = datetime.utcnow().date()
+    today = local_today()
     today_invoices = Pembelian.query.filter(Pembelian.tanggal_faktur == today).count()
     average_invoice = total_spent / total_invoices if total_invoices else 0.0
 
@@ -5320,7 +6023,8 @@ def pembelian():
         purchase_stat_cards=purchase_stat_cards,
         purchase_insights=purchase_insights,
         recent_purchases=recent_purchases,
-        default_purchase_tax=_get_default_purchase_tax(),
+        default_purchase_tax=default_purchase_tax_value,
+        po_prefill=po_prefill,
         draft_purchase_invoice=_build_draft_invoice(
             _get_purchase_invoice_prefix(), Pembelian
         ),
@@ -5387,11 +6091,160 @@ def check_no_faktur():
         return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
 
 
+@bp.route("/shift/open", methods=["POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def shift_open():
+    user = get_current_user()
+    if not user:
+        return _auth_required_response()
+
+    today = local_today()
+    next_target = _resolve_next_target(url_for("main.penjualan"))
+    handover = request.form.get("handover") == "1"
+
+    is_admin = (user.role or "").lower() == ROLE_ADMIN
+    if is_admin:
+        _auto_close_stale_shifts(user.id)
+    else:
+        _auto_close_stale_shifts(user.id, only_user_id=user.id)
+
+    existing_today = CashierShift.query.filter_by(
+        user_id=user.id, shift_date=today
+    ).first()
+    if existing_today and not handover:
+        flash("Shift hari ini sudah dibuat. Tidak bisa membuka shift baru.", "warning")
+        return redirect(next_target)
+
+    open_shift = _get_open_shift(user.id)
+    if open_shift and not handover:
+        flash("Shift masih terbuka. Tutup shift sebelumnya terlebih dahulu.", "warning")
+        return redirect(next_target)
+
+    if existing_today and handover:
+        prev_opened = existing_today.opened_at
+        prev_closed = existing_today.closed_at or local_now()
+        existing_today.opened_at = local_now()
+        existing_today.closed_at = None
+        existing_today.closed_by = None
+        existing_today.forced_close = False
+        note = f"Handover {prev_opened.strftime('%H:%M')}-{prev_closed.strftime('%H:%M')}"
+        existing_today.note = _append_shift_note(existing_today.note, note)
+        db.session.commit()
+        flash("Shift baru dibuka (handover).", "success")
+        return redirect(next_target)
+
+    shift = CashierShift(user_id=user.id, shift_date=today, opened_at=local_now())
+    db.session.add(shift)
+    db.session.commit()
+    flash("Shift kasir berhasil dibuka.", "success")
+    return redirect(next_target)
+
+
+@bp.route("/shift/close/<int:shift_id>", methods=["POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def shift_close(shift_id):
+    user = get_current_user()
+    if not user:
+        return _auth_required_response()
+
+    shift = CashierShift.query.get_or_404(shift_id)
+    next_target = _resolve_next_target(url_for("main.penjualan"))
+    is_admin = (user.role or "").lower() == ROLE_ADMIN
+    force_close = request.form.get("force") == "1"
+
+    if not is_admin and shift.user_id != user.id:
+        return _forbidden_response({ROLE_ADMIN, ROLE_KASIR, ROLE_SALES})
+
+    if shift.closed_at:
+        flash("Shift ini sudah ditutup.", "info")
+        return redirect(next_target)
+
+    shift.closed_at = local_now()
+    shift.closed_by = user.id
+    shift.forced_close = bool(force_close and is_admin)
+    db.session.commit()
+    flash(
+        "Shift ditutup paksa." if shift.forced_close else "Shift berhasil ditutup.",
+        "success",
+    )
+    return redirect(next_target)
+
+
+@bp.route("/shift/auto-close", methods=["POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def shift_auto_close():
+    user = get_current_user()
+    if not user:
+        return _auth_required_response()
+
+    next_target = _resolve_next_target(url_for("main.dashboard"))
+    result = _auto_close_stale_shifts(user.id, collect=True)
+    closed_count = result["count"]
+    if closed_count:
+        session["auto_closed_shift_log"] = result
+        flash(f"{closed_count} shift lama berhasil ditutup otomatis.", "success")
+    else:
+        session.pop("auto_closed_shift_log", None)
+        flash("Tidak ada shift lama yang perlu ditutup.", "info")
+    return redirect(next_target)
+
+
+@bp.route("/shift/user/<int:user_id>")
+@login_required
+@roles_required(*ADMIN_ONLY)
+def shift_user_detail(user_id):
+    user = User.query.get_or_404(user_id)
+    shifts = (
+        CashierShift.query.options(joinedload(CashierShift.closed_by_user))
+        .filter(CashierShift.user_id == user_id)
+        .order_by(CashierShift.opened_at.desc())
+        .limit(120)
+        .all()
+    )
+    open_count = sum(1 for shift in shifts if shift.closed_at is None)
+    total_count = len(shifts)
+    return render_template(
+        "shift_user_detail.html",
+        shift_user=user,
+        shifts=shifts,
+        open_count=open_count,
+        total_count=total_count,
+    )
+
+
 @bp.route("/penjualan", methods=["GET", "POST"])
 @login_required
 @roles_required(*SALES_ROLES)
 def penjualan():
     form = SalesForm()
+    user = get_current_user()
+    if user:
+        is_admin = (user.role or "").lower() == ROLE_ADMIN
+        if is_admin:
+            _auto_close_stale_shifts(user.id)
+        else:
+            _auto_close_stale_shifts(user.id, only_user_id=user.id)
+    today = local_today()
+    active_shift = _get_open_shift(user.id) if user else None
+    shift_today = None
+    if user:
+        shift_today = (
+            CashierShift.query.filter_by(user_id=user.id, shift_date=today)
+            .order_by(CashierShift.id.desc())
+            .first()
+        )
+    is_admin = bool(user and (user.role or "").lower() == ROLE_ADMIN)
+    open_shifts = []
+    if is_admin:
+        open_shifts = (
+            CashierShift.query.options(joinedload(CashierShift.user))
+            .filter(CashierShift.closed_at.is_(None))
+            .order_by(CashierShift.opened_at.asc())
+            .all()
+        )
 
     pelanggan_records = Pelanggan.query.order_by(Pelanggan.nama.asc()).all()
     form.pelanggan_id.choices = [(0, "Pilih pelanggan")] + [
@@ -5445,9 +6298,13 @@ def penjualan():
     # Load available price levels for use in the sales UI (if needed)
     price_levels = PriceLevel.query.order_by(PriceLevel.name.asc()).all()
     expedisi_list = Expedisi.query.order_by(Expedisi.name.asc()).all()
-    payment_channels = PaymentChannel.query.filter(
-        PaymentChannel.channel_type == "Kartu"
-    ).order_by(PaymentChannel.name.asc()).all()
+    payment_channels = (
+        PaymentChannel.query.filter(
+            PaymentChannel.channel_type.in_(["Kartu", "Transfer", "QRIS"])
+        )
+        .order_by(PaymentChannel.channel_type.asc(), PaymentChannel.name.asc())
+        .all()
+    )
 
     total_orders = Penjualan.query.count()
     total_revenue = (
@@ -5458,7 +6315,6 @@ def penjualan():
         db.session.query(func.coalesce(func.sum(DetailPenjualan.jumlah), 0)).scalar()
         or 0
     )
-    today = datetime.utcnow().date()
     today_orders = Penjualan.query.filter(Penjualan.tanggal_penjualan == today).count()
     average_order = total_revenue / total_orders if total_orders else 0.0
 
@@ -5585,6 +6441,12 @@ def penjualan():
                     f"Periode {locked_period.label} sudah ditutup; tidak bisa mencatat penjualan baru."
                 )
 
+            active_shift = _get_open_shift(sales_id)
+            if not active_shift:
+                raise ValueError(
+                    "Shift kasir belum dibuka. Buka shift terlebih dahulu sebelum mencatat penjualan."
+                )
+
             produk_id_list = request.form.getlist("produk_id[]")
             jumlah_list = request.form.getlist("jumlah[]")
             harga_list = request.form.getlist("harga[]")
@@ -5599,6 +6461,7 @@ def penjualan():
             shipping_fee = _parse_float_param(request.form.get("shipping_fee")) or 0.0
             amount_paid = _parse_float_param(request.form.get("amount_paid")) or 0.0
             change_due = _parse_float_param(request.form.get("change_due")) or 0.0
+            quotation_id = _parse_int_param(request.form.get("quotation_id"))
 
             line_items = []
             errors = []
@@ -5697,18 +6560,19 @@ def penjualan():
             if not line_items:
                 raise ValueError("Tambahkan minimal satu produk dengan jumlah valid.")
 
-            allowed_methods = {"Tunai", "Kartu", "Tempo"}
+            allowed_methods = {"Tunai", "Kartu", "Tempo", "Transfer", "QRIS"}
             if payment_method not in allowed_methods:
                 raise ValueError("Metode pembayaran tidak valid.")
             if payment_method == "Tempo" and not due_date:
                 raise ValueError("Tanggal jatuh tempo wajib diisi untuk pembayaran tempo.")
             payment_channel = None
-            if payment_method == "Kartu":
+            channel_methods = {"Kartu", "Transfer", "QRIS"}
+            if payment_method in channel_methods:
                 if not payment_channel_id:
-                    raise ValueError("Pilih kartu/bank untuk pembayaran kartu.")
+                    raise ValueError("Pilih detail pembayaran untuk metode tersebut.")
                 payment_channel = PaymentChannel.query.get(payment_channel_id)
-                if not payment_channel or payment_channel.channel_type != "Kartu":
-                    raise ValueError("Metode kartu tidak valid.")
+                if not payment_channel or payment_channel.channel_type != payment_method:
+                    raise ValueError("Detail metode pembayaran tidak valid.")
             else:
                 payment_channel_id = None
             shipping_fee = max(0.0, shipping_fee)
@@ -5739,6 +6603,7 @@ def penjualan():
                 marketplace_cost_total_value = float(marketplace_cost_total_raw)
             except (TypeError, ValueError):
                 marketplace_cost_total_value = 0.0
+            marketplace_cost_total_value = max(0.0, marketplace_cost_total_value)
             marketplace_cost_details_value = (
                 marketplace_cost_details_raw
                 if isinstance(marketplace_cost_details_raw, str)
@@ -5762,6 +6627,7 @@ def penjualan():
                 amount_paid=amount_paid,
                 change_due=change_due,
                 total_weight=0.0,
+                shift_id=active_shift.id if active_shift else None,
             )
             draft_invoice = (request.form.get("draft_invoice") or "").strip()
             if draft_invoice:
@@ -5807,6 +6673,25 @@ def penjualan():
                     user_id=sales_id,
                 )
 
+            if (
+                settings
+                and settings.marketplace_expense_account_id
+                and settings.marketplace_payable_account_id
+                and marketplace_cost_total_value > 0
+            ):
+                _record_marketplace_fee_journal(
+                    penjualan,
+                    marketplace_cost_total_value,
+                    settings,
+                    user_id=sales_id,
+                )
+
+            if quotation_id:
+                quotation = Quotation.query.get(quotation_id)
+                if quotation and quotation.status != "cancelled":
+                    quotation.status = "converted"
+                    quotation.converted_sale_id = penjualan.id
+
             db.session.commit()
             flash(
                 f"Penjualan berhasil disimpan (total Rp {penjualan.total_harga:,.0f}).",
@@ -5838,6 +6723,10 @@ def penjualan():
         expedisi_list=expedisi_list,
         payment_channels=payment_channels,
         default_sales_tax=_get_default_sales_tax(),
+        active_shift=active_shift,
+        shift_today=shift_today,
+        open_shifts=open_shifts,
+        is_admin=is_admin,
     )
 
 
@@ -5857,6 +6746,7 @@ def penjualan_receipt(sale_id):
         .first_or_404()
     )
     payload = _build_sale_print_payload(sale)
+    receipt_settings = _get_receipt_settings()
 
     return render_template(
         "penjualan_struk.html",
@@ -5868,6 +6758,76 @@ def penjualan_receipt(sale_id):
         shipping_fee=payload["shipping_fee"],
         grand_total=payload["grand_total"],
         payment_label=payload["payment_label"],
+        total_weight=payload["total_weight"],
+        company_profile=_get_company_profile(),
+        receipt_settings=receipt_settings,
+    )
+
+
+@bp.route("/penjualan/invoice-draft", methods=["POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def penjualan_invoice_draft():
+    payload_raw = (request.form.get("draft_payload") or "").strip()
+    if not payload_raw:
+        flash("Draft invoice kosong.", "warning")
+        return redirect(url_for("main.penjualan"))
+
+    try:
+        draft_payload = json.loads(payload_raw)
+    except (TypeError, ValueError):
+        flash("Draft invoice tidak valid.", "warning")
+        return redirect(url_for("main.penjualan"))
+
+    raw_items = draft_payload.get("items") or []
+    shipping_fee = draft_payload.get("shipping_fee") or 0.0
+    payload = _build_invoice_payload_from_items(raw_items, shipping_fee=shipping_fee)
+    if not payload["items"]:
+        flash("Tambahkan minimal satu produk sebelum cetak invoice sementara.", "warning")
+        return redirect(url_for("main.penjualan"))
+
+    customer_id = _parse_int_param(draft_payload.get("customer_id"))
+    customer_label = (draft_payload.get("customer_label") or "").strip()
+    customer = Pelanggan.query.get(customer_id) if customer_id else None
+    customer_name = customer.nama if customer else (customer_label or "Customer")
+    customer_phone = customer.kontak if customer else "-"
+    customer_address = customer.alamat if customer else "-"
+
+    draft_invoice = (draft_payload.get("draft_invoice") or "").strip()
+    if not draft_invoice:
+        draft_invoice = _build_draft_invoice(_get_sales_invoice_prefix(), Penjualan)
+
+    payment_method = (draft_payload.get("payment_method") or "-").strip()
+    payment_channel_id = _parse_int_param(draft_payload.get("payment_channel_id"))
+    payment_channel = (
+        PaymentChannel.query.get(payment_channel_id) if payment_channel_id else None
+    )
+    payment_label = payment_method or "-"
+    if payment_method in {"Kartu", "Transfer", "QRIS"} and payment_channel:
+        payment_label = f"{payment_method} - {payment_channel.name}"
+
+    expedition_id = _parse_int_param(draft_payload.get("expedition_id"))
+    expedition = Expedisi.query.get(expedition_id) if expedition_id else None
+
+    return render_template(
+        "penjualan_invoice_draft.html",
+        invoice_number=draft_invoice,
+        invoice_date=local_now(),
+        customer={
+            "name": customer_name,
+            "phone": customer_phone,
+            "address": customer_address,
+        },
+        sales_name=session.get("username") or "-",
+        payment_label=payment_label,
+        payment_method=payment_method,
+        expedition_name=expedition.name if expedition else "-",
+        items=payload["items"],
+        subtotal=payload["subtotal"],
+        discount_total=payload["discount_total"],
+        tax_total=payload["tax_total"],
+        shipping_fee=payload["shipping_fee"],
+        grand_total=payload["grand_total"],
         total_weight=payload["total_weight"],
         company_profile=_get_company_profile(),
     )
@@ -5902,6 +6862,247 @@ def penjualan_invoice(sale_id):
         payment_label=payload["payment_label"],
         total_weight=payload["total_weight"],
         company_profile=_get_company_profile(),
+    )
+
+
+@bp.route("/quotation")
+@login_required
+@roles_required(*SALES_ROLES)
+def quotation_list():
+    _ensure_table(Quotation)
+    _ensure_table(QuotationItem)
+
+    status_filter = (request.args.get("status") or "draft").strip().lower()
+    query = Quotation.query.options(
+        joinedload(Quotation.pelanggan),
+        joinedload(Quotation.sales),
+        joinedload(Quotation.items),
+    ).order_by(Quotation.created_at.desc(), Quotation.id.desc())
+    if status_filter and status_filter != "all":
+        query = query.filter(Quotation.status == status_filter)
+    quotations = query.limit(200).all()
+
+    status_counts = dict(
+        db.session.query(Quotation.status, func.count(Quotation.id)).group_by(
+            Quotation.status
+        )
+    )
+    total_all = sum(status_counts.values())
+
+    return render_template(
+        "quotation_list.html",
+        quotations=quotations,
+        status_filter=status_filter,
+        status_counts=status_counts,
+        total_all=total_all,
+    )
+
+
+@bp.route("/quotation/create", methods=["POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def quotation_create():
+    _ensure_table(Quotation)
+    _ensure_table(QuotationItem)
+
+    payload_raw = (request.form.get("draft_payload") or "").strip()
+    if not payload_raw:
+        flash("Draft quotation kosong.", "warning")
+        return redirect(url_for("main.penjualan"))
+
+    try:
+        draft_payload = json.loads(payload_raw)
+    except (TypeError, ValueError):
+        flash("Draft quotation tidak valid.", "warning")
+        return redirect(url_for("main.penjualan"))
+
+    raw_items = draft_payload.get("items") or []
+    shipping_fee = draft_payload.get("shipping_fee") or 0.0
+    payload = _build_invoice_payload_from_items(raw_items, shipping_fee=shipping_fee)
+    if not payload["items"]:
+        flash("Tambahkan minimal satu produk sebelum menyimpan quotation.", "warning")
+        return redirect(url_for("main.penjualan"))
+
+    customer_id = _parse_int_param(draft_payload.get("customer_id"))
+    customer_label = (draft_payload.get("customer_label") or "").strip()
+    customer = Pelanggan.query.get(customer_id) if customer_id else None
+    if customer and not customer_label:
+        customer_label = customer.nama
+
+    price_level_id = _parse_int_param(draft_payload.get("price_level_id"))
+    expedition_id = _parse_int_param(draft_payload.get("expedition_id"))
+    payment_channel_id = _parse_int_param(draft_payload.get("payment_channel_id"))
+    payment_method = (draft_payload.get("payment_method") or "").strip()
+    due_date = _parse_date_param(draft_payload.get("due_date"))
+
+    quotation = Quotation(
+        quote_number=_generate_quotation_number(),
+        sales_id=session.get("user_id"),
+        pelanggan_id=customer_id,
+        customer_label=customer_label or None,
+        price_level_id=price_level_id,
+        expedition_id=expedition_id,
+        payment_channel_id=payment_channel_id,
+        payment_method=payment_method or None,
+        due_date=due_date,
+        subtotal=payload["subtotal"],
+        discount_total=payload["discount_total"],
+        tax_total=payload["tax_total"],
+        shipping_fee=payload["shipping_fee"],
+        grand_total=payload["grand_total"],
+        total_weight=payload["total_weight"],
+    )
+
+    try:
+        db.session.add(quotation)
+        db.session.flush()
+
+        for item in payload["items"]:
+            db.session.add(
+                QuotationItem(
+                    quotation_id=quotation.id,
+                    product_id=item.get("product_id"),
+                    product_name=item.get("name") or "-",
+                    sku=item.get("sku") or "-",
+                    qty=item.get("qty") or 0.0,
+                    price=item.get("price") or 0.0,
+                    discount_pct=item.get("discount_pct") or 0.0,
+                    tax_pct=item.get("tax_pct") or 0.0,
+                    total=item.get("total") or 0.0,
+                    unit_weight=item.get("unit_weight") or 0.0,
+                    total_weight=item.get("total_weight") or 0.0,
+                )
+            )
+
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logging.exception("Gagal menyimpan quotation")
+        flash(f"Gagal menyimpan quotation: {str(exc)}", "danger")
+        return redirect(url_for("main.penjualan"))
+
+    return redirect(url_for("main.quotation_print", quotation_id=quotation.id))
+
+
+@bp.route("/quotation/<int:quotation_id>/print")
+@login_required
+@roles_required(*SALES_ROLES)
+def quotation_print(quotation_id):
+    _ensure_table(Quotation)
+    _ensure_table(QuotationItem)
+
+    quotation = (
+        Quotation.query.options(
+            joinedload(Quotation.items),
+            joinedload(Quotation.sales),
+            joinedload(Quotation.pelanggan),
+            joinedload(Quotation.expedition),
+            joinedload(Quotation.payment_channel),
+        )
+        .filter(Quotation.id == quotation_id)
+        .first_or_404()
+    )
+
+    customer_name = quotation.customer_label or "-"
+    customer_phone = "-"
+    customer_address = "-"
+    if quotation.pelanggan:
+        customer_name = quotation.pelanggan.nama or customer_name
+        customer_phone = quotation.pelanggan.kontak or "-"
+        customer_address = quotation.pelanggan.alamat or "-"
+
+    payment_label = quotation.payment_method or "-"
+    if (
+        quotation.payment_method in {"Kartu", "Transfer", "QRIS"}
+        and quotation.payment_channel
+    ):
+        payment_label = f"{quotation.payment_method} - {quotation.payment_channel.name}"
+
+    return render_template(
+        "quotation_print.html",
+        quotation=quotation,
+        items=quotation.items,
+        customer={
+            "name": customer_name,
+            "phone": customer_phone,
+            "address": customer_address,
+        },
+        sales_name=quotation.sales.username if quotation.sales else "-",
+        payment_label=payment_label,
+        expedition_name=quotation.expedition.name if quotation.expedition else "-",
+        company_profile=_get_company_profile(),
+    )
+
+
+@bp.route("/quotation/<int:quotation_id>/cancel", methods=["POST"])
+@login_required
+@roles_required(*SALES_ROLES)
+def quotation_cancel(quotation_id):
+    _ensure_table(Quotation)
+
+    quotation = Quotation.query.get_or_404(quotation_id)
+    if quotation.status == "converted":
+        flash("Quotation sudah dikonversi ke penjualan dan tidak bisa dibatalkan.", "warning")
+        return redirect(_resolve_next_target(url_for("main.quotation_list")))
+    if quotation.status != "cancelled":
+        quotation.status = "cancelled"
+        db.session.commit()
+        flash(f"Quotation {quotation.quote_number} dibatalkan.", "success")
+    return redirect(_resolve_next_target(url_for("main.quotation_list")))
+
+
+@bp.route("/quotation/<int:quotation_id>/convert")
+@login_required
+@roles_required(*SALES_ROLES)
+def quotation_convert(quotation_id):
+    _ensure_table(Quotation)
+    _ensure_table(QuotationItem)
+
+    quotation = (
+        Quotation.query.options(
+            joinedload(Quotation.items),
+        )
+        .filter(Quotation.id == quotation_id)
+        .first_or_404()
+    )
+    if quotation.status == "cancelled":
+        flash("Quotation sudah dibatalkan dan tidak bisa dikonversi.", "warning")
+        return redirect(url_for("main.quotation_list"))
+
+    items_payload = []
+    for item in quotation.items:
+        if not item.product_id:
+            continue
+        items_payload.append(
+            {
+                "product_id": item.product_id,
+                "qty": item.qty,
+                "price": item.price,
+                "discount": item.discount_pct,
+                "tax": item.tax_pct,
+            }
+        )
+
+    due_date = quotation.due_date.isoformat() if quotation.due_date else ""
+    payload = {
+        "items": items_payload,
+        "customer_id": quotation.pelanggan_id or "",
+        "customer_label": quotation.customer_label or "",
+        "price_level_id": quotation.price_level_id or "",
+        "shipping_fee": quotation.shipping_fee or "",
+        "payment_method": quotation.payment_method or "",
+        "payment_channel_id": quotation.payment_channel_id or "",
+        "due_date": due_date,
+        "expedition_id": quotation.expedition_id or "",
+        "amount_paid": "",
+        "quotation_id": quotation.id,
+        "quotation_number": quotation.quote_number,
+        "updated_at": int(local_now().timestamp() * 1000),
+    }
+
+    return render_template(
+        "quotation_convert.html",
+        payload=payload,
     )
 
 
@@ -6004,7 +7205,16 @@ def data_penjualan():
     def build_filtered_query(base_query):
         return base_query.filter(*filters) if filters else base_query
 
-    net_expr = Penjualan.total_harga - func.coalesce(Penjualan.marketplace_cost_total, 0)
+    net_expr = case(
+        (
+            Penjualan.total_harga
+            - func.coalesce(Penjualan.marketplace_cost_total, 0)
+            < 0,
+            0,
+        ),
+        else_=Penjualan.total_harga
+        - func.coalesce(Penjualan.marketplace_cost_total, 0),
+    )
     sort_map = {
         "date_asc": Penjualan.tanggal_penjualan.asc(),
         "date_desc": Penjualan.tanggal_penjualan.desc(),
@@ -6063,7 +7273,7 @@ def data_penjualan():
         ).scalar()
         or 0.0
     )
-    today = datetime.utcnow().date()
+    today = local_today()
     today_revenue = (
         apply_filters(
             db.session.query(func.coalesce(func.sum(net_expr), 0))
@@ -6313,7 +7523,7 @@ def data_penjualan():
 @login_required
 @roles_required(*ADMIN_ONLY)
 def laporan_laba_rugi():
-    today = datetime.utcnow().date()
+    today = local_today()
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
     end_date = _parse_date_param(request.args.get("end_date")) or today
@@ -6331,9 +7541,11 @@ def laporan_laba_rugi():
     )
 
     totals = {
-        "revenue": 0.0,
+        "gross_revenue": 0.0,
+        "net_revenue": 0.0,
         "cogs": 0.0,
-        "gross": 0.0,
+        "gross_profit": 0.0,
+        "net_profit": 0.0,
         "discount": 0.0,
         "tax": 0.0,
         "marketplace_costs": 0.0,
@@ -6371,11 +7583,11 @@ def laporan_laba_rugi():
             gross_value = taxable - cost_value
 
             totals["units"] += qty
-            totals["revenue"] += taxable
+            totals["gross_revenue"] += taxable
             totals["discount"] += discount_value
             totals["tax"] += tax_value
             totals["cogs"] += cost_value
-            totals["gross"] += gross_value
+            totals["gross_profit"] += gross_value
 
             invoice_revenue += taxable
 
@@ -6393,14 +7605,21 @@ def laporan_laba_rugi():
 
         cost_total = float(sale.marketplace_cost_total or 0.0)
         totals["marketplace_costs"] += cost_total
-        totals["revenue"] -= cost_total
-        daily_map[sale_date]["revenue"] -= cost_total
-        monthly_map[month_key]["revenue"] -= cost_total
 
-    margin_percent = (
-        (totals["gross"] / totals["revenue"]) * 100 if totals["revenue"] else 0.0
+    totals["net_revenue"] = totals["gross_revenue"] - totals["marketplace_costs"]
+    totals["net_profit"] = totals["gross_profit"] - totals["marketplace_costs"]
+
+    gross_margin_percent = (
+        (totals["gross_profit"] / totals["gross_revenue"]) * 100
+        if totals["gross_revenue"]
+        else 0.0
     )
-    average_order = totals["revenue"] / totals["orders"] if totals["orders"] else 0.0
+    net_margin_percent = (
+        (totals["net_profit"] / totals["net_revenue"]) * 100
+        if totals["net_revenue"]
+        else 0.0
+    )
+    average_order = totals["net_revenue"] / totals["orders"] if totals["orders"] else 0.0
 
     daily_points = [
         {
@@ -6427,11 +7646,18 @@ def laporan_laba_rugi():
 
     summary_cards = [
         {
-            "label": "Penjualan Bersih",
-            "value": totals["revenue"],
+            "label": "Penjualan Kotor",
+            "value": totals["gross_revenue"],
             "icon": "fa-coins",
             "accent": "text-primary",
-            "subtitle": "Setelah diskon & biaya marketplace",
+            "subtitle": "Sebelum biaya marketplace",
+        },
+        {
+            "label": "Penjualan Bersih",
+            "value": totals["net_revenue"],
+            "icon": "fa-wallet",
+            "accent": "text-info",
+            "subtitle": "Setelah biaya marketplace",
         },
         {
             "label": "Biaya Marketplace",
@@ -6449,17 +7675,17 @@ def laporan_laba_rugi():
         },
         {
             "label": "Laba Kotor",
-            "value": totals["gross"],
+            "value": totals["gross_profit"],
             "icon": "fa-chart-line",
             "accent": "text-success",
-            "subtitle": f"Margin {margin_percent:.1f}%",
+            "subtitle": f"Margin kotor {gross_margin_percent:.1f}%",
         },
         {
-            "label": "Pajak Dipungut",
-            "value": totals["tax"],
-            "icon": "fa-file-invoice-dollar",
-            "accent": "text-info",
-            "subtitle": "Belum disetor",
+            "label": "Laba Bersih",
+            "value": totals["net_profit"],
+            "icon": "fa-balance-scale",
+            "accent": "text-success",
+            "subtitle": f"Margin bersih {net_margin_percent:.1f}%",
         },
     ]
 
@@ -6504,7 +7730,8 @@ def laporan_laba_rugi():
         daily_points=daily_points,
         monthly_breakdown=monthly_breakdown,
         totals=totals,
-        margin_percent=margin_percent,
+        gross_margin_percent=gross_margin_percent,
+        net_margin_percent=net_margin_percent,
         average_order=average_order,
         range_label=range_label,
         filter_values=filter_values,
@@ -6516,7 +7743,7 @@ def laporan_laba_rugi():
 @roles_required(*INVENTORY_ROLES)
 def laporan_pembelian():
     _ensure_purchase_payment_columns()
-    today = datetime.utcnow().date()
+    today = local_today()
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
     end_date = _parse_date_param(request.args.get("end_date")) or today
@@ -6773,7 +8000,7 @@ def laporan_pembelian():
 @roles_required(*INVENTORY_ROLES)
 def laporan_pembelian_print():
     _ensure_purchase_payment_columns()
-    today = datetime.utcnow().date()
+    today = local_today()
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
     end_date = _parse_date_param(request.args.get("end_date")) or today
@@ -6875,7 +8102,7 @@ def laporan_pembelian_print():
         total_spend=total_spend,
         total_units=total_units,
         total_invoices=len(purchase_table),
-        printed_at=datetime.utcnow(),
+        printed_at=local_now(),
         company_profile=_get_company_profile(),
     )
 
@@ -6893,7 +8120,7 @@ def laporan_pembelian_print_detail(purchase_id):
         .filter(Pembelian.id == purchase_id)
         .first_or_404()
     )
-    invoice_date = purchase.tanggal_faktur or datetime.utcnow().date()
+    invoice_date = purchase.tanggal_faktur or local_today()
     line_items = []
     invoice_total = 0.0
     total_units = 0
@@ -6940,7 +8167,7 @@ def laporan_pembelian_print_detail(purchase_id):
         line_items=line_items,
         total_units=total_units,
         total_amount=invoice_total,
-        printed_at=datetime.utcnow(),
+        printed_at=local_now(),
         company_profile=_get_company_profile(),
     )
 
@@ -7068,7 +8295,7 @@ def _close_accounting_period(label, start_date, end_date, user_id, description=N
     period.description = description or period.description
     period.is_locked = True
     period.closed_by = user_id
-    period.closed_at = datetime.utcnow()
+    period.closed_at = local_now()
 
     sales = (
         Penjualan.query.filter(Penjualan.tanggal_penjualan >= start_date)
@@ -7204,7 +8431,7 @@ def _ensure_expedisi_volume_divisor():
 
 
 def _generate_stock_reference():
-    base = f"SO{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    base = f"SO{local_now().strftime('%Y%m%d%H%M%S')}"
     candidate = base
     counter = 1
     while StockOpnameSession.query.filter_by(reference=candidate).first():
@@ -7214,7 +8441,7 @@ def _generate_stock_reference():
 
 
 def _generate_journal_reference():
-    base = f"JV{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    base = f"JV{local_now().strftime('%Y%m%d%H%M%S')}"
     candidate = base
     counter = 1
     while JournalEntry.query.filter_by(reference=candidate).first():
@@ -7228,7 +8455,7 @@ def _generate_invoice_number(prefix=None):
     Generate unique invoice number using timestamp (minute precision) and fallback counter.
     """
     prefix = (prefix or _get_sales_invoice_prefix()).strip() or "F"
-    base = f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    base = f"{prefix}{local_now().strftime('%Y%m%d%H%M')}"
     candidate = base
     counter = 1
     while Penjualan.query.filter_by(no_faktur=candidate).first():
@@ -7237,9 +8464,20 @@ def _generate_invoice_number(prefix=None):
     return candidate
 
 
+def _generate_quotation_number(prefix=None):
+    prefix = (prefix or "Q").strip() or "Q"
+    base = f"{prefix}{local_now().strftime('%Y%m%d%H%M')}"
+    candidate = base
+    counter = 1
+    while Quotation.query.filter_by(quote_number=candidate).first():
+        candidate = f"{base}-{counter}"
+        counter += 1
+    return candidate
+
+
 def _generate_purchase_invoice_number(prefix=None):
     prefix = (prefix or _get_purchase_invoice_prefix()).strip() or "INV"
-    base = f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+    base = f"{prefix}{local_now().strftime('%Y%m%d%H%M%S%f')}"
     candidate = base
     counter = 1
     while Pembelian.query.filter_by(no_faktur=candidate).first():
@@ -7248,8 +8486,19 @@ def _generate_purchase_invoice_number(prefix=None):
     return candidate
 
 
+def _generate_po_number(prefix=None):
+    prefix = (prefix or "PO").strip() or "PO"
+    base = f"{prefix}{local_now().strftime('%Y%m%d%H%M')}"
+    candidate = base
+    counter = 1
+    while PurchaseOrder.query.filter_by(po_number=candidate).first():
+        candidate = f"{base}-{counter}"
+        counter += 1
+    return candidate
+
+
 def _build_draft_invoice(prefix, model):
-    base = f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+    base = f"{prefix}{local_now().strftime('%Y%m%d%H%M')}"
     candidate = base
     counter = 1
     while model.query.filter_by(no_faktur=candidate).first():
@@ -7290,7 +8539,7 @@ def _record_auto_cogs_journal(penjualan, amount, settings, user_id=None):
 
     entry = JournalEntry(
         reference=_generate_journal_reference(),
-        date=penjualan.tanggal_penjualan or datetime.utcnow().date(),
+        date=penjualan.tanggal_penjualan or local_today(),
         memo=f"Auto COGS – Penjualan {penjualan.no_faktur}",
         created_by=user_id,
     )
@@ -7311,6 +8560,46 @@ def _record_auto_cogs_journal(penjualan, amount, settings, user_id=None):
         JournalLine(
             entry_id=entry.id,
             account_id=settings.inventory_account_id,
+            debit=0.0,
+            credit=amount,
+            description=description,
+        )
+    )
+    return entry
+
+
+def _record_marketplace_fee_journal(penjualan, amount, settings, user_id=None):
+    if (
+        not settings
+        or not settings.marketplace_expense_account_id
+        or not settings.marketplace_payable_account_id
+        or amount <= 0
+    ):
+        return None
+
+    entry = JournalEntry(
+        reference=_generate_journal_reference(),
+        date=penjualan.tanggal_penjualan or local_today(),
+        memo=f"Auto Marketplace Fee – Penjualan {penjualan.no_faktur}",
+        created_by=user_id,
+    )
+    db.session.add(entry)
+    db.session.flush()
+
+    description = f"Biaya marketplace otomatis untuk invoice {penjualan.no_faktur}"
+    db.session.add(
+        JournalLine(
+            entry_id=entry.id,
+            account_id=settings.marketplace_expense_account_id,
+            debit=amount,
+            credit=0.0,
+            description=description,
+        )
+    )
+    db.session.add(
+        JournalLine(
+            entry_id=entry.id,
+            account_id=settings.marketplace_payable_account_id,
             debit=0.0,
             credit=amount,
             description=description,
@@ -7363,7 +8652,7 @@ def _list_db_backups():
             {
                 "name": name,
                 "size": stat.st_size,
-                "mtime": datetime.utcfromtimestamp(stat.st_mtime),
+                "mtime": datetime.fromtimestamp(stat.st_mtime),
                 "path": path,
             }
         )
@@ -7383,7 +8672,7 @@ def _backup_sqlite_database():
     if not db_path or not os.path.exists(db_path):
         return None, "Database SQLite tidak ditemukan."
     backup_dir = _get_backup_directory()
-    stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    stamp = local_now().strftime("%Y%m%d%H%M%S")
     backup_name = f"backup_{stamp}.sqlite3"
     backup_path = os.path.join(backup_dir, backup_name)
 
@@ -7419,7 +8708,7 @@ def _restore_sqlite_database(backup_path):
 
 def _collect_system_metrics():
     metrics = {
-        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "timestamp": local_now().strftime("%Y-%m-%d %H:%M:%S"),
         "environment": current_app.config.get("FLASK_ENV", "production"),
     }
 
@@ -7550,7 +8839,7 @@ def update_harga():
 
         errors = []
         updated_rows = []
-        now = datetime.utcnow()
+        now = local_now()
         inspector = inspect(db.session.get_bind())
         price_log_available = inspector.has_table("price_change")
         for index, item in enumerate(items, start=1):
@@ -7739,8 +9028,8 @@ def stok_opname():
             note=note or None,
             status="completed",
             created_by=session.get("user_id"),
-            created_at=datetime.utcnow(),
-            finalized_at=datetime.utcnow(),
+            created_at=local_now(),
+            finalized_at=local_now(),
         )
         db.session.add(opname_session)
         adjustments = []
@@ -8221,8 +9510,8 @@ def import_stok_opname():
         note=note,
         status="completed",
         created_by=session.get("user_id"),
-        created_at=datetime.utcnow(),
-        finalized_at=datetime.utcnow(),
+        created_at=local_now(),
+        finalized_at=local_now(),
     )
     db.session.add(opname_session)
 
@@ -8354,7 +9643,7 @@ def export_stok_opname():
 def laporan_stok_opname():
     start_date = _parse_date_param(request.args.get("start_date"))
     end_date = _parse_date_param(request.args.get("end_date"))
-    today = datetime.utcnow().date()
+    today = local_today()
     if not start_date or not end_date:
         end_date = today
         start_date = today.replace(day=1)
@@ -8463,21 +9752,34 @@ def laporan_stok_opname():
         },
     ]
 
-    recent_sessions = [
-        {
-            "reference": session.reference,
-            "date": (
-                _format_date_id(session.created_at.date())
-                if session.created_at
-                else "-"
-            ),
-            "user": session.user.username if session.user else "System",
-            "location": session.location or "-",
-            "items": len(session.items),
-            "diff": sum(item.difference_qty for item in session.items),
-        }
-        for session in sessions[:5]
-    ]
+    recent_sessions = []
+    for session in sessions[:5]:
+        diff_total = 0
+        plus_total = 0
+        minus_total = 0
+        for item in session.items:
+            difference = item.difference_qty or 0
+            diff_total += difference
+            if difference > 0:
+                plus_total += difference
+            elif difference < 0:
+                minus_total += abs(difference)
+        recent_sessions.append(
+            {
+                "reference": session.reference,
+                "date": (
+                    _format_date_id(session.created_at.date())
+                    if session.created_at
+                    else "-"
+                ),
+                "user": session.user.username if session.user else "System",
+                "location": session.location or "-",
+                "items": len(session.items),
+                "diff": diff_total,
+                "plus": plus_total,
+                "minus": minus_total,
+            }
+        )
 
     range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
     filter_values = {
@@ -8668,6 +9970,950 @@ def laporan_stok_barang():
     )
 
 
+@bp.route("/laporan/shift")
+@login_required
+@roles_required(*ADMIN_ONLY)
+def laporan_shift():
+    today = local_today()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    user_id = _parse_int_param(request.args.get("user"))
+    status = (request.args.get("status") or "all").strip().lower()
+    if status not in {"all", "open", "closed", "auto"}:
+        status = "all"
+
+    filters = [
+        CashierShift.shift_date >= start_date,
+        CashierShift.shift_date <= end_date,
+    ]
+    if user_id:
+        filters.append(CashierShift.user_id == user_id)
+    if status == "open":
+        filters.append(CashierShift.closed_at.is_(None))
+    elif status == "closed":
+        filters.append(CashierShift.closed_at.isnot(None))
+        filters.append(CashierShift.forced_close.is_(False))
+    elif status == "auto":
+        filters.append(CashierShift.closed_at.isnot(None))
+        filters.append(CashierShift.forced_close.is_(True))
+
+    shifts = (
+        CashierShift.query.options(
+            joinedload(CashierShift.user),
+            joinedload(CashierShift.closed_by_user),
+        )
+        .filter(*filters)
+        .order_by(CashierShift.opened_at.desc())
+        .all()
+    )
+
+    def format_minutes(total_minutes):
+        total_minutes = max(int(total_minutes), 0)
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        if hours and minutes:
+            return f"{hours}j {minutes}m"
+        if hours:
+            return f"{hours}j"
+        return f"{minutes}m"
+
+    def format_duration(start, end):
+        if not start or not end:
+            return "-"
+        total_minutes = int((end - start).total_seconds() / 60)
+        return format_minutes(total_minutes)
+
+    total_shifts = len(shifts)
+    open_count = sum(1 for shift in shifts if shift.closed_at is None)
+    auto_count = sum(1 for shift in shifts if shift.closed_at and shift.forced_close)
+    closed_count = total_shifts - open_count
+    manual_closed_count = max(closed_count - auto_count, 0)
+
+    duration_minutes = 0
+    closed_shift_count = 0
+    for shift in shifts:
+        if shift.opened_at and shift.closed_at:
+            duration_minutes += int(
+                (shift.closed_at - shift.opened_at).total_seconds() / 60
+            )
+            closed_shift_count += 1
+    avg_duration_label = (
+        format_minutes(duration_minutes / closed_shift_count)
+        if closed_shift_count
+        else "-"
+    )
+
+    net_expr = case(
+        (
+            Penjualan.total_harga
+            - func.coalesce(Penjualan.marketplace_cost_total, 0)
+            < 0,
+            0,
+        ),
+        else_=Penjualan.total_harga
+        - func.coalesce(Penjualan.marketplace_cost_total, 0),
+    )
+    sales_summary = (
+        db.session.query(
+            func.count(Penjualan.id),
+            func.coalesce(func.sum(Penjualan.total_harga), 0),
+            func.coalesce(func.sum(net_expr), 0),
+        )
+        .join(CashierShift, Penjualan.shift_id == CashierShift.id)
+        .filter(*filters)
+        .first()
+    )
+    total_sales_count = int(sales_summary[0] or 0) if sales_summary else 0
+    total_gross = float(sales_summary[1] or 0.0) if sales_summary else 0.0
+    total_net = float(sales_summary[2] or 0.0) if sales_summary else 0.0
+    total_items = (
+        db.session.query(func.coalesce(func.sum(DetailPenjualan.jumlah), 0))
+        .join(Penjualan, DetailPenjualan.penjualan_id == Penjualan.id)
+        .join(CashierShift, Penjualan.shift_id == CashierShift.id)
+        .filter(*filters)
+        .scalar()
+        or 0
+    )
+
+    shift_ids = [shift.id for shift in shifts]
+    sales_map = {}
+    if shift_ids:
+        sales_rows = (
+            db.session.query(
+                Penjualan.shift_id.label("shift_id"),
+                func.count(Penjualan.id).label("transactions"),
+                func.coalesce(func.sum(Penjualan.total_harga), 0).label("gross_total"),
+                func.coalesce(func.sum(net_expr), 0).label("net_total"),
+                func.coalesce(func.sum(DetailPenjualan.jumlah), 0).label("items"),
+            )
+            .outerjoin(
+                DetailPenjualan, DetailPenjualan.penjualan_id == Penjualan.id
+            )
+            .filter(Penjualan.shift_id.in_(shift_ids))
+            .group_by(Penjualan.shift_id)
+            .all()
+        )
+        for row in sales_rows:
+            sales_map[row.shift_id] = {
+                "transactions": int(row.transactions or 0),
+                "gross_total": float(row.gross_total or 0.0),
+                "net_total": float(row.net_total or 0.0),
+                "items": int(row.items or 0),
+            }
+
+    now = local_now()
+    shift_rows = []
+    user_summary = {}
+    for shift in shifts:
+        summary = sales_map.get(
+            shift.id,
+            {"transactions": 0, "gross_total": 0.0, "net_total": 0.0, "items": 0},
+        )
+        is_open = shift.closed_at is None
+        duration_label = format_duration(
+            shift.opened_at, shift.closed_at if shift.closed_at else now
+        )
+        if is_open:
+            status_label = "Aktif"
+            status_class = "badge-warning"
+        elif shift.forced_close:
+            status_label = "Auto-close"
+            status_class = "badge-danger"
+        else:
+            status_label = "Selesai"
+            status_class = "badge-success"
+
+        shift_rows.append(
+            {
+                "id": shift.id,
+                "user_id": shift.user_id,
+                "user_name": shift.user.username if shift.user else "-",
+                "shift_date": shift.shift_date,
+                "opened_at": shift.opened_at,
+                "closed_at": shift.closed_at,
+                "closed_by": shift.closed_by_user.username
+                if shift.closed_by_user
+                else "-",
+                "forced_close": shift.forced_close,
+                "note": shift.note or "-",
+                "duration": duration_label,
+                "is_open": is_open,
+                "status_label": status_label,
+                "status_class": status_class,
+                "transactions": summary["transactions"],
+                "gross_total": summary["gross_total"],
+                "net_total": summary["net_total"],
+                "items_count": summary["items"],
+            }
+        )
+
+        entry = user_summary.setdefault(
+            shift.user_id,
+            {
+                "user_id": shift.user_id,
+                "user_name": shift.user.username if shift.user else "-",
+                "shift_count": 0,
+                "open_count": 0,
+                "auto_count": 0,
+                "transactions": 0,
+                "net_total": 0.0,
+            },
+        )
+        entry["shift_count"] += 1
+        if is_open:
+            entry["open_count"] += 1
+        if shift.forced_close:
+            entry["auto_count"] += 1
+        entry["transactions"] += summary["transactions"]
+        entry["net_total"] += summary["net_total"]
+
+    user_summary_rows = sorted(
+        user_summary.values(),
+        key=lambda row: (row["net_total"], row["shift_count"]),
+        reverse=True,
+    )
+
+    daily_map = {}
+    for shift in shifts:
+        date_key = shift.shift_date or (
+            shift.opened_at.date() if shift.opened_at else None
+        )
+        if not date_key:
+            continue
+        entry = daily_map.setdefault(
+            date_key, {"shift_count": 0, "transactions": 0, "net_total": 0.0}
+        )
+        entry["shift_count"] += 1
+        summary = sales_map.get(
+            shift.id,
+            {"transactions": 0, "gross_total": 0.0, "net_total": 0.0, "items": 0},
+        )
+        entry["transactions"] += summary["transactions"]
+        entry["net_total"] += summary["net_total"]
+
+    daily_points = [
+        {
+            "label": _format_date_id(date_key),
+            "shift_count": data["shift_count"],
+            "transactions": data["transactions"],
+            "net_total": round(data["net_total"], 2),
+        }
+        for date_key, data in sorted(daily_map.items())
+    ]
+
+    summary_cards = [
+        {
+            "label": "Total Shift",
+            "value": total_shifts,
+            "icon": "fa-calendar-check",
+            "accent": "text-primary",
+            "subtitle": f"{manual_closed_count} selesai manual",
+            "type": "count",
+        },
+        {
+            "label": "Shift Aktif",
+            "value": open_count,
+            "icon": "fa-user-clock",
+            "accent": "text-warning",
+            "subtitle": f"{auto_count} auto-close",
+            "type": "count",
+        },
+        {
+            "label": "Total Transaksi",
+            "value": total_sales_count,
+            "icon": "fa-receipt",
+            "accent": "text-info",
+            "subtitle": f"{int(total_items)} item terjual",
+            "type": "count",
+        },
+        {
+            "label": "Revenue Kotor",
+            "value": total_gross,
+            "icon": "fa-coins",
+            "accent": "text-success",
+            "subtitle": "Akumulasi per shift",
+            "type": "currency",
+        },
+        {
+            "label": "Revenue Bersih",
+            "value": total_net,
+            "icon": "fa-chart-line",
+            "accent": "text-primary",
+            "subtitle": "Sudah dikurangi biaya MP",
+            "type": "currency",
+        },
+        {
+            "label": "Rata-rata Durasi",
+            "value": avg_duration_label,
+            "icon": "fa-stopwatch",
+            "accent": "text-secondary",
+            "subtitle": f"{closed_shift_count} shift selesai",
+            "type": "text",
+        },
+    ]
+
+    filter_values = {
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "user": user_id or "",
+        "status": status,
+    }
+    range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
+    filter_active = (
+        start_date != default_start
+        or end_date != today
+        or user_id
+        or status != "all"
+    )
+
+    cashier_options = (
+        User.query.filter(User.role.in_(SALES_ROLES))
+        .order_by(User.username.asc())
+        .all()
+    )
+
+    return render_template(
+        "laporan_shift.html",
+        summary_cards=summary_cards,
+        shift_rows=shift_rows,
+        user_summary_rows=user_summary_rows,
+        cashier_options=cashier_options,
+        filter_values=filter_values,
+        filter_active=filter_active,
+        range_label=range_label,
+        total_shifts=total_shifts,
+        daily_points=daily_points,
+    )
+
+
+@bp.route("/laporan/shift/export")
+@login_required
+@roles_required(*ADMIN_ONLY)
+def laporan_shift_export():
+    today = local_today()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    user_id = _parse_int_param(request.args.get("user"))
+    status = (request.args.get("status") or "all").strip().lower()
+    if status not in {"all", "open", "closed", "auto"}:
+        status = "all"
+
+    filters = [
+        CashierShift.shift_date >= start_date,
+        CashierShift.shift_date <= end_date,
+    ]
+    if user_id:
+        filters.append(CashierShift.user_id == user_id)
+    if status == "open":
+        filters.append(CashierShift.closed_at.is_(None))
+    elif status == "closed":
+        filters.append(CashierShift.closed_at.isnot(None))
+        filters.append(CashierShift.forced_close.is_(False))
+    elif status == "auto":
+        filters.append(CashierShift.closed_at.isnot(None))
+        filters.append(CashierShift.forced_close.is_(True))
+
+    shifts = (
+        CashierShift.query.options(
+            joinedload(CashierShift.user),
+            joinedload(CashierShift.closed_by_user),
+        )
+        .filter(*filters)
+        .order_by(CashierShift.opened_at.desc())
+        .all()
+    )
+
+    net_expr = case(
+        (
+            Penjualan.total_harga
+            - func.coalesce(Penjualan.marketplace_cost_total, 0)
+            < 0,
+            0,
+        ),
+        else_=Penjualan.total_harga
+        - func.coalesce(Penjualan.marketplace_cost_total, 0),
+    )
+    shift_ids = [shift.id for shift in shifts]
+    sales_map = {}
+    if shift_ids:
+        sales_rows = (
+            db.session.query(
+                Penjualan.shift_id.label("shift_id"),
+                func.count(Penjualan.id).label("transactions"),
+                func.coalesce(func.sum(net_expr), 0).label("net_total"),
+                func.coalesce(func.sum(DetailPenjualan.jumlah), 0).label("items"),
+            )
+            .outerjoin(
+                DetailPenjualan, DetailPenjualan.penjualan_id == Penjualan.id
+            )
+            .filter(Penjualan.shift_id.in_(shift_ids))
+            .group_by(Penjualan.shift_id)
+            .all()
+        )
+        for row in sales_rows:
+            sales_map[row.shift_id] = {
+                "transactions": int(row.transactions or 0),
+                "net_total": float(row.net_total or 0.0),
+                "items": int(row.items or 0),
+            }
+
+    def format_datetime(dt):
+        if not dt:
+            return ""
+        return dt.strftime("%Y-%m-%d %H:%M")
+
+    def format_date(value):
+        if not value:
+            return ""
+        return value.strftime("%Y-%m-%d")
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "Shift ID",
+            "Tanggal Shift",
+            "Kasir",
+            "Mulai",
+            "Selesai",
+            "Durasi Menit",
+            "Status",
+            "Auto Close",
+            "Ditutup Oleh",
+            "Transaksi",
+            "Item",
+            "Revenue Bersih",
+            "Catatan",
+        ]
+    )
+
+    for shift in shifts:
+        summary = sales_map.get(
+            shift.id, {"transactions": 0, "net_total": 0.0, "items": 0}
+        )
+        if shift.closed_at and shift.opened_at:
+            duration_minutes = int(
+                (shift.closed_at - shift.opened_at).total_seconds() / 60
+            )
+        elif shift.opened_at:
+            duration_minutes = int(
+                (local_now() - shift.opened_at).total_seconds() / 60
+            )
+        else:
+            duration_minutes = 0
+
+        if shift.closed_at is None:
+            status_label = "Aktif"
+        elif shift.forced_close:
+            status_label = "Auto-close"
+        else:
+            status_label = "Selesai"
+
+        writer.writerow(
+            [
+                shift.id,
+                format_date(shift.shift_date),
+                shift.user.username if shift.user else "-",
+                format_datetime(shift.opened_at),
+                format_datetime(shift.closed_at),
+                max(duration_minutes, 0),
+                status_label,
+                "Ya" if shift.forced_close else "Tidak",
+                shift.closed_by_user.username if shift.closed_by_user else "-",
+                summary["transactions"],
+                summary["items"],
+                summary["net_total"],
+                shift.note or "",
+            ]
+        )
+
+    filename = f"laporan_shift_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.csv"
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@bp.route("/pembelian/po")
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def pembelian_po_list():
+    _ensure_table(PurchaseOrder)
+    _ensure_table(PurchaseOrderItem)
+
+    status = (request.args.get("status") or "all").strip().lower()
+    supplier_id = _parse_int_param(request.args.get("supplier"))
+    search_query = (request.args.get("search") or "").strip()
+
+    filters = []
+    if status and status != "all":
+        filters.append(PurchaseOrder.status == status)
+    if supplier_id:
+        filters.append(PurchaseOrder.supplier_id == supplier_id)
+    if search_query:
+        like = f"%{search_query}%"
+        filters.append(PurchaseOrder.po_number.ilike(like))
+
+    query = PurchaseOrder.query.options(
+        joinedload(PurchaseOrder.supplier),
+        joinedload(PurchaseOrder.items),
+    )
+    if filters:
+        query = query.filter(*filters)
+    purchase_orders = query.order_by(PurchaseOrder.created_at.desc()).limit(200).all()
+
+    status_counts = dict(
+        db.session.query(PurchaseOrder.status, func.count(PurchaseOrder.id)).group_by(
+            PurchaseOrder.status
+        )
+    )
+    total_all = sum(status_counts.values())
+
+    supplier_options = Supplier.query.order_by(Supplier.name.asc()).all()
+    filter_values = {
+        "status": status,
+        "supplier": supplier_id or "",
+        "search": search_query,
+    }
+
+    return render_template(
+        "pembelian_po_list.html",
+        purchase_orders=purchase_orders,
+        status_counts=status_counts,
+        total_all=total_all,
+        supplier_options=supplier_options,
+        filter_values=filter_values,
+    )
+
+
+@bp.route("/pembelian/po/new", methods=["GET", "POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def pembelian_po_new():
+    _ensure_table(PurchaseOrder)
+    _ensure_table(PurchaseOrderItem)
+
+    supplier_options = Supplier.query.order_by(Supplier.name.asc()).all()
+    product_options = Produk.query.order_by(Produk.nama_produk.asc()).all()
+    product_payload = [
+        {
+            "id": product.id,
+            "name": product.nama_produk,
+            "code": product.kode_produk,
+            "sku": product.sku,
+            "price": float(product.harga or 0.0),
+            "stock": float(product.stok_lama or 0),
+        }
+        for product in product_options
+    ]
+    draft_number = _generate_po_number()
+
+    if request.method == "POST":
+        try:
+            supplier_id = _parse_int_param(request.form.get("supplier_id"))
+            expected_date = _parse_date_param(request.form.get("expected_date"))
+            note = (request.form.get("note") or "").strip()
+            tax_percent = _parse_float_param(request.form.get("tax_percent")) or 0.0
+            shipping_fee = _parse_float_param(request.form.get("shipping_fee")) or 0.0
+
+            if not supplier_id:
+                raise ValueError("Supplier wajib dipilih.")
+
+            product_ids = request.form.getlist("product_id[]")
+            qty_list = request.form.getlist("qty[]")
+            price_list = request.form.getlist("price[]")
+
+            items = []
+            subtotal = 0.0
+            for idx, raw_product_id in enumerate(product_ids):
+                product_id = _parse_int_param(raw_product_id)
+                if not product_id:
+                    continue
+                qty = _parse_float_param(qty_list[idx]) if idx < len(qty_list) else 0.0
+                price = _parse_float_param(price_list[idx]) if idx < len(price_list) else 0.0
+                if not qty or qty <= 0:
+                    continue
+                product = Produk.query.get(product_id)
+                if not product:
+                    continue
+                total_price = max(qty, 0.0) * max(price, 0.0)
+                subtotal += total_price
+                items.append(
+                    {
+                        "product": product,
+                        "qty": qty,
+                        "price": price,
+                        "total": total_price,
+                    }
+                )
+
+            if not items:
+                raise ValueError("Tambahkan minimal satu item untuk PO.")
+
+            tax_percent = min(max(tax_percent, 0.0), 100.0)
+            tax_total = subtotal * (tax_percent / 100.0)
+            shipping_fee = max(shipping_fee, 0.0)
+            grand_total = subtotal + tax_total + shipping_fee
+
+            po = PurchaseOrder(
+                po_number=_generate_po_number(),
+                supplier_id=supplier_id,
+                status="draft",
+                created_by=session.get("user_id"),
+                expected_date=expected_date,
+                note=note or None,
+                tax_percent=tax_percent,
+                subtotal_estimate=subtotal,
+                tax_total=tax_total,
+                shipping_fee=shipping_fee,
+                grand_total_estimate=grand_total,
+            )
+            db.session.add(po)
+            db.session.flush()
+
+            for item in items:
+                product = item["product"]
+                db.session.add(
+                    PurchaseOrderItem(
+                        purchase_order_id=po.id,
+                        product_id=product.id,
+                        product_code=product.kode_produk,
+                        product_name=product.nama_produk,
+                        sku=product.sku,
+                        qty=item["qty"],
+                        unit_price=item["price"],
+                        total_price=item["total"],
+                    )
+                )
+
+            db.session.commit()
+            flash("PO berhasil dibuat sebagai draft.", "success")
+            return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "warning")
+        except Exception as exc:
+            db.session.rollback()
+            logging.exception("Gagal membuat PO")
+            flash(f"Gagal membuat PO: {str(exc)}", "danger")
+
+    return render_template(
+        "pembelian_po_form.html",
+        supplier_options=supplier_options,
+        product_options=product_options,
+        product_payload=product_payload,
+        draft_number=draft_number,
+    )
+
+
+@bp.route("/pembelian/po/<int:po_id>")
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def pembelian_po_detail(po_id):
+    _ensure_table(PurchaseOrder)
+    _ensure_table(PurchaseOrderItem)
+
+    po = (
+        PurchaseOrder.query.options(
+            joinedload(PurchaseOrder.supplier),
+            joinedload(PurchaseOrder.items),
+            joinedload(PurchaseOrder.creator),
+            joinedload(PurchaseOrder.approver),
+            joinedload(PurchaseOrder.sender),
+            joinedload(PurchaseOrder.receiver),
+        )
+        .filter(PurchaseOrder.id == po_id)
+        .first_or_404()
+    )
+    return render_template("pembelian_po_detail.html", po=po)
+
+
+@bp.route("/pembelian/po/<int:po_id>/edit", methods=["GET", "POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def pembelian_po_edit(po_id):
+    _ensure_table(PurchaseOrder)
+    _ensure_table(PurchaseOrderItem)
+
+    po = (
+        PurchaseOrder.query.options(
+            joinedload(PurchaseOrder.items),
+        )
+        .filter(PurchaseOrder.id == po_id)
+        .first_or_404()
+    )
+    if po.status != "draft":
+        flash("Hanya PO draft yang bisa diedit.", "warning")
+        return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+
+    supplier_options = Supplier.query.order_by(Supplier.name.asc()).all()
+    product_options = Produk.query.order_by(Produk.nama_produk.asc()).all()
+    product_payload = [
+        {
+            "id": product.id,
+            "name": product.nama_produk,
+            "code": product.kode_produk,
+            "sku": product.sku,
+            "price": float(product.harga or 0.0),
+            "stock": float(product.stok_lama or 0),
+        }
+        for product in product_options
+    ]
+
+    if request.method == "POST":
+        try:
+            supplier_id = _parse_int_param(request.form.get("supplier_id"))
+            expected_date = _parse_date_param(request.form.get("expected_date"))
+            note = (request.form.get("note") or "").strip()
+            tax_percent = _parse_float_param(request.form.get("tax_percent")) or 0.0
+            shipping_fee = _parse_float_param(request.form.get("shipping_fee")) or 0.0
+
+            if not supplier_id:
+                raise ValueError("Supplier wajib dipilih.")
+
+            product_ids = request.form.getlist("product_id[]")
+            qty_list = request.form.getlist("qty[]")
+            price_list = request.form.getlist("price[]")
+
+            items = []
+            subtotal = 0.0
+            for idx, raw_product_id in enumerate(product_ids):
+                product_id = _parse_int_param(raw_product_id)
+                if not product_id:
+                    continue
+                qty = _parse_float_param(qty_list[idx]) if idx < len(qty_list) else 0.0
+                price = _parse_float_param(price_list[idx]) if idx < len(price_list) else 0.0
+                if not qty or qty <= 0:
+                    continue
+                product = Produk.query.get(product_id)
+                if not product:
+                    continue
+                total_price = max(qty, 0.0) * max(price, 0.0)
+                subtotal += total_price
+                items.append(
+                    {
+                        "product": product,
+                        "qty": qty,
+                        "price": price,
+                        "total": total_price,
+                    }
+                )
+
+            if not items:
+                raise ValueError("Tambahkan minimal satu item untuk PO.")
+
+            tax_percent = min(max(tax_percent, 0.0), 100.0)
+            tax_total = subtotal * (tax_percent / 100.0)
+            shipping_fee = max(shipping_fee, 0.0)
+            grand_total = subtotal + tax_total + shipping_fee
+
+            po.supplier_id = supplier_id
+            po.expected_date = expected_date
+            po.note = note or None
+            po.tax_percent = tax_percent
+            po.subtotal_estimate = subtotal
+            po.tax_total = tax_total
+            po.shipping_fee = shipping_fee
+            po.grand_total_estimate = grand_total
+
+            po.items.clear()
+            db.session.flush()
+
+            for item in items:
+                product = item["product"]
+                db.session.add(
+                    PurchaseOrderItem(
+                        purchase_order_id=po.id,
+                        product_id=product.id,
+                        product_code=product.kode_produk,
+                        product_name=product.nama_produk,
+                        sku=product.sku,
+                        qty=item["qty"],
+                        unit_price=item["price"],
+                        total_price=item["total"],
+                    )
+                )
+
+            db.session.commit()
+            flash("Draft PO berhasil diperbarui.", "success")
+            return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "warning")
+        except Exception as exc:
+            db.session.rollback()
+            logging.exception("Gagal memperbarui PO")
+            flash(f"Gagal memperbarui PO: {str(exc)}", "danger")
+
+    return render_template(
+        "pembelian_po_form.html",
+        supplier_options=supplier_options,
+        product_options=product_options,
+        product_payload=product_payload,
+        draft_number=po.po_number,
+        po=po,
+        is_edit=True,
+        form_action=url_for("main.pembelian_po_edit", po_id=po.id),
+    )
+
+
+@bp.route("/pembelian/po/<int:po_id>/print")
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def pembelian_po_print(po_id):
+    _ensure_table(PurchaseOrder)
+    _ensure_table(PurchaseOrderItem)
+
+    po = (
+        PurchaseOrder.query.options(
+            joinedload(PurchaseOrder.items),
+            joinedload(PurchaseOrder.supplier),
+        )
+        .filter(PurchaseOrder.id == po_id)
+        .first_or_404()
+    )
+
+    return render_template(
+        "pembelian_po_print.html",
+        po=po,
+        printed_at=local_now(),
+        company_profile=_get_company_profile(),
+    )
+
+
+@bp.route("/pembelian/po/<int:po_id>/export")
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def pembelian_po_export(po_id):
+    _ensure_table(PurchaseOrder)
+    _ensure_table(PurchaseOrderItem)
+
+    po = (
+        PurchaseOrder.query.options(
+            joinedload(PurchaseOrder.items),
+            joinedload(PurchaseOrder.supplier),
+        )
+        .filter(PurchaseOrder.id == po_id)
+        .first_or_404()
+    )
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "PO Number",
+            "Status",
+            "Supplier",
+            "Tanggal",
+            "Estimasi Datang",
+            "Kode Produk",
+            "Nama Produk",
+            "Qty",
+            "Harga Estimasi",
+            "Total Estimasi",
+        ]
+    )
+
+    for item in po.items:
+        writer.writerow(
+            [
+                po.po_number,
+                po.status,
+                po.supplier.name if po.supplier else "-",
+                po.created_at.strftime("%Y-%m-%d") if po.created_at else "",
+                po.expected_date.strftime("%Y-%m-%d") if po.expected_date else "",
+                item.product_code or "",
+                item.product_name,
+                item.qty,
+                item.unit_price,
+                item.total_price,
+            ]
+        )
+
+    filename = f"po_{po.po_number}.csv"
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+@bp.route("/pembelian/po/<int:po_id>/approve", methods=["POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pembelian_po_approve(po_id):
+    _ensure_table(PurchaseOrder)
+    po = PurchaseOrder.query.get_or_404(po_id)
+    if po.status != "draft":
+        flash("PO tidak berada di status draft.", "warning")
+        return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+    po.status = "approved"
+    po.approved_at = local_now()
+    po.approved_by = session.get("user_id")
+    db.session.commit()
+    flash("PO disetujui.", "success")
+    return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+
+
+@bp.route("/pembelian/po/<int:po_id>/send", methods=["POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pembelian_po_send(po_id):
+    _ensure_table(PurchaseOrder)
+    po = PurchaseOrder.query.get_or_404(po_id)
+    if po.status != "approved":
+        flash("PO harus disetujui sebelum dikirim.", "warning")
+        return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+    po.status = "sent"
+    po.sent_at = local_now()
+    po.sent_by = session.get("user_id")
+    db.session.commit()
+    flash("PO ditandai sebagai terkirim.", "success")
+    return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+
+
+@bp.route("/pembelian/po/<int:po_id>/receive", methods=["POST"])
+@login_required
+@roles_required(*INVENTORY_ROLES)
+def pembelian_po_receive(po_id):
+    _ensure_table(PurchaseOrder)
+    po = PurchaseOrder.query.get_or_404(po_id)
+    if po.status != "sent":
+        flash("PO harus terkirim sebelum diterima.", "warning")
+        return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+    po.status = "received"
+    po.received_at = local_now()
+    po.received_by = session.get("user_id")
+    db.session.commit()
+    flash("PO ditandai sudah diterima.", "success")
+    return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+
+
+@bp.route("/pembelian/po/<int:po_id>/cancel", methods=["POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pembelian_po_cancel(po_id):
+    _ensure_table(PurchaseOrder)
+    po = PurchaseOrder.query.get_or_404(po_id)
+    if po.status == "received":
+        flash("PO yang sudah diterima tidak bisa dibatalkan.", "warning")
+        return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+    po.status = "cancelled"
+    db.session.commit()
+    flash("PO dibatalkan.", "info")
+    return redirect(url_for("main.pembelian_po_detail", po_id=po.id))
+
+
 @bp.route("/api/laporan/stok-barang/suggest", methods=["GET"])
 @login_required
 @roles_required(*INVENTORY_ROLES)
@@ -8717,7 +10963,7 @@ def laporan_stok_barang_suggest():
 @login_required
 @roles_required(*SALES_ROLES)
 def laporan_penjualan_report():
-    today = datetime.utcnow().date()
+    today = local_today()
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
     end_date = _parse_date_param(request.args.get("end_date")) or today
@@ -8768,11 +11014,13 @@ def laporan_penjualan_report():
     sales_records = sales_query.all()
 
     totals = {
-        "revenue": 0.0,
+        "gross_revenue": 0.0,
+        "net_revenue": 0.0,
         "discount": 0.0,
         "tax": 0.0,
         "cogs": 0.0,
-        "gross": 0.0,
+        "gross_profit": 0.0,
+        "net_profit": 0.0,
         "marketplace_costs": 0.0,
         "orders": len(sales_records),
         "items": 0,
@@ -8827,10 +11075,11 @@ def laporan_penjualan_report():
             gross_value = taxable - cost_value
 
             totals["items"] += qty
+            totals["gross_revenue"] += taxable
             totals["discount"] += discount_value
             totals["tax"] += tax_value
             totals["cogs"] += cost_value
-            totals["gross"] += gross_value
+            totals["gross_profit"] += gross_value
 
             invoice_revenue += taxable
             invoice_gross += gross_value
@@ -8869,10 +11118,10 @@ def laporan_penjualan_report():
         cost_total = float(sale.marketplace_cost_total or 0.0)
         net_invoice_revenue = max(invoice_revenue - cost_total, 0.0)
         totals["marketplace_costs"] += cost_total
-        totals["revenue"] += net_invoice_revenue
-        daily_map[sale_date]["revenue"] += net_invoice_revenue
+        totals["net_revenue"] += net_invoice_revenue
+        daily_map[sale_date]["revenue"] += invoice_revenue
         daily_map[sale_date]["gross"] += invoice_gross
-        monthly_map[month_key]["revenue"] += net_invoice_revenue
+        monthly_map[month_key]["revenue"] += invoice_revenue
         monthly_map[month_key]["gross"] += invoice_gross
         monthly_map[month_key]["orders"] += 1
 
@@ -8896,12 +11145,6 @@ def laporan_penjualan_report():
                 sale.pelanggan.nama if sale.pelanggan else "Pelanggan umum"
             )
             largest_invoice["date"] = _format_date_id(sale_date)
-        cost_total = float(sale.marketplace_cost_total or 0.0)
-        net_invoice_revenue = invoice_revenue - cost_total
-        totals["marketplace_costs"] += cost_total
-        totals["revenue"] -= cost_total
-        daily_map[sale_date]["revenue"] -= cost_total
-        monthly_map[month_key]["revenue"] -= cost_total
 
         net_subtotal = gross_subtotal_sum - discount_sum
         staff_name = sale.sales.username if sale.sales else "Sales"
@@ -8913,9 +11156,9 @@ def laporan_penjualan_report():
             else "Harga standar"
         )
         payment_label = sale.payment_method or "Belum dicatat"
-        if sale.payment_method == "Kartu":
+        if sale.payment_method in {"Kartu", "Transfer", "QRIS"}:
             if sale.payment_channel and sale.payment_channel.name:
-                payment_label = f"Kartu - {sale.payment_channel.name}"
+                payment_label = f"{sale.payment_method} - {sale.payment_channel.name}"
         items_count = sum(item["qty"] for item in item_rows)
         transaction_details.append(
             {
@@ -8941,14 +11184,25 @@ def laporan_penjualan_report():
                 "cost_total": cost_sum,
                 "marketplace_cost_total": cost_total,
                 "gross_profit": net_subtotal - cost_sum,
+                "net_profit": net_invoice_revenue - cost_sum,
                 "net_revenue": net_invoice_revenue,
                 "print_link": url_for("main.penjualan_receipt", sale_id=sale.id),
             }
         )
 
-    average_order = totals["revenue"] / totals["orders"] if totals["orders"] else 0.0
-    margin_percent = (
-        (totals["gross"] / totals["revenue"]) * 100 if totals["revenue"] else 0.0
+    totals["net_profit"] = totals["gross_profit"] - totals["marketplace_costs"]
+    average_order = (
+        totals["net_revenue"] / totals["orders"] if totals["orders"] else 0.0
+    )
+    gross_margin_percent = (
+        (totals["gross_profit"] / totals["gross_revenue"]) * 100
+        if totals["gross_revenue"]
+        else 0.0
+    )
+    net_margin_percent = (
+        (totals["net_profit"] / totals["net_revenue"]) * 100
+        if totals["net_revenue"]
+        else 0.0
     )
 
     daily_points = [
@@ -8995,11 +11249,18 @@ def laporan_penjualan_report():
 
     summary_cards = [
         {
-            "label": "Pendapatan Bersih",
-            "value": totals["revenue"],
-            "icon": "fa-wallet",
+            "label": "Pendapatan Kotor",
+            "value": totals["gross_revenue"],
+            "icon": "fa-coins",
             "accent": "text-primary",
-            "subtitle": "Setelah diskon & biaya marketplace",
+            "subtitle": "Setelah diskon, sebelum biaya marketplace",
+        },
+        {
+            "label": "Pendapatan Bersih",
+            "value": totals["net_revenue"],
+            "icon": "fa-wallet",
+            "accent": "text-info",
+            "subtitle": "Setelah biaya marketplace",
         },
         {
             "label": "Biaya Marketplace",
@@ -9010,10 +11271,17 @@ def laporan_penjualan_report():
         },
         {
             "label": "Laba Kotor",
-            "value": totals["gross"],
+            "value": totals["gross_profit"],
             "icon": "fa-chart-line",
             "accent": "text-success",
-            "subtitle": f"Margin {margin_percent:.1f}%",
+            "subtitle": f"Margin kotor {gross_margin_percent:.1f}%",
+        },
+        {
+            "label": "Laba Bersih",
+            "value": totals["net_profit"],
+            "icon": "fa-balance-scale",
+            "accent": "text-success",
+            "subtitle": f"Margin bersih {net_margin_percent:.1f}%",
         },
         {
             "label": "Transaksi",
@@ -9075,7 +11343,8 @@ def laporan_penjualan_report():
         monthly_breakdown=monthly_breakdown,
         totals=totals,
         average_order=average_order,
-        margin_percent=margin_percent,
+        gross_margin_percent=gross_margin_percent,
+        net_margin_percent=net_margin_percent,
         range_label=range_label,
         filter_values=filter_values,
         sales_options=sales_options,
@@ -9091,7 +11360,7 @@ def laporan_penjualan_report():
 @login_required
 @roles_required(*SALES_ROLES)
 def laporan_penjualan_print():
-    today = datetime.utcnow().date()
+    today = local_today()
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
     end_date = _parse_date_param(request.args.get("end_date")) or today
@@ -9165,9 +11434,9 @@ def laporan_penjualan_print():
         total_items += items_count
 
         payment_label = sale.payment_method or "Belum dicatat"
-        if sale.payment_method == "Kartu" and sale.payment_channel:
+        if sale.payment_method in {"Kartu", "Transfer", "QRIS"} and sale.payment_channel:
             if sale.payment_channel.name:
-                payment_label = f"Kartu - {sale.payment_channel.name}"
+                payment_label = f"{sale.payment_method} - {sale.payment_channel.name}"
         due_label = "-"
         if sale.payment_method == "Tempo" and sale.due_date:
             due_label = _format_date_id(sale.due_date)
@@ -9206,7 +11475,7 @@ def laporan_penjualan_print():
         total_revenue=total_revenue,
         total_orders=total_orders,
         total_items=total_items,
-        printed_at=datetime.utcnow(),
+        printed_at=local_now(),
         company_profile=_get_company_profile(),
     )
 
@@ -9215,7 +11484,7 @@ def laporan_penjualan_print():
 @login_required
 @roles_required(*SALES_ROLES)
 def laporan_piutang():
-    today = datetime.utcnow().date()
+    today = local_today()
     search_query = (request.args.get("search") or "").strip()
     pelanggan_id = _parse_int_param(request.args.get("pelanggan"))
     sales_id = _parse_int_param(request.args.get("sales"))
@@ -9514,7 +11783,7 @@ def laporan_piutang():
 @login_required
 @roles_required(*SALES_ROLES)
 def pembayaran_piutang():
-    today = datetime.utcnow().date()
+    today = local_today()
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
     end_date = _parse_date_param(request.args.get("end_date")) or today
@@ -9522,6 +11791,7 @@ def pembayaran_piutang():
         start_date, end_date = end_date, start_date
 
     search_query = (request.args.get("search") or "").strip()
+    open_id = _parse_int_param(request.args.get("open_id"))
     pelanggan_id = _parse_int_param(request.args.get("pelanggan"))
     sales_id = _parse_int_param(request.args.get("sales"))
     per_page = request.args.get("per_page", type=int) or 10
@@ -9533,24 +11803,30 @@ def pembayaran_piutang():
     outstanding_expr = Penjualan.total_harga - func.coalesce(Penjualan.amount_paid, 0)
     base_filters = [
         Penjualan.payment_method == "Tempo",
-        Penjualan.tanggal_penjualan >= start_date,
-        Penjualan.tanggal_penjualan <= end_date,
         outstanding_expr > 0,
     ]
-
-    if pelanggan_id:
-        base_filters.append(Penjualan.pelanggan_id == pelanggan_id)
-    if sales_id:
-        base_filters.append(Penjualan.sales_id == sales_id)
-    if search_query:
-        like = f"%{search_query}%"
-        base_filters.append(
-            or_(
-                Penjualan.no_faktur.ilike(like),
-                Penjualan.pelanggan.has(Pelanggan.nama.ilike(like)),
-                Penjualan.sales.has(User.username.ilike(like)),
-            )
+    if open_id:
+        base_filters.append(Penjualan.id == open_id)
+    else:
+        base_filters.extend(
+            [
+                Penjualan.tanggal_penjualan >= start_date,
+                Penjualan.tanggal_penjualan <= end_date,
+            ]
         )
+        if pelanggan_id:
+            base_filters.append(Penjualan.pelanggan_id == pelanggan_id)
+        if sales_id:
+            base_filters.append(Penjualan.sales_id == sales_id)
+        if search_query:
+            like = f"%{search_query}%"
+            base_filters.append(
+                or_(
+                    Penjualan.no_faktur.ilike(like),
+                    Penjualan.pelanggan.has(Pelanggan.nama.ilike(like)),
+                    Penjualan.sales.has(User.username.ilike(like)),
+                )
+            )
 
     total_records = (
         db.session.query(func.count(Penjualan.id)).filter(*base_filters).scalar()
@@ -9615,7 +11891,7 @@ def pembayaran_piutang():
         "pelanggan": pelanggan_id or "",
         "sales": sales_id or "",
     }
-    filter_active = any([search_query, pelanggan_id, sales_id])
+    filter_active = any([search_query, pelanggan_id, sales_id]) and not open_id
 
     sales_options = (
         User.query.filter(User.role.in_(SALES_ROLES)).order_by(User.username.asc()).all()
@@ -9668,6 +11944,7 @@ def pembayaran_piutang():
         sales_options=sales_options,
         customer_options=customer_options,
         format_date=_format_date_id,
+        open_id=open_id,
     )
 
 
@@ -9712,7 +11989,7 @@ def pembayaran_piutang_bayar():
             else url_for("main.pembayaran_piutang")
         )
 
-    allowed_methods = {"Tunai", "Transfer", "Kartu"}
+    allowed_methods = {"Tunai", "Transfer", "Kartu", "QRIS"}
     if payment_method not in allowed_methods:
         payment_method = "Tunai"
 
@@ -9775,7 +12052,7 @@ def pembayaran_piutang_history(sale_id):
     )
     payload = []
     for payment in payments:
-        paid_at = payment.paid_at or datetime.utcnow()
+        paid_at = payment.paid_at or local_now()
         date_label = f"{_format_date_id(paid_at.date())} {paid_at.strftime('%H:%M')}"
         payload.append(
             {
@@ -9804,7 +12081,7 @@ def laporan_penjualan_suggest():
     if len(term) < 2:
         return jsonify({"results": []})
 
-    today = datetime.utcnow().date()
+    today = local_today()
     default_start = today.replace(day=1)
     start_date = _parse_date_param(request.args.get("start_date")) or default_start
     end_date = _parse_date_param(request.args.get("end_date")) or today

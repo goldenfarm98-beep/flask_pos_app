@@ -41,6 +41,44 @@
         .badge-light { background-color: var(--bs-light) !important; color: #111827 !important; }
         .badge-dark { background-color: var(--bs-dark) !important; color: #fff !important; }
         .badge-soft-primary { background: rgba(59, 125, 221, 0.16) !important; color: #2f64b1 !important; font-weight: 600; }
+        /* Tooltip styling for a cleaner, modern feel. */
+        .tooltip {
+            --tooltip-bg: rgba(15, 23, 42, 0.95);
+            --tooltip-text: #f8fafc;
+            --tooltip-shadow: 0 12px 24px rgba(15, 23, 42, 0.18), 0 4px 10px rgba(15, 23, 42, 0.12);
+        }
+        .tooltip .tooltip-inner {
+            background: var(--tooltip-bg);
+            color: var(--tooltip-text);
+            font-size: 0.75rem;
+            padding: 0.45rem 0.7rem;
+            border-radius: 0.6rem;
+            box-shadow: var(--tooltip-shadow);
+            letter-spacing: 0.02em;
+        }
+        .tooltip .tooltip-arrow::before,
+        .tooltip .arrow::before {
+            border-top-color: var(--tooltip-bg) !important;
+            border-bottom-color: var(--tooltip-bg) !important;
+            border-left-color: var(--tooltip-bg) !important;
+            border-right-color: var(--tooltip-bg) !important;
+        }
+        .bs-tooltip-top .tooltip-arrow::before,
+        .bs-tooltip-top .arrow::before {
+            border-top-color: var(--tooltip-bg) !important;
+        }
+        .bs-tooltip-bottom .tooltip-arrow::before,
+        .bs-tooltip-bottom .arrow::before {
+            border-bottom-color: var(--tooltip-bg) !important;
+        }
+        .bs-tooltip-start .tooltip-arrow::before,
+        .bs-tooltip-left .arrow::before {
+            border-left-color: var(--tooltip-bg) !important;
+        }
+        .bs-tooltip-end .tooltip-arrow::before,
+        .bs-tooltip-right .arrow::before {
+            border-right-color: var(--tooltip-bg) !important;
+        }
         /* Pagination (AdminKit build doesn't ship Bootstrap pagination styles). */
         .pagination {
             display: flex;
@@ -136,6 +174,8 @@
         .custom-file { position: relative; display: block; width: 100%; }
         .custom-file-input { width: 100%; }
         .custom-file-label { display: block; padding: .375rem .75rem; border: 1px solid rgba(0,0,0,.15); border-radius: .25rem; background: #fff; }
+        .sidebar-brand-title { display: block; font-weight: 700; letter-spacing: 0.02em; }
+        .sidebar-brand-subtitle { display: block; font-size: 0.65rem; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.7; margin-top: 0.1rem; }
         .close { background: transparent; border: 0; font-size: 1.25rem; line-height: 1; opacity: .5; }
         .close:hover { opacity: .75; }
 
@@ -239,6 +279,18 @@
         .flash-toast.toast-warning .toast-progress > span { background: rgba(252, 185, 44, 0.75); }
         .flash-toast.toast-info .toast-icon { background: rgba(23, 162, 184, 0.14); color: #09414a; }
         .flash-toast.toast-info .toast-progress > span { background: rgba(23, 162, 184, 0.65); }
+        .sidebar-submenu-caret {
+            margin-left: auto;
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.75rem;
+            opacity: 0.7;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+        .sidebar-link[aria-expanded="true"] .sidebar-submenu-caret {
+            transform: rotate(180deg);
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -247,8 +299,10 @@
         {% set primary_links = [
             {'label': 'Dashboard', 'endpoint': 'main.dashboard', 'icon': 'fa-tachometer-alt', 'active_prefix': 'main.dashboard'},
             {'label': 'Penjualan', 'endpoint': 'main.penjualan', 'icon': 'fa-cash-register', 'active_prefix': 'main.penjualan'},
-            {'label': 'Data Penjualan', 'endpoint': 'main.data_penjualan', 'icon': 'fa-list', 'active_prefix': 'main.data_penjualan'},
-            {'label': 'Pembelian', 'endpoint': 'main.pembelian', 'icon': 'fa-shopping-cart', 'active_prefix': 'main.pembelian'}
+            {'label': 'Quotation', 'endpoint': 'main.quotation_list', 'icon': 'fa-file-invoice', 'active_endpoints': ['main.quotation_list', 'main.quotation_create', 'main.quotation_print', 'main.quotation_cancel', 'main.quotation_convert'], 'active_prefix': 'main.quotation'},
+            {'label': 'Data Penjualan', 'endpoint': 'main.data_penjualan', 'icon': 'fa-list', 'active_endpoints': ['main.data_penjualan'], 'active_prefix': 'main.data_penjualan'},
+            {'label': 'Pembelian', 'endpoint': 'main.pembelian', 'icon': 'fa-shopping-cart', 'active_endpoints': ['main.pembelian'], 'active_prefix': 'main.pembelian'},
+            {'label': 'Purchase Order', 'endpoint': 'main.pembelian_po_list', 'icon': 'fa-clipboard-list', 'active_endpoints': ['main.pembelian_po_list', 'main.pembelian_po_new', 'main.pembelian_po_detail', 'main.pembelian_po_edit', 'main.pembelian_po_print', 'main.pembelian_po_export', 'main.pembelian_po_approve', 'main.pembelian_po_send', 'main.pembelian_po_receive', 'main.pembelian_po_cancel'], 'active_prefix': 'main.pembelian_po'}
         ] %}
         {% set grouped_links = [
             {
@@ -271,6 +325,7 @@
                 'links': [
                     {'label': 'Laporan Supplier', 'endpoint': 'main.laporan_supplier', 'active_prefix': 'main.laporan_supplier'},
                     {'label': 'Laporan Penjualan', 'endpoint': 'main.laporan_penjualan_report', 'active_prefix': 'main.laporan_penjualan_report'},
+                    {'label': 'Laporan Shift', 'endpoint': 'main.laporan_shift', 'active_prefix': 'main.laporan_shift'},
                     {'label': 'Laporan Piutang', 'endpoint': 'main.laporan_piutang', 'active_prefix': 'main.laporan_piutang'},
                     {'label': 'Laporan Pembelian', 'endpoint': 'main.laporan_pembelian', 'active_prefix': 'main.laporan_pembelian'},
                     {'label': 'Laporan Stok Opname', 'endpoint': 'main.laporan_stok_opname', 'active_prefix': 'main.laporan_stok_opname'},
@@ -301,6 +356,7 @@
                 'links': [
                     {'label': 'Profil Perusahaan', 'endpoint': 'main.pengaturan_perusahaan', 'active_prefix': 'main.pengaturan_perusahaan'},
                     {'label': 'Faktur & Pajak', 'endpoint': 'main.pengaturan_faktur_pajak', 'active_prefix': 'main.pengaturan_faktur_pajak'},
+                    {'label': 'Pengaturan Struk', 'endpoint': 'main.pengaturan_struk', 'active_prefix': 'main.pengaturan_struk'},
                     {'label': 'Metode Pembayaran', 'endpoint': 'main.metode_pembayaran', 'active_prefix': 'main.metode_pembayaran'},
                     {'label': 'Database', 'endpoint': 'main.pengaturan_database', 'active_prefix': 'main.pengaturan_database'},
                     {'label': 'Manajemen User', 'endpoint': 'main.sales_staff', 'active_prefix': 'main.sales_staff'}
@@ -312,6 +368,7 @@
                 'links': [
                     {'label': 'Data Akun', 'endpoint': 'main.akun', 'active_prefix': 'main.akun'},
                     {'label': 'Jurnal Umum', 'endpoint': 'main.jurnal', 'active_prefix': 'main.jurnal'},
+                    {'label': 'Biaya Operasional', 'endpoint': 'main.biaya_operasional', 'active_prefix': 'main.biaya_operasional'},
                     {'label': 'COGS Otomatis', 'endpoint': 'main.accounting_settings', 'active_prefix': 'main.accounting_settings'},
                     {'label': 'Tutup Buku', 'endpoint': 'main.close_books', 'active_prefix': 'main.close_books'}
                 ]
@@ -336,7 +393,8 @@
         <nav id="sidebar" class="sidebar js-sidebar">
             <div class="sidebar-content js-simplebar">
                 <a class="sidebar-brand" href="{{ url_for('main.dashboard') if session.get('user_id') else url_for('main.index') }}">
-                    <span class="align-middle">Kasir Pintar</span>
+                    <span class="sidebar-brand-title">Kasir Pintar</span>
+                    <span class="sidebar-brand-subtitle">by CV. Golden Farm 99</span>
                 </a>
 
                 <ul class="sidebar-nav">
@@ -344,7 +402,11 @@
 
                     {% for item in primary_links %}
                         {% if not (session.get('role') == 'gudang' and item.label == 'Data Penjualan') %}
-                            {% set is_active = current.startswith(item.active_prefix) %}
+                            {% if item.active_endpoints is defined %}
+                                {% set is_active = current in item.active_endpoints %}
+                            {% else %}
+                                {% set is_active = current.startswith(item.active_prefix) %}
+                            {% endif %}
                             <li class="sidebar-item {% if is_active %}active{% endif %}">
                                 <a class="sidebar-link" href="{{ url_for(item.endpoint) }}">
                                     <i class="align-middle fas {{ item.icon }}"></i> <span class="align-middle">{{ item.label }}</span>
@@ -370,6 +432,7 @@
                         <li class="sidebar-item {% if ns.group_active %}active{% endif %}">
                             <a class="sidebar-link {% if not ns.group_active %}collapsed{% endif %}" data-bs-toggle="collapse" href="#{{ collapse_id }}" role="button" aria-expanded="{{ 'true' if ns.group_active else 'false' }}" aria-controls="{{ collapse_id }}">
                                 <i class="align-middle fas {{ group.icon }}"></i> <span class="align-middle">{{ group.label }}</span>
+                                <span class="sidebar-submenu-caret"><i class="fas fa-chevron-down"></i></span>
                             </a>
                             <div class="collapse {% if ns.group_active %}show{% endif %}" id="{{ collapse_id }}">
                                 <ul class="sidebar-dropdown list-unstyled">

@@ -42,6 +42,30 @@
                             </select>
                             <small class="form-text text-muted">Akun yang akan didebit saat HPP dicatat otomatis.</small>
                         </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Akun Beban Marketplace</label>
+                            <select name="marketplace_expense_account" class="custom-select">
+                                <option value="">Pilih akun beban marketplace</option>
+                                {% for account in accounts %}
+                                    <option value="{{ account.id }}" {% if settings and settings.marketplace_expense_account_id == account.id %}selected{% endif %}>
+                                        {{ account.code }} — {{ account.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Akun yang didebit ketika fee marketplace dicatat otomatis.</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-semibold">Akun Utang Marketplace</label>
+                            <select name="marketplace_payable_account" class="custom-select">
+                                <option value="">Pilih akun utang marketplace</option>
+                                {% for account in accounts %}
+                                    <option value="{{ account.id }}" {% if settings and settings.marketplace_payable_account_id == account.id %}selected{% endif %}>
+                                        {{ account.code }} — {{ account.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Akun kewajiban yang dikredit untuk menampung fee marketplace.</small>
+                        </div>
                         <button class="btn btn-primary btn-block font-weight-bold">
                             <i class="fas fa-sync-alt mr-2"></i>Perbarui pengaturan
                         </button>
@@ -82,6 +106,13 @@
                             Modul siap berjalan karena kedua akun sudah ditentukan.
                         {% else %}
                             Lengkapi konfigurasi akun agar jurnal COGS otomatis dapat berjalan.
+                        {% endif %}
+                    </div>
+                    <div class="alert alert-light border-dashed mt-3 mb-0" role="alert">
+                        {% if settings and settings.marketplace_expense_account and settings.marketplace_payable_account %}
+                            Otomasi biaya marketplace siap digunakan.
+                        {% else %}
+                            Tentukan akun beban dan utang marketplace agar fee otomatis tercatat.
                         {% endif %}
                     </div>
                 </div>

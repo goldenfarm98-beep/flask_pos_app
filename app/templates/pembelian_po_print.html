@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cetak Purchase Order</title>
+    <style>
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            color: #0f172a;
+            margin: 24px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+            gap: 16px;
+        }
+        .company-info {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .company-logo {
+            width: 56px;
+            height: 56px;
+            object-fit: contain;
+        }
+        h1 {
+            font-size: 1.4rem;
+            margin: 0 0 4px 0;
+        }
+        .meta {
+            font-size: 0.9rem;
+            color: #475569;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .info-grid small {
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            font-size: 0.7rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        thead th {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            text-align: left;
+            color: #475569;
+            border-bottom: 1px solid #cbd5f5;
+            padding: 8px 6px;
+        }
+        tbody td {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 8px 6px;
+            font-size: 0.9rem;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .summary {
+            margin-top: 16px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 24px;
+            font-weight: 600;
+            flex-wrap: wrap;
+        }
+        .print-actions {
+            margin-top: 16px;
+        }
+        .print-actions button {
+            padding: 8px 14px;
+            border: 1px solid #0f172a;
+            background: #0f172a;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+        @media print {
+            .print-actions {
+                display: none;
+            }
+            body {
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="company-info">
+            {% if company_profile.logo_url %}
+            <img src="{{ company_profile.logo_url }}" alt="Logo" class="company-logo">
+            {% endif %}
+            <div>
+                <h1>{{ company_profile.name }}</h1>
+                <div class="meta">{{ company_profile.address }}, {{ company_profile.city }}</div>
+                <div class="meta">Telp: {{ company_profile.phone }} - {{ company_profile.email }}</div>
+                {% if company_profile.website %}
+                <div class="meta">{{ company_profile.website }}</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="meta text-right">
+            <div><strong>Purchase Order</strong></div>
+            <div>No: {{ po.po_number }}</div>
+            <div>Dicetak: {{ printed_at.strftime('%d %b %Y %H:%M') }}</div>
+        </div>
+    </div>
+
+    <div class="info-grid">
+        <div>
+            <small>Supplier</small>
+            <div>{{ po.supplier.name if po.supplier else '-' }}</div>
+        </div>
+        <div>
+            <small>Status</small>
+            <div>{{ po.status|upper }}</div>
+        </div>
+        <div>
+            <small>Tanggal</small>
+            <div>{{ po.created_at.strftime('%d %b %Y') if po.created_at else '-' }}</div>
+        </div>
+        <div>
+            <small>Estimasi Datang</small>
+            <div>{{ po.expected_date.strftime('%d %b %Y') if po.expected_date else '-' }}</div>
+        </div>
+        <div>
+            <small>Catatan</small>
+            <div>{{ po.note or '-' }}</div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>No</th>
+                <th>Produk</th>
+                <th>Kode</th>
+                <th class="text-right">Qty</th>
+                <th class="text-right">Harga</th>
+                <th class="text-right">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in po.items %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ item.product_name }}</td>
+                    <td>{{ item.product_code or '-' }}</td>
+                    <td class="text-right">{{ '{:,.0f}'.format(item.qty).replace(',', '.') }}</td>
+                    <td class="text-right">Rp {{ '{:,.0f}'.format(item.unit_price).replace(',', '.') }}</td>
+                    <td class="text-right">Rp {{ '{:,.0f}'.format(item.total_price).replace(',', '.') }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="summary">
+        <span>Subtotal: Rp {{ '{:,.0f}'.format(po.subtotal_estimate).replace(',', '.') }}</span>
+        <span>Pajak ({{ '{:.1f}'.format(po.tax_percent).replace(',', '.') }}%): Rp {{ '{:,.0f}'.format(po.tax_total).replace(',', '.') }}</span>
+        <span>Ongkir: Rp {{ '{:,.0f}'.format(po.shipping_fee).replace(',', '.') }}</span>
+        <span>Total: Rp {{ '{:,.0f}'.format(po.grand_total_estimate).replace(',', '.') }}</span>
+    </div>
+
+    <div class="print-actions">
+        <button type="button" onclick="window.print()">Cetak</button>
+    </div>
+</body>
+</html>

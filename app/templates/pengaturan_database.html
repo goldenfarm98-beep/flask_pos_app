@@ -112,7 +112,11 @@
                                         <td>{{ backup.size|filesizeformat }}</td>
                                         <td>{{ backup.mtime.strftime('%d %b %Y %H:%M') }}</td>
                                         <td class="text-right">
-                                            <form method="POST" action="{{ url_for('main.pengaturan_database') }}">
+                                            <a class="btn btn-sm btn-outline-primary mr-2"
+                                                href="{{ url_for('main.download_db_backup', backup_name=backup.name) }}">
+                                                <i class="fas fa-download mr-1"></i>Download
+                                            </a>
+                                            <form method="POST" action="{{ url_for('main.pengaturan_database') }}" class="d-inline">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 <input type="hidden" name="action" value="delete">
                                                 <input type="hidden" name="backup_name" value="{{ backup.name }}">

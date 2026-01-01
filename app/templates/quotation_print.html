@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Invoice {{ sale.no_faktur }}</title>
+    <title>Quotation {{ quotation.quote_number }}</title>
     <style>
         @page {
             size: A4;
@@ -46,6 +46,16 @@
             background: #2563eb;
             color: #fff;
             border-color: #2563eb;
+        }
+
+        .draft-note {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            color: #92400e;
+            font-size: 0.85rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            margin-bottom: 0.8rem;
         }
 
         .header {
@@ -111,67 +121,60 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 1rem;
-            font-size: 0.92rem;
+            font-size: 0.9rem;
         }
 
         .table th,
         .table td {
-            border: 1px solid #111827;
-            padding: 6px;
+            padding: 0.45rem 0.4rem;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
         }
 
-        .table th {
-            text-align: center;
-        }
-
-        .table td {
-            vertical-align: top;
-        }
-
-        .text-center {
-            text-align: center;
-        }
-
-        .text-right {
-            text-align: right;
+        .table thead th {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.08rem;
+            color: #6b7280;
         }
 
         .summary {
-            display: grid;
-            grid-template-columns: 1fr 200px;
-            gap: 1rem;
-            margin-top: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+            gap: 1.5rem;
         }
 
         .summary table {
-            width: 100%;
+            width: 240px;
             border-collapse: collapse;
         }
 
         .summary td {
-            border: 1px solid #111827;
-            padding: 6px;
+            padding: 3px 0;
         }
 
         .summary .label {
-            width: 60%;
+            color: #6b7280;
+            font-size: 0.85rem;
         }
 
         .signatures {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1rem;
-            margin-top: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            margin-top: 2rem;
             font-size: 0.9rem;
         }
 
         .signature-box {
             text-align: center;
+            width: 45%;
         }
 
         .signature-line {
-            border-bottom: 1px solid #111827;
             margin-top: 4.5rem;
+            border-top: 1px solid #1f2937;
+            padding-top: 0.4rem;
         }
 
         @media print {
@@ -190,11 +193,15 @@
 </head>
 <body>
     <div class="action-bar">
-        <a class="btn btn-primary" href="#" onclick="window.print();return false;">Cetak Invoice</a>
-        <a class="btn" href="{{ url_for('main.penjualan_receipt', sale_id=sale.id) }}">Kembali</a>
+        <a href="#" onclick="window.print(); return false;" class="btn btn-primary">Cetak</a>
+        <a href="{{ url_for('main.quotation_list') }}" class="btn">Kembali</a>
     </div>
 
     <div class="page">
+        <div class="draft-note">
+            Dokumen ini adalah quotation (penawaran harga) dan belum tercatat sebagai penjualan.
+        </div>
+
         <div class="header">
             <div class="logo">
                 {% if company_profile.logo_url %}
@@ -207,23 +214,25 @@
                 <h1>{{ company_profile.name }}</h1>
                 <div>{{ company_profile.address }}</div>
                 <div>{{ company_profile.city }}</div>
-                <div>{{ company_profile.phone }}</div>
+                <div>Telp: {{ company_profile.phone }}</div>
                 <div>{{ company_profile.website }}</div>
             </div>
-            <div class="doc-title">INVOICE</div>
+            <div style="margin-left:auto;">
+                <div class="doc-title">QUOTATION</div>
+            </div>
         </div>
 
         <div class="meta-grid">
             <table>
                 <tr><td><strong>Kepada Yth.</strong></td><td></td></tr>
-                <tr><td>Nama</td><td>: {{ sale.pelanggan.nama if sale.pelanggan else 'Customer' }}</td></tr>
-                <tr><td>No. Telp</td><td>: {{ sale.pelanggan.kontak if sale.pelanggan else '-' }}</td></tr>
-                <tr><td>Alamat</td><td>: {{ sale.pelanggan.alamat if sale.pelanggan else '-' }}</td></tr>
+                <tr><td>Nama</td><td>: {{ customer.name }}</td></tr>
+                <tr><td>No. Telp</td><td>: {{ customer.phone }}</td></tr>
+                <tr><td>Alamat</td><td>: {{ customer.address }}</td></tr>
             </table>
             <table>
-                <tr><td>Sales</td><td>: {{ sale.sales.username if sale.sales else '-' }}</td></tr>
-                <tr><td>No. Invoice</td><td>: {{ sale.no_faktur }}</td></tr>
-                <tr><td>Tanggal</td><td>: {{ sale.tanggal_penjualan.strftime('%d %b %Y') if sale.tanggal_penjualan else '-' }}</td></tr>
+                <tr><td>Sales</td><td>: {{ sales_name }}</td></tr>
+                <tr><td>No. Quotation</td><td>: {{ quotation.quote_number }}</td></tr>
+                <tr><td>Tanggal</td><td>: {{ quotation.created_at.strftime('%d %b %Y') if quotation.created_at else '-' }}</td></tr>
                 <tr><td>Pembayaran</td><td>: {{ payment_label }}</td></tr>
             </table>
         </div>
@@ -243,7 +252,7 @@
             <tbody>
                 {% for item in items %}
                 <tr>
-                    <td>{{ item.name }}</td>
+                    <td>{{ item.product_name }}</td>
                     <td class="text-center">{{ item.qty }}</td>
                     <td class="text-center">{{ '{:.2f}'.format(item.unit_weight) }}</td>
                     <td class="text-center">{{ '{:.2f}'.format(item.total_weight) }}</td>
@@ -262,32 +271,32 @@
 
         <div class="summary">
             <div>
-                <div><strong>Total Berat</strong> : {{ '{:.2f}'.format(total_weight) }} Kg</div>
-                <div><strong>Expedisi</strong> : {{ sale.expedition.name if sale.expedition else '-' }}</div>
-                {% if sale.payment_method in ['Transfer', 'QRIS'] %}
+                <div><strong>Total Berat</strong> : {{ '{:.2f}'.format(quotation.total_weight) }} Kg</div>
+                <div><strong>Expedisi</strong> : {{ expedition_name }}</div>
+                {% if quotation.payment_method in ['Transfer', 'QRIS'] %}
                 <div><strong>Note</strong> : Pembayaran ke {{ company_profile.bank_info }}</div>
                 {% endif %}
             </div>
             <table>
                 <tr>
                     <td class="label">Sub Total</td>
-                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(subtotal)).replace(',', '.') }}</td>
+                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(quotation.subtotal)).replace(',', '.') }}</td>
                 </tr>
                 <tr>
                     <td class="label">Diskon</td>
-                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(discount_total)).replace(',', '.') }}</td>
+                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(quotation.discount_total)).replace(',', '.') }}</td>
                 </tr>
                 <tr>
                     <td class="label">Pajak</td>
-                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(tax_total)).replace(',', '.') }}</td>
+                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(quotation.tax_total)).replace(',', '.') }}</td>
                 </tr>
                 <tr>
                     <td class="label">Biaya Pengiriman</td>
-                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(shipping_fee)).replace(',', '.') }}</td>
+                    <td style="text-align:right;">{{ ('Rp {:,.0f}'.format(quotation.shipping_fee)).replace(',', '.') }}</td>
                 </tr>
                 <tr>
                     <td class="label"><strong>TOTAL</strong></td>
-                    <td style="text-align:right;"><strong>{{ ('Rp {:,.0f}'.format(grand_total)).replace(',', '.') }}</strong></td>
+                    <td style="text-align:right;"><strong>{{ ('Rp {:,.0f}'.format(quotation.grand_total)).replace(',', '.') }}</strong></td>
                 </tr>
             </table>
         </div>
@@ -295,12 +304,11 @@
         <div class="signatures">
             <div class="signature-box">
                 Penerima / Pembeli
-                <div class="signature-line"></div>
+                <div class="signature-line">(................................)</div>
             </div>
             <div class="signature-box">
-                {{ company_profile.name }}
-                <div class="signature-line"></div>
-                Administrator
+                Hormat Kami
+                <div class="signature-line">(................................)</div>
             </div>
         </div>
     </div>

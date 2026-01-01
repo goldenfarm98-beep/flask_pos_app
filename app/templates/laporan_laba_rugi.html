@@ -16,12 +16,12 @@
             <div class="flex-fill pr-lg-4">
                 <p class="eyebrow text-uppercase mb-2">Laporan Laba Rugi</p>
                 <h1 class="display-5 mb-2 text-navy">Insight profit realtime</h1>
-                <p class="mb-0 text-muted">Pantau kesehatan bisnis dengan memonitor penjualan, HPP, dan laba kotor dalam satu tampilan modern.</p>
+                <p class="mb-0 text-muted">Pantau kesehatan bisnis dengan memonitor penjualan, HPP, laba kotor, dan laba bersih dalam satu tampilan modern.</p>
             </div>
             <div class="report-period text-lg-right mt-4 mt-lg-0">
                 <small class="text-uppercase text-muted">Periode aktif</small>
                 <div class="h4 font-weight-bold mb-1">{{ range_label }}</div>
-                <span class="badge badge-pill badge-soft-success">Margin {{ '%.1f'|format(margin_percent) }}%</span>
+                <span class="badge badge-pill badge-soft-success">Margin kotor {{ '%.1f'|format(gross_margin_percent) }}% • bersih {{ '%.1f'|format(net_margin_percent) }}%</span>
             </div>
         </div>
         <div class="card-footer bg-transparent">
@@ -67,7 +67,7 @@
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div>
                             <p class="eyebrow text-uppercase mb-1">Tren harian</p>
-                            <h3 class="h5 mb-0">Revenue vs Laba Kotor</h3>
+                            <h3 class="h5 mb-0">Penjualan kotor vs Laba Kotor</h3>
                         </div>
                         <span class="badge badge-pill badge-light">{{ daily_points|length }} hari dianalisis</span>
                     </div>
@@ -91,9 +91,9 @@
                             <thead class="text-muted text-uppercase small">
                                 <tr>
                                     <th>Bulan</th>
-                                    <th class="text-right">Penjualan bersih</th>
+                                    <th class="text-right">Penjualan kotor</th>
                                     <th class="text-right">Laba kotor</th>
-                                    <th class="text-right">Margin</th>
+                                    <th class="text-right">Margin kotor</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -183,12 +183,12 @@
                             <div class="value text-warning">{{ format_currency(totals.discount) }}</div>
                         </div>
                         <div>
-                            <span class="label">Margin</span>
-                            <div class="value">{{ '%.1f'|format(margin_percent) }}%</div>
+                            <span class="label">Margin kotor</span>
+                            <div class="value">{{ '%.1f'|format(gross_margin_percent) }}%</div>
                         </div>
                         <div>
-                            <span class="label">Avg order</span>
-                            <div class="value">{{ format_currency(average_order) }}</div>
+                            <span class="label">Margin bersih</span>
+                            <div class="value">{{ '%.1f'|format(net_margin_percent) }}%</div>
                         </div>
                     </div>
                 </div>
@@ -222,7 +222,7 @@
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Revenue',
+                        label: 'Penjualan kotor',
                         data: revenueData,
                         borderColor: '#2563eb',
                         backgroundColor: 'rgba(37, 99, 235, 0.1)',

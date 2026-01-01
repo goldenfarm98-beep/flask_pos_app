@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Purchase Order{% endblock %}
+
+{% block content %}
+<section class="po-list">
+    <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
+        <div>
+            <h1 class="h4 font-weight-bold mb-1">Purchase Order</h1>
+            <p class="text-muted mb-0">Kelola PO dari draft sampai diterima sebelum membuat pembelian.</p>
+        </div>
+        <div class="btn-group mt-2 mt-md-0">
+            <a href="{{ url_for('main.pembelian_po_new') }}" class="btn btn-sm btn-primary">
+                <i class="fas fa-plus-circle mr-1"></i>Buat PO
+            </a>
+            <a href="{{ url_for('main.pembelian') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-file-invoice mr-1"></i>Pembelian
+            </a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form method="get">
+                <div class="form-row">
+                    <div class="form-group col-md-4">
+                        <label class="text-muted small text-uppercase">Cari PO</label>
+                        <input type="text" class="form-control" name="search" placeholder="Nomor PO" value="{{ filter_values.search }}">
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label class="text-muted small text-uppercase">Supplier</label>
+                        <select class="custom-select" name="supplier">
+                            <option value="">Semua supplier</option>
+                            {% for supplier in supplier_options %}
+                                <option value="{{ supplier.id }}" {% if filter_values.supplier == supplier.id %}selected{% endif %}>{{ supplier.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label class="text-muted small text-uppercase">Status</label>
+                        <select class="custom-select" name="status">
+                            <option value="all" {% if filter_values.status == 'all' %}selected{% endif %}>Semua</option>
+                            <option value="draft" {% if filter_values.status == 'draft' %}selected{% endif %}>Draft</option>
+                            <option value="approved" {% if filter_values.status == 'approved' %}selected{% endif %}>Approved</option>
+                            <option value="sent" {% if filter_values.status == 'sent' %}selected{% endif %}>Sent</option>
+                            <option value="received" {% if filter_values.status == 'received' %}selected{% endif %}>Received</option>
+                            <option value="cancelled" {% if filter_values.status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-filter mr-1"></i>Terapkan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Nomor PO</th>
+                        <th>Supplier</th>
+                        <th>Tanggal</th>
+                        <th class="text-center">Item</th>
+                        <th class="text-right">Estimasi Total</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if purchase_orders %}
+                        {% for po in purchase_orders %}
+                        <tr>
+                            <td class="font-weight-semibold">{{ po.po_number }}</td>
+                            <td>{{ po.supplier.name if po.supplier else '-' }}</td>
+                            <td>{{ po.created_at.strftime('%d %b %Y') if po.created_at else '-' }}</td>
+                            <td class="text-center">{{ po.items|length }}</td>
+                            <td class="text-right font-weight-semibold">{{ ('Rp {:,.0f}'.format(po.grand_total_estimate)).replace(',', '.') }}</td>
+                            <td class="text-center">
+                                {% if po.status == 'draft' %}
+                                    <span class="badge badge-warning">Draft</span>
+                                {% elif po.status == 'approved' %}
+                                    <span class="badge badge-info">Approved</span>
+                                {% elif po.status == 'sent' %}
+                                    <span class="badge badge-primary">Sent</span>
+                                {% elif po.status == 'received' %}
+                                    <span class="badge badge-success">Received</span>
+                                {% else %}
+                                    <span class="badge badge-secondary">Cancelled</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <a href="{{ url_for('main.pembelian_po_detail', po_id=po.id) }}" class="btn btn-sm btn-outline-primary">Detail</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">Belum ada PO.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}

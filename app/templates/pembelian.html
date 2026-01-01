@@ -18,6 +18,18 @@
     </div>
 </div>
 
+{% if po_prefill %}
+<div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
+    <div>
+        <strong>Prefill dari PO {{ po_prefill.po_number }}</strong>
+        <span class="text-muted ml-2">Silakan cek ulang harga invoice sebelum simpan pembelian.</span>
+    </div>
+    <a href="{{ url_for('main.pembelian_po_detail', po_id=po_prefill.po_id) }}" class="btn btn-sm btn-outline-info mt-2 mt-sm-0">
+        Lihat PO
+    </a>
+</div>
+{% endif %}
+
 {% if purchase_stat_cards %}
 <div class="row stat-grid mb-4">
     {% for card in purchase_stat_cards %}
@@ -312,6 +324,7 @@
 
 <script type="application/json" id="supplier-data">{{ supplier_lookup|tojson }}</script>
 <script type="application/json" id="product-data">{{ product_payload|tojson }}</script>
+<script type="application/json" id="po-prefill-data">{{ po_prefill|tojson }}</script>
 
 <style>
     .hero-card {
@@ -455,8 +468,10 @@
 document.addEventListener('DOMContentLoaded', function () {
     const supplierDataScript = document.getElementById('supplier-data');
     const productDataScript = document.getElementById('product-data');
+    const poPrefillScript = document.getElementById('po-prefill-data');
     const supplierMap = supplierDataScript ? JSON.parse(supplierDataScript.textContent || '{}') : {};
     const products = productDataScript ? JSON.parse(productDataScript.textContent || '[]') : [];
+    const poPrefill = poPrefillScript ? JSON.parse(poPrefillScript.textContent || 'null') : null;
 
     const supplierSelect = document.getElementById('supplier_id');
     const supplierMeta = document.getElementById('supplier-meta');
@@ -590,6 +605,33 @@ function sanitizeNumericString(value) {
     function formatNumberInput(value) {
         const raw = parseNumber(sanitizeNumericString(value));
         return raw ? raw.toLocaleString('id-ID') : '';
+    }
+
+    function applyPoPrefill(prefill) {
+        if (!prefill || !Array.isArray(prefill.items)) {
+            return;
+        }
+        if (supplierSelect && prefill.supplier_id) {
+            supplierSelect.value = String(prefill.supplier_id);
+            updateSupplierMeta();
+        }
+        const normalizedItems = prefill.items
+            .map(item => ({
+                kode_barang: (item.kode_barang || '').toString(),
+                nama_barang: (item.nama_barang || '').toString(),
+                kategori: item.kategori || 'Tanpa kategori',
+                satuan: item.satuan || '',
+                jumlah: parseNumber(item.jumlah || 0),
+                harga_beli: parseNumber(item.harga_beli || 0),
+                diskon: parseNumber(item.diskon || 0),
+                pajak: item.pajak == null ? defaultPurchaseTax : parseNumber(item.pajak),
+                harga_jual: parseNumber(item.harga_jual || 0),
+                exp_date: item.exp_date || null
+            }))
+            .filter(item => item.kode_barang && item.nama_barang && item.kategori && item.jumlah > 0);
+        if (normalizedItems.length) {
+            state.items = normalizedItems;
+        }
     }
 
     function calculateMetrics(item) {
@@ -1137,6 +1179,7 @@ function resetEntryForm() {
         }
     });
 
+    applyPoPrefill(poPrefill);
     renderItemsTable();
     updateEntryHPPPreview();
 });
