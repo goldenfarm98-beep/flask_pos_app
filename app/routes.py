@@ -480,6 +480,53 @@ def _parse_bool_param(value, default=False):
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _parse_journal_lines(payload):
+    lines = payload.get("lines") or []
+    if not lines or len(lines) < 2:
+        return None, "Minimal dua baris jurnal (debit/kredit)."
+
+    total_debit = 0.0
+    total_credit = 0.0
+    parsed_lines = []
+    for idx, raw in enumerate(lines, start=1):
+        account_id = raw.get("account_id")
+        description = (raw.get("description") or "").strip()
+        try:
+            account_id = int(account_id)
+        except (TypeError, ValueError):
+            return None, f"Akun tidak valid (baris {idx})."
+        account = Account.query.get(account_id)
+        if not account:
+            return None, f"Akun ID {account_id} tidak ditemukan (baris {idx})."
+        try:
+            debit = float(raw.get("debit") or 0.0)
+            credit = float(raw.get("credit") or 0.0)
+        except (TypeError, ValueError):
+            return None, f"Nominal tidak valid (baris {idx})."
+        if debit < 0 or credit < 0:
+            return None, f"Debit/kredit tidak boleh negatif (baris {idx})."
+        if debit == 0 and credit == 0:
+            return None, f"Isi salah satu debit/kredit (baris {idx})."
+        if debit > 0 and credit > 0:
+            return None, f"Debit dan kredit tidak boleh diisi bersamaan (baris {idx})."
+
+        total_debit += debit
+        total_credit += credit
+        parsed_lines.append(
+            {
+                "account": account,
+                "description": description,
+                "debit": debit,
+                "credit": credit,
+            }
+        )
+
+    if round(total_debit, 2) != round(total_credit, 2):
+        return None, "Total debit dan kredit harus seimbang."
+
+    return parsed_lines, None
+
+
 def _get_company_profile():
     return {
         "name": os.environ.get("COMPANY_NAME", "GOLDEN FARM 99"),
@@ -4117,6 +4164,128 @@ def akun():
     )
 
 
+@bp.route("/saldo-awal", methods=["GET", "POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def saldo_awal():
+    _ensure_table(Account)
+    _ensure_table(JournalEntry)
+    _ensure_table(JournalLine)
+
+    accounts = Account.query.order_by(Account.code.asc()).all()
+    today = local_today()
+    default_date = today.replace(month=1, day=1)
+
+    if request.method == "POST":
+        date_value = _parse_date_param(request.form.get("date")) or default_date
+        memo_note = (request.form.get("memo") or "").strip()
+        total_debit = 0.0
+        total_credit = 0.0
+        lines = []
+
+        for account in accounts:
+            raw_debit = (request.form.get(f"debit_{account.id}") or "").strip()
+            raw_credit = (request.form.get(f"credit_{account.id}") or "").strip()
+            debit = _parse_float_param(raw_debit) if raw_debit else 0.0
+            credit = _parse_float_param(raw_credit) if raw_credit else 0.0
+
+            if debit is None or credit is None:
+                flash(
+                    f"Nominal tidak valid untuk akun {account.code}.",
+                    "warning",
+                )
+                return redirect(url_for("main.saldo_awal"))
+            if debit < 0 or credit < 0:
+                flash(
+                    f"Nominal negatif tidak diperbolehkan untuk akun {account.code}.",
+                    "warning",
+                )
+                return redirect(url_for("main.saldo_awal"))
+            if debit and credit:
+                flash(
+                    f"Akun {account.code} tidak boleh diisi debit dan kredit bersamaan.",
+                    "warning",
+                )
+                return redirect(url_for("main.saldo_awal"))
+            if debit or credit:
+                lines.append(
+                    {
+                        "account_id": account.id,
+                        "debit": float(debit or 0.0),
+                        "credit": float(credit or 0.0),
+                        "description": memo_note or None,
+                    }
+                )
+                total_debit += float(debit or 0.0)
+                total_credit += float(credit or 0.0)
+
+        if not lines:
+            flash("Isi minimal satu saldo awal.", "warning")
+            return redirect(url_for("main.saldo_awal"))
+        if round(total_debit, 2) != round(total_credit, 2):
+            flash("Total debit dan kredit harus seimbang.", "warning")
+            return redirect(url_for("main.saldo_awal"))
+
+        memo_prefix = "Saldo Awal"
+        memo = f"{memo_prefix} - {memo_note}" if memo_note else memo_prefix
+        entry = JournalEntry(
+            reference=_generate_journal_reference_with_prefix("SA"),
+            date=date_value,
+            memo=memo,
+            created_by=session.get("user_id"),
+        )
+        db.session.add(entry)
+        db.session.flush()
+
+        for line in lines:
+            db.session.add(
+                JournalLine(
+                    entry_id=entry.id,
+                    account_id=line["account_id"],
+                    description=line["description"],
+                    debit=line["debit"],
+                    credit=line["credit"],
+                )
+            )
+        db.session.commit()
+        flash("Saldo awal berhasil disimpan.", "success")
+        return redirect(url_for("main.saldo_awal"))
+
+    recent_entries = (
+        JournalEntry.query.options(
+            joinedload(JournalEntry.lines).joinedload(JournalLine.account)
+        )
+        .filter(JournalEntry.memo.ilike("Saldo Awal%"))
+        .order_by(JournalEntry.date.desc(), JournalEntry.id.desc())
+        .limit(5)
+        .all()
+    )
+
+    type_labels = {
+        "asset": "Aset",
+        "liability": "Liabilitas",
+        "equity": "Ekuitas",
+        "income": "Pendapatan",
+        "expense": "Beban",
+    }
+    normal_side = {
+        "asset": "Debit",
+        "expense": "Debit",
+        "liability": "Kredit",
+        "equity": "Kredit",
+        "income": "Kredit",
+    }
+
+    return render_template(
+        "saldo_awal.html",
+        accounts=accounts,
+        recent_entries=recent_entries,
+        default_date=default_date.strftime("%Y-%m-%d"),
+        type_labels=type_labels,
+        normal_side=normal_side,
+    )
+
+
 @bp.route("/pengaturan-akuntansi", methods=["GET", "POST"])
 @login_required
 @roles_required(*ADMIN_ONLY)
@@ -4331,118 +4500,15 @@ def jurnal():
         if not request.is_json:
             return jsonify({"success": False, "message": "Gunakan JSON payload."}), 415
         payload = request.get_json(silent=True) or {}
-        lines = payload.get("lines") or []
-        if not lines or len(lines) < 2:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "Minimal dua baris jurnal (debit/kredit).",
-                    }
-                ),
-                400,
-            )
+        parsed_lines, error_message = _parse_journal_lines(payload)
+        if error_message:
+            return jsonify({"success": False, "message": error_message}), 400
 
         date_value = _parse_date_param(payload.get("date")) or local_today()
         memo = (payload.get("memo") or "").strip()
         reference = (
             payload.get("reference") or ""
         ).strip() or _generate_journal_reference()
-
-        total_debit = 0.0
-        total_credit = 0.0
-        parsed_lines = []
-        for idx, raw in enumerate(lines, start=1):
-            account_id = raw.get("account_id")
-            description = (raw.get("description") or "").strip()
-            try:
-                account_id = int(account_id)
-            except (TypeError, ValueError):
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": f"Akun tidak valid (baris {idx}).",
-                        }
-                    ),
-                    400,
-                )
-            account = Account.query.get(account_id)
-            if not account:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": f"Akun ID {account_id} tidak ditemukan (baris {idx}).",
-                        }
-                    ),
-                    400,
-                )
-            try:
-                debit = float(raw.get("debit") or 0.0)
-                credit = float(raw.get("credit") or 0.0)
-            except (TypeError, ValueError):
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": f"Nominal tidak valid (baris {idx}).",
-                        }
-                    ),
-                    400,
-                )
-            if debit < 0 or credit < 0:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": f"Debit/kredit tidak boleh negatif (baris {idx}).",
-                        }
-                    ),
-                    400,
-                )
-            if debit == 0 and credit == 0:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": f"Isi salah satu debit/kredit (baris {idx}).",
-                        }
-                    ),
-                    400,
-                )
-            if debit > 0 and credit > 0:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": f"Debit dan kredit tidak boleh diisi bersamaan (baris {idx}).",
-                        }
-                    ),
-                    400,
-                )
-
-            total_debit += debit
-            total_credit += credit
-            parsed_lines.append(
-                {
-                    "account": account,
-                    "description": description,
-                    "debit": debit,
-                    "credit": credit,
-                }
-            )
-
-        if round(total_debit, 2) != round(total_credit, 2):
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "Total debit dan kredit harus seimbang.",
-                    }
-                ),
-                400,
-            )
 
         entry = JournalEntry(
             reference=reference,
@@ -4481,10 +4547,17 @@ def jurnal():
         }
         for account in accounts
     ]
+    exclude_adjustment = or_(
+        JournalEntry.memo.is_(None), ~JournalEntry.memo.ilike("Penyesuaian%")
+    )
+    exclude_opening = or_(
+        JournalEntry.memo.is_(None), ~JournalEntry.memo.ilike("Saldo Awal%")
+    )
     recent_entries = (
         JournalEntry.query.options(
             joinedload(JournalEntry.lines).joinedload(JournalLine.account)
         )
+        .filter(exclude_adjustment, exclude_opening)
         .order_by(JournalEntry.date.desc(), JournalEntry.id.desc())
         .limit(10)
         .all()
@@ -4515,6 +4588,397 @@ def jurnal():
         default_date=local_today().strftime("%Y-%m-%d"),
         net_revenue_total=total_net_revenue,
         marketplace_cost_total=total_marketplace_cost,
+    )
+
+
+@bp.route("/jurnal-penyesuaian", methods=["GET", "POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def jurnal_penyesuaian():
+    _ensure_table(Account)
+    _ensure_table(JournalEntry)
+    _ensure_table(JournalLine)
+
+    if request.method == "POST":
+        if not request.is_json:
+            return jsonify({"success": False, "message": "Gunakan JSON payload."}), 415
+        payload = request.get_json(silent=True) or {}
+        parsed_lines, error_message = _parse_journal_lines(payload)
+        if error_message:
+            return jsonify({"success": False, "message": error_message}), 400
+
+        date_value = _parse_date_param(payload.get("date")) or local_today()
+        memo_raw = (payload.get("memo") or "").strip()
+        memo_prefix = "Penyesuaian"
+        if memo_raw:
+            memo_lower = memo_raw.lower()
+            memo = (
+                memo_raw
+                if memo_lower.startswith(("penyesuaian", "jurnal penyesuaian"))
+                else f"{memo_prefix} - {memo_raw}"
+            )
+        else:
+            memo = memo_prefix
+        reference = (
+            payload.get("reference") or ""
+        ).strip() or _generate_journal_reference_with_prefix("JP")
+
+        entry = JournalEntry(
+            reference=reference,
+            date=date_value,
+            memo=memo,
+            created_by=session.get("user_id"),
+        )
+        db.session.add(entry)
+        db.session.flush()
+
+        for line in parsed_lines:
+            db.session.add(
+                JournalLine(
+                    entry_id=entry.id,
+                    account_id=line["account"].id,
+                    description=line["description"] or None,
+                    debit=line["debit"],
+                    credit=line["credit"],
+                )
+            )
+        db.session.commit()
+        return jsonify(
+            {
+                "success": True,
+                "message": "Jurnal penyesuaian berhasil disimpan.",
+                "reference": reference,
+            }
+        )
+
+    accounts = Account.query.order_by(Account.code.asc()).all()
+    accounts_for_js = [
+        {
+            "id": account.id,
+            "code": account.code,
+            "name": account.name,
+        }
+        for account in accounts
+    ]
+    recent_entries = (
+        JournalEntry.query.options(
+            joinedload(JournalEntry.lines).joinedload(JournalLine.account)
+        )
+        .filter(JournalEntry.memo.ilike("Penyesuaian%"))
+        .order_by(JournalEntry.date.desc(), JournalEntry.id.desc())
+        .limit(10)
+        .all()
+    )
+
+    return render_template(
+        "jurnal_penyesuaian.html",
+        accounts=accounts,
+        accounts_for_js=accounts_for_js,
+        recent_entries=recent_entries,
+        default_date=local_today().strftime("%Y-%m-%d"),
+    )
+
+
+@bp.route("/buku-besar", methods=["GET"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def buku_besar():
+    _ensure_table(Account)
+    _ensure_table(JournalEntry)
+    _ensure_table(JournalLine)
+
+    today = local_today()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    account_id = _parse_int_param(request.args.get("account"))
+    accounts = Account.query.order_by(Account.code.asc()).all()
+    selected_account = Account.query.get(account_id) if account_id else None
+
+    ledger_rows = []
+    summary_rows = []
+    summary_totals = {"debit": 0.0, "credit": 0.0}
+    opening_balance = 0.0
+    total_debit = 0.0
+    total_credit = 0.0
+    closing_balance = 0.0
+
+    type_labels = {
+        "asset": "Aset",
+        "liability": "Liabilitas",
+        "equity": "Ekuitas",
+        "income": "Pendapatan",
+        "expense": "Beban",
+    }
+
+    if selected_account:
+        opening_balance = (
+            db.session.query(
+                func.coalesce(func.sum(JournalLine.debit - JournalLine.credit), 0.0)
+            )
+            .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+            .filter(JournalLine.account_id == selected_account.id)
+            .filter(JournalEntry.date < start_date)
+            .scalar()
+            or 0.0
+        )
+
+        entries = (
+            db.session.query(JournalLine, JournalEntry)
+            .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+            .filter(JournalLine.account_id == selected_account.id)
+            .filter(JournalEntry.date >= start_date)
+            .filter(JournalEntry.date <= end_date)
+            .order_by(
+                JournalEntry.date.asc(),
+                JournalEntry.id.asc(),
+                JournalLine.id.asc(),
+            )
+            .all()
+        )
+
+        running_balance = opening_balance
+        for line, entry in entries:
+            debit = float(line.debit or 0.0)
+            credit = float(line.credit or 0.0)
+            total_debit += debit
+            total_credit += credit
+            running_balance += debit - credit
+            ledger_rows.append(
+                {
+                    "date_label": _format_date_id(entry.date),
+                    "reference": entry.reference,
+                    "memo": entry.memo or "-",
+                    "description": line.description or "-",
+                    "debit": debit,
+                    "credit": credit,
+                    "balance": running_balance,
+                }
+            )
+        closing_balance = running_balance
+    else:
+        line_sums = (
+            db.session.query(
+                JournalLine.account_id.label("account_id"),
+                func.coalesce(func.sum(JournalLine.debit), 0.0).label("debit"),
+                func.coalesce(func.sum(JournalLine.credit), 0.0).label("credit"),
+            )
+            .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+            .filter(JournalEntry.date >= start_date)
+            .filter(JournalEntry.date <= end_date)
+            .group_by(JournalLine.account_id)
+            .subquery()
+        )
+
+        rows = (
+            db.session.query(
+                Account,
+                line_sums.c.debit,
+                line_sums.c.credit,
+            )
+            .outerjoin(line_sums, line_sums.c.account_id == Account.id)
+            .order_by(Account.code.asc())
+            .all()
+        )
+
+        for account, debit, credit in rows:
+            debit = float(debit or 0.0)
+            credit = float(credit or 0.0)
+            if debit == 0 and credit == 0:
+                continue
+            net = debit - credit
+            summary_rows.append(
+                {
+                    "account_id": account.id,
+                    "code": account.code,
+                    "name": account.name,
+                    "type_label": type_labels.get(account.type, account.type.title()),
+                    "debit": debit,
+                    "credit": credit,
+                    "balance": abs(net),
+                    "balance_side": "Debit" if net >= 0 else "Kredit",
+                }
+            )
+            summary_totals["debit"] += debit
+            summary_totals["credit"] += credit
+
+    summary_cards = []
+    if selected_account:
+        summary_cards = [
+            {
+                "label": "Saldo Awal",
+                "value": opening_balance,
+                "icon": "fa-coins",
+                "accent": "text-secondary",
+            },
+            {
+                "label": "Total Debit",
+                "value": total_debit,
+                "icon": "fa-arrow-down",
+                "accent": "text-success",
+            },
+            {
+                "label": "Total Kredit",
+                "value": total_credit,
+                "icon": "fa-arrow-up",
+                "accent": "text-danger",
+            },
+            {
+                "label": "Saldo Akhir",
+                "value": closing_balance,
+                "icon": "fa-balance-scale",
+                "accent": "text-primary",
+            },
+        ]
+
+    range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
+    filter_values = {
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "account": selected_account.id if selected_account else None,
+    }
+
+    return render_template(
+        "buku_besar.html",
+        accounts=accounts,
+        selected_account=selected_account,
+        ledger_rows=ledger_rows,
+        summary_rows=summary_rows,
+        summary_totals=summary_totals,
+        summary_cards=summary_cards,
+        total_debit=total_debit,
+        total_credit=total_credit,
+        opening_balance=opening_balance,
+        closing_balance=closing_balance,
+        range_label=range_label,
+        filter_values=filter_values,
+    )
+
+
+@bp.route("/neraca-saldo", methods=["GET"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def neraca_saldo():
+    _ensure_table(Account)
+    _ensure_table(JournalEntry)
+    _ensure_table(JournalLine)
+
+    today = local_today()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    show_zero = _parse_bool_param(request.args.get("show_zero"), default=False)
+    adjustment_filter = or_(
+        JournalEntry.memo.is_(None), ~JournalEntry.memo.ilike("Penyesuaian%")
+    )
+
+    line_sums = (
+        db.session.query(
+            JournalLine.account_id.label("account_id"),
+            func.coalesce(func.sum(JournalLine.debit), 0.0).label("debit"),
+            func.coalesce(func.sum(JournalLine.credit), 0.0).label("credit"),
+        )
+        .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+        .filter(adjustment_filter)
+        .filter(JournalEntry.date >= start_date)
+        .filter(JournalEntry.date <= end_date)
+        .group_by(JournalLine.account_id)
+        .subquery()
+    )
+
+    rows = (
+        db.session.query(
+            Account,
+            line_sums.c.debit,
+            line_sums.c.credit,
+        )
+        .outerjoin(line_sums, line_sums.c.account_id == Account.id)
+        .order_by(Account.code.asc())
+        .all()
+    )
+
+    type_labels = {
+        "asset": "Aset",
+        "liability": "Liabilitas",
+        "equity": "Ekuitas",
+        "income": "Pendapatan",
+        "expense": "Beban",
+    }
+
+    trial_rows = []
+    total_debit = 0.0
+    total_credit = 0.0
+    for account, debit, credit in rows:
+        debit = float(debit or 0.0)
+        credit = float(credit or 0.0)
+        net = debit - credit
+        debit_balance = net if net > 0 else 0.0
+        credit_balance = -net if net < 0 else 0.0
+        if not show_zero and debit_balance == 0 and credit_balance == 0:
+            continue
+        trial_rows.append(
+            {
+                "code": account.code,
+                "name": account.name,
+                "type_label": type_labels.get(account.type, account.type.title()),
+                "debit": debit_balance,
+                "credit": credit_balance,
+            }
+        )
+        total_debit += debit_balance
+        total_credit += credit_balance
+
+    difference = round(total_debit - total_credit, 2)
+    warning_message = abs(difference) if difference != 0 else None
+
+    summary_cards = [
+        {
+            "label": "Total Debit",
+            "value": total_debit,
+            "icon": "fa-arrow-down",
+            "accent": "text-success",
+        },
+        {
+            "label": "Total Kredit",
+            "value": total_credit,
+            "icon": "fa-arrow-up",
+            "accent": "text-danger",
+        },
+        {
+            "label": "Selisih",
+            "value": abs(difference),
+            "icon": "fa-balance-scale",
+            "accent": "text-warning" if difference != 0 else "text-success",
+        },
+        {
+            "label": "Jumlah Akun",
+            "value": len(trial_rows),
+            "icon": "fa-layer-group",
+            "accent": "text-primary",
+            "type": "count",
+        },
+    ]
+
+    range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
+    filter_values = {
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "show_zero": show_zero,
+    }
+
+    return render_template(
+        "neraca_saldo.html",
+        trial_rows=trial_rows,
+        summary_cards=summary_cards,
+        range_label=range_label,
+        filter_values=filter_values,
+        warning_message=warning_message,
     )
 
 
@@ -7738,6 +8202,133 @@ def laporan_laba_rugi():
     )
 
 
+@bp.route("/laporan/neraca")
+@login_required
+@roles_required(*ADMIN_ONLY)
+def laporan_neraca():
+    _ensure_table(Account)
+    _ensure_table(JournalEntry)
+    _ensure_table(JournalLine)
+
+    today = local_today()
+    default_start = today.replace(month=1, day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    show_zero = _parse_bool_param(request.args.get("show_zero"), default=False)
+
+    line_sums = (
+        db.session.query(
+            JournalLine.account_id.label("account_id"),
+            func.coalesce(func.sum(JournalLine.debit), 0.0).label("debit"),
+            func.coalesce(func.sum(JournalLine.credit), 0.0).label("credit"),
+        )
+        .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+        .filter(JournalEntry.date >= start_date)
+        .filter(JournalEntry.date <= end_date)
+        .group_by(JournalLine.account_id)
+        .subquery()
+    )
+
+    rows = (
+        db.session.query(
+            Account,
+            line_sums.c.debit,
+            line_sums.c.credit,
+        )
+        .outerjoin(line_sums, line_sums.c.account_id == Account.id)
+        .filter(Account.type.in_(["asset", "liability", "equity"]))
+        .order_by(Account.code.asc())
+        .all()
+    )
+
+    groups = {"asset": [], "liability": [], "equity": []}
+    totals = {
+        "asset": {"debit": 0.0, "credit": 0.0, "net": 0.0},
+        "liability": {"debit": 0.0, "credit": 0.0, "net": 0.0},
+        "equity": {"debit": 0.0, "credit": 0.0, "net": 0.0},
+    }
+    for account, debit, credit in rows:
+        debit = float(debit or 0.0)
+        credit = float(credit or 0.0)
+        net = debit - credit
+        debit_balance = net if net > 0 else 0.0
+        credit_balance = -net if net < 0 else 0.0
+        if not show_zero and debit_balance == 0 and credit_balance == 0:
+            continue
+        groups[account.type].append(
+            {
+                "code": account.code,
+                "name": account.name,
+                "debit": debit_balance,
+                "credit": credit_balance,
+            }
+        )
+        totals[account.type]["debit"] += debit_balance
+        totals[account.type]["credit"] += credit_balance
+        totals[account.type]["net"] += net
+
+    asset_total = totals["asset"]["net"]
+    liability_total = -totals["liability"]["net"]
+    equity_total = -totals["equity"]["net"]
+    total_le = liability_total + equity_total
+    difference = asset_total - total_le
+    warning_message = abs(difference) if difference != 0 else None
+
+    summary_cards = [
+        {
+            "label": "Total Aset",
+            "value": asset_total,
+            "icon": "fa-piggy-bank",
+            "accent": "text-primary",
+        },
+        {
+            "label": "Total Liabilitas",
+            "value": liability_total,
+            "icon": "fa-balance-scale",
+            "accent": "text-warning",
+        },
+        {
+            "label": "Total Ekuitas",
+            "value": equity_total,
+            "icon": "fa-university",
+            "accent": "text-success",
+        },
+        {
+            "label": "Selisih",
+            "value": abs(difference),
+            "icon": "fa-exclamation-triangle",
+            "accent": "text-danger" if difference != 0 else "text-success",
+        },
+    ]
+
+    type_labels = {
+        "asset": "Aset",
+        "liability": "Liabilitas",
+        "equity": "Ekuitas",
+    }
+    range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
+    filter_values = {
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "show_zero": show_zero,
+    }
+
+    return render_template(
+        "laporan_neraca.html",
+        groups=groups,
+        totals=totals,
+        summary_cards=summary_cards,
+        warning_message=warning_message,
+        type_labels=type_labels,
+        range_label=range_label,
+        filter_values=filter_values,
+        total_le=total_le,
+    )
+
+
 @bp.route("/laporan/pembelian")
 @login_required
 @roles_required(*INVENTORY_ROLES)
@@ -8440,14 +9031,19 @@ def _generate_stock_reference():
     return candidate
 
 
-def _generate_journal_reference():
-    base = f"JV{local_now().strftime('%Y%m%d%H%M%S')}"
+def _generate_journal_reference_with_prefix(prefix="JV"):
+    clean_prefix = (prefix or "JV").strip() or "JV"
+    base = f"{clean_prefix}{local_now().strftime('%Y%m%d%H%M%S')}"
     candidate = base
     counter = 1
     while JournalEntry.query.filter_by(reference=candidate).first():
         candidate = f"{base}-{counter}"
         counter += 1
     return candidate
+
+
+def _generate_journal_reference():
+    return _generate_journal_reference_with_prefix("JV")
 
 
 def _generate_invoice_number(prefix=None):

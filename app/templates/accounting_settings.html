@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}COGS Otomatis{% endblock %}
+{% block title %}HPP Otomatis (COGS){% endblock %}
 
 {% block content %}
 <section class="accounting-settings">
@@ -11,8 +11,8 @@
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div>
                             <p class="eyebrow text-uppercase mb-1">Konfigurasi</p>
-                            <h3 class="h4 mb-1">Akun persediaan & HPP otomatis</h3>
-                            <p class="text-muted small mb-0">Tetapkan akun yang menjadi tujuan saat sistem mencatat COGS agar jurnal otomatis tetap seimbang.</p>
+                            <h3 class="h4 mb-1">Akun persediaan & HPP otomatis (COGS)</h3>
+                            <p class="text-muted small mb-0">Tetapkan akun yang menjadi tujuan saat sistem mencatat HPP (COGS) agar jurnal otomatis tetap seimbang.</p>
                         </div>
                         <span class="badge badge-pill badge-light">Modern</span>
                     </div>
@@ -105,7 +105,7 @@
                         {% if settings and settings.inventory_account and settings.cogs_account %}
                             Modul siap berjalan karena kedua akun sudah ditentukan.
                         {% else %}
-                            Lengkapi konfigurasi akun agar jurnal COGS otomatis dapat berjalan.
+                            Lengkapi konfigurasi akun agar jurnal HPP (COGS) otomatis dapat berjalan.
                         {% endif %}
                     </div>
                     <div class="alert alert-light border-dashed mt-3 mb-0" role="alert">
@@ -125,7 +125,7 @@
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div>
                     <p class="eyebrow text-uppercase mb-1">Riwayat otomatisasi</p>
-                    <h3 class="h5 mb-0">Auto COGS terbaru</h3>
+                    <h3 class="h5 mb-0">Auto HPP (COGS) terbaru</h3>
                 </div>
                 <span class="badge badge-pill badge-secondary">{{ auto_count }} entri</span>
             </div>
