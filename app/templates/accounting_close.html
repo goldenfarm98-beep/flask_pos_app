@@ -26,6 +26,10 @@
                 <div class="card-body">
                     <p class="eyebrow text-uppercase mb-1">Langkah 1</p>
                     <h3 class="h5 mb-4">Tentukan periode</h3>
+                    <div class="alert alert-info border-0 shadow-sm">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        Pastikan HPP Otomatis (COGS) sudah dijalankan sebelum tutup buku agar laba rugi dan neraca akurat.
+                    </div>
                     <form method="POST" action="{{ url_for('main.close_books') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="form-group">

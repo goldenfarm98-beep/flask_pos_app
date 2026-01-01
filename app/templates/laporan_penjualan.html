@@ -291,8 +291,9 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div>
-                            <p class="eyebrow text-uppercase mb-1">Tren harian</p>
-                            <h3 class="h5 mb-0">Penjualan kotor vs Laba Kotor</h3>
+                            <p class="eyebrow text-uppercase mb-1">Trend penjualan</p>
+                            <h3 class="h5 mb-1">Naik turunnya penjualan harian</h3>
+                            <small class="text-muted">Garis hijau menunjukkan laba kotor.</small>
                         </div>
                         <span class="badge badge-pill badge-light">{{ daily_points|length }} hari dianalisis</span>
                     </div>
@@ -524,7 +525,7 @@
                     labels,
                     datasets: [
                         {
-                            label: 'Penjualan kotor',
+                            label: 'Trend Penjualan',
                             data: revenueData,
                             borderColor: '#2563eb',
                             backgroundColor: 'rgba(37, 99, 235, 0.12)',

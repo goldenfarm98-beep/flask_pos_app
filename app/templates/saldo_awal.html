@@ -24,6 +24,10 @@
                 <div class="card-body">
                     <p class="eyebrow text-uppercase mb-1">Input saldo</p>
                     <h3 class="h5 mb-3">Form saldo awal</h3>
+                    <div class="alert alert-warning border-0 shadow-sm">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        Isi saldo awal hanya untuk akun permanen (Aset, Liabilitas, Ekuitas). Jangan input untuk Pendapatan/Beban agar neraca saldo tidak selalu selisih.
+                    </div>
                     <form method="POST" action="{{ url_for('main.saldo_awal') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="form-row">

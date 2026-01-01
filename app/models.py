@@ -364,6 +364,12 @@ class Pembelian(db.Model):
     payment_reference = db.Column(db.String(100), nullable=True)
     supplier = db.relationship('Supplier', backref=db.backref('pembelian', lazy=True))
     barang = db.relationship('BarangPembelian', backref='pembelian', cascade='all, delete-orphan')
+    payments = db.relationship(
+        "PayablePayment",
+        backref="pembelian",
+        lazy=True,
+        cascade="all, delete-orphan",
+    )
     accounting_period_id = db.Column(
         db.Integer,
         db.ForeignKey('accounting_period.id', ondelete='SET NULL'),
@@ -482,6 +488,31 @@ class ReceivablePayment(db.Model):
 
     def __repr__(self):
         return f"<ReceivablePayment {self.id} penjualan={self.penjualan_id}>"
+
+
+class PayablePayment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    pembelian_id = db.Column(
+        db.Integer,
+        db.ForeignKey("pembelian.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    amount = db.Column(db.Float, nullable=False)
+    payment_method = db.Column(db.String(20), nullable=False, default="Tunai")
+    reference = db.Column(db.String(100), nullable=True)
+    note = db.Column(db.String(255), nullable=True)
+    paid_at = db.Column(db.DateTime, nullable=False, default=local_now)
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by_user = db.relationship(
+        "User", backref=db.backref("payable_payments", lazy=True)
+    )
+
+    def __repr__(self):
+        return f"<PayablePayment {self.id} pembelian={self.pembelian_id}>"
 
 
 class DetailPenjualan(db.Model):
@@ -627,6 +658,11 @@ class AccountingSetting(db.Model):
         db.ForeignKey('account.id', ondelete='SET NULL'),
         nullable=True,
     )
+    inventory_adjustment_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey('account.id', ondelete='SET NULL'),
+        nullable=True,
+    )
     marketplace_expense_account_id = db.Column(
         db.Integer,
         db.ForeignKey('account.id', ondelete='SET NULL'),
@@ -649,6 +685,11 @@ class AccountingSetting(db.Model):
         'Account',
         foreign_keys=[cogs_account_id],
         backref=db.backref('cogs_settings', lazy=True),
+    )
+    inventory_adjustment_account = db.relationship(
+        'Account',
+        foreign_keys=[inventory_adjustment_account_id],
+        backref=db.backref('inventory_adjustment_settings', lazy=True),
     )
     marketplace_expense_account = db.relationship(
         'Account',
@@ -678,9 +719,14 @@ class AccountingSetting(db.Model):
             if self.marketplace_payable_account
             else '-'
         )
+        adj = (
+            self.inventory_adjustment_account.name
+            if self.inventory_adjustment_account
+            else '-'
+        )
         return (
             f"<AccountingSetting Inventory={inv} COGS={cogs} "
-            f"MPExpense={mp_exp} MPPayable={mp_pay}>"
+            f"AdjInventory={adj} MPExpense={mp_exp} MPPayable={mp_pay}>"
         )
 
 
@@ -743,3 +789,25 @@ class AccountingPeriod(db.Model):
 
     def __repr__(self):
         return f"<AccountingPeriod {self.label} ({self.status})>"
+
+
+class FixedAsset(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    category = db.Column(db.String(100), nullable=True)
+    acquisition_date = db.Column(db.Date, nullable=False)
+    cost = db.Column(db.Float, nullable=False, default=0.0)
+    salvage_value = db.Column(db.Float, nullable=False, default=0.0)
+    useful_life_months = db.Column(db.Integer, nullable=False, default=12)
+    method = db.Column(db.String(20), nullable=False, default="straight_line")
+    note = db.Column(db.String(255), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=local_now)
+
+    creator = db.relationship(
+        "User", backref=db.backref("fixed_assets", lazy=True)
+    )
+
+    def __repr__(self):
+        return f"<FixedAsset {self.name}>"

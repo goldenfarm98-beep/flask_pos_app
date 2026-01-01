@@ -77,6 +77,8 @@ from app.models import (
     Account,
     JournalEntry,
     JournalLine,
+    PayablePayment,
+    FixedAsset,
     MarketplacePricingSetting,
 )
 
@@ -914,6 +916,28 @@ def _ensure_receivable_payment_table() -> bool:
         return False
 
 
+def _ensure_accounting_setting_columns() -> bool:
+    try:
+        inspector = inspect(db.engine)
+        if not inspector.has_table("accounting_setting"):
+            return False
+        columns = {col["name"] for col in inspector.get_columns("accounting_setting")}
+        statements = []
+        if "inventory_adjustment_account_id" not in columns:
+            statements.append(
+                "ALTER TABLE accounting_setting "
+                "ADD COLUMN inventory_adjustment_account_id INTEGER"
+            )
+        if not statements:
+            return True
+        with db.engine.begin() as connection:
+            for stmt in statements:
+                connection.execute(text(stmt))
+        return True
+    except Exception:
+        return False
+
+
 def _ensure_purchase_payment_columns() -> bool:
     try:
         inspector = inspect(db.engine)
@@ -942,15 +966,19 @@ def _ensure_purchase_payment_columns() -> bool:
 
 
 _PURCHASE_PAYMENT_COLUMNS_READY = False
+_ACCOUNTING_SETTING_COLUMNS_READY = False
 
 
 @bp.before_app_request
 def _ensure_purchase_columns_once():
     global _PURCHASE_PAYMENT_COLUMNS_READY
-    if _PURCHASE_PAYMENT_COLUMNS_READY:
-        return
-    if _ensure_purchase_payment_columns():
-        _PURCHASE_PAYMENT_COLUMNS_READY = True
+    global _ACCOUNTING_SETTING_COLUMNS_READY
+    if not _PURCHASE_PAYMENT_COLUMNS_READY:
+        if _ensure_purchase_payment_columns():
+            _PURCHASE_PAYMENT_COLUMNS_READY = True
+    if not _ACCOUNTING_SETTING_COLUMNS_READY:
+        if _ensure_accounting_setting_columns():
+            _ACCOUNTING_SETTING_COLUMNS_READY = True
 
 
 def _perform_produk_import(df, progress_cb=None):
@@ -4298,6 +4326,9 @@ def accounting_settings():
     if request.method == "POST":
         inventory_account_id = _parse_int_param(request.form.get("inventory_account"))
         cogs_account_id = _parse_int_param(request.form.get("cogs_account"))
+        inventory_adjustment_account_id = _parse_int_param(
+            request.form.get("inventory_adjustment_account")
+        )
         marketplace_expense_account_id = _parse_int_param(
             request.form.get("marketplace_expense_account")
         )
@@ -4313,6 +4344,10 @@ def accounting_settings():
         if cogs_account_id:
             if not Account.query.get(cogs_account_id):
                 errors.append("Akun COGS tidak ditemukan.")
+
+        if inventory_adjustment_account_id:
+            if not Account.query.get(inventory_adjustment_account_id):
+                errors.append("Akun penyesuaian persediaan tidak ditemukan.")
 
         if marketplace_expense_account_id:
             if not Account.query.get(marketplace_expense_account_id):
@@ -4330,6 +4365,14 @@ def accounting_settings():
             errors.append(
                 "Akun beban dan utang marketplace tidak boleh sama."
             )
+        if (
+            inventory_adjustment_account_id
+            and inventory_account_id
+            and inventory_adjustment_account_id == inventory_account_id
+        ):
+            errors.append(
+                "Akun penyesuaian persediaan tidak boleh sama dengan akun persediaan."
+            )
 
         if errors:
             for message in errors:
@@ -4341,6 +4384,7 @@ def accounting_settings():
 
         settings.inventory_account_id = inventory_account_id
         settings.cogs_account_id = cogs_account_id
+        settings.inventory_adjustment_account_id = inventory_adjustment_account_id
         settings.marketplace_expense_account_id = marketplace_expense_account_id
         settings.marketplace_payable_account_id = marketplace_payable_account_id
         settings.updated_by = session.get("user_id")
@@ -4910,6 +4954,13 @@ def neraca_saldo():
         "income": "Pendapatan",
         "expense": "Beban",
     }
+    normal_side = {
+        "asset": "Debit",
+        "expense": "Debit",
+        "liability": "Kredit",
+        "equity": "Kredit",
+        "income": "Kredit",
+    }
 
     trial_rows = []
     total_debit = 0.0
@@ -4922,6 +4973,11 @@ def neraca_saldo():
         credit_balance = -net if net < 0 else 0.0
         if not show_zero and debit_balance == 0 and credit_balance == 0:
             continue
+        normal = normal_side.get(account.type, "Debit")
+        is_abnormal = (
+            (normal == "Debit" and credit_balance > 0)
+            or (normal == "Kredit" and debit_balance > 0)
+        )
         trial_rows.append(
             {
                 "code": account.code,
@@ -4929,6 +4985,8 @@ def neraca_saldo():
                 "type_label": type_labels.get(account.type, account.type.title()),
                 "debit": debit_balance,
                 "credit": credit_balance,
+                "normal_side": normal,
+                "is_abnormal": is_abnormal,
             }
         )
         total_debit += debit_balance
@@ -4979,6 +5037,462 @@ def neraca_saldo():
         range_label=range_label,
         filter_values=filter_values,
         warning_message=warning_message,
+    )
+
+
+@bp.route("/kas-bank", methods=["GET", "POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def kas_bank():
+    _ensure_table(Account)
+    _ensure_table(JournalEntry)
+    _ensure_table(JournalLine)
+
+    cash_accounts = (
+        Account.query.filter_by(type="asset", is_active=True)
+        .order_by(Account.code.asc())
+        .all()
+    )
+    active_accounts = (
+        Account.query.filter_by(is_active=True)
+        .order_by(Account.code.asc())
+        .all()
+    )
+
+    if request.method == "POST":
+        date_value = _parse_date_param(request.form.get("date")) or local_today()
+        cash_account_id = _parse_int_param(request.form.get("account_id"))
+        offset_account_id = _parse_int_param(request.form.get("offset_account_id"))
+        direction = (request.form.get("direction") or "").strip()
+        amount = _parse_float_param(request.form.get("amount"))
+        note = (request.form.get("note") or "").strip()
+        next_target = _resolve_next_target(url_for("main.kas_bank"))
+
+        cash_account = (
+            Account.query.get(cash_account_id) if cash_account_id else None
+        )
+        offset_account = (
+            Account.query.get(offset_account_id) if offset_account_id else None
+        )
+
+        if not cash_account or cash_account.type != "asset":
+            flash("Pilih akun kas/bank yang valid.", "warning")
+            return redirect(next_target)
+        if not offset_account or not offset_account.is_active:
+            flash("Pilih akun lawan yang valid.", "warning")
+            return redirect(next_target)
+        if offset_account.id == cash_account.id:
+            flash("Akun lawan tidak boleh sama dengan akun kas/bank.", "warning")
+            return redirect(next_target)
+        if not amount or amount <= 0:
+            flash("Nominal koreksi harus lebih dari 0.", "warning")
+            return redirect(next_target)
+        if direction not in {"in", "out"}:
+            flash("Pilih jenis koreksi yang valid.", "warning")
+            return redirect(next_target)
+
+        memo_prefix = "Koreksi Kas/Bank"
+        memo = f"{memo_prefix} - {note}" if note else memo_prefix
+        entry = JournalEntry(
+            reference=_generate_journal_reference_with_prefix("KB"),
+            date=date_value,
+            memo=memo,
+            created_by=session.get("user_id"),
+        )
+        db.session.add(entry)
+        db.session.flush()
+
+        if direction == "in":
+            db.session.add(
+                JournalLine(
+                    entry_id=entry.id,
+                    account_id=cash_account.id,
+                    description=note or None,
+                    debit=amount,
+                    credit=0.0,
+                )
+            )
+            db.session.add(
+                JournalLine(
+                    entry_id=entry.id,
+                    account_id=offset_account.id,
+                    description=note or None,
+                    debit=0.0,
+                    credit=amount,
+                )
+            )
+        else:
+            db.session.add(
+                JournalLine(
+                    entry_id=entry.id,
+                    account_id=offset_account.id,
+                    description=note or None,
+                    debit=amount,
+                    credit=0.0,
+                )
+            )
+            db.session.add(
+                JournalLine(
+                    entry_id=entry.id,
+                    account_id=cash_account.id,
+                    description=note or None,
+                    debit=0.0,
+                    credit=amount,
+                )
+            )
+
+        db.session.commit()
+        flash("Koreksi kas/bank berhasil disimpan.", "success")
+        return redirect(next_target)
+
+    today = local_today()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    account_id = _parse_int_param(request.args.get("account"))
+    selected_account = next(
+        (acc for acc in cash_accounts if acc.id == account_id), None
+    )
+
+    ledger_rows = []
+    summary_rows = []
+    summary_totals = {"debit": 0.0, "credit": 0.0}
+    opening_balance = 0.0
+    total_debit = 0.0
+    total_credit = 0.0
+    closing_balance = 0.0
+
+    if selected_account:
+        opening_balance = (
+            db.session.query(
+                func.coalesce(func.sum(JournalLine.debit - JournalLine.credit), 0.0)
+            )
+            .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+            .filter(JournalLine.account_id == selected_account.id)
+            .filter(JournalEntry.date < start_date)
+            .scalar()
+            or 0.0
+        )
+
+        entries = (
+            db.session.query(JournalLine, JournalEntry)
+            .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+            .filter(JournalLine.account_id == selected_account.id)
+            .filter(JournalEntry.date >= start_date)
+            .filter(JournalEntry.date <= end_date)
+            .order_by(
+                JournalEntry.date.asc(),
+                JournalEntry.id.asc(),
+                JournalLine.id.asc(),
+            )
+            .all()
+        )
+
+        running_balance = opening_balance
+        for line, entry in entries:
+            debit = float(line.debit or 0.0)
+            credit = float(line.credit or 0.0)
+            total_debit += debit
+            total_credit += credit
+            running_balance += debit - credit
+            ledger_rows.append(
+                {
+                    "date_label": _format_date_id(entry.date),
+                    "reference": entry.reference,
+                    "memo": entry.memo or "-",
+                    "description": line.description or "-",
+                    "debit": debit,
+                    "credit": credit,
+                    "balance": running_balance,
+                }
+            )
+        closing_balance = running_balance
+    else:
+        account_ids = [acc.id for acc in cash_accounts]
+        if account_ids:
+            line_sums = (
+                db.session.query(
+                    JournalLine.account_id.label("account_id"),
+                    func.coalesce(func.sum(JournalLine.debit), 0.0).label("debit"),
+                    func.coalesce(func.sum(JournalLine.credit), 0.0).label("credit"),
+                )
+                .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+                .filter(JournalLine.account_id.in_(account_ids))
+                .filter(JournalEntry.date >= start_date)
+                .filter(JournalEntry.date <= end_date)
+                .group_by(JournalLine.account_id)
+                .subquery()
+            )
+
+            rows = (
+                db.session.query(
+                    Account,
+                    line_sums.c.debit,
+                    line_sums.c.credit,
+                )
+                .outerjoin(line_sums, line_sums.c.account_id == Account.id)
+                .filter(Account.id.in_(account_ids))
+                .order_by(Account.code.asc())
+                .all()
+            )
+
+            for account, debit, credit in rows:
+                debit = float(debit or 0.0)
+                credit = float(credit or 0.0)
+                if debit == 0 and credit == 0:
+                    continue
+                net = debit - credit
+                summary_rows.append(
+                    {
+                        "account_id": account.id,
+                        "code": account.code,
+                        "name": account.name,
+                        "debit": debit,
+                        "credit": credit,
+                        "balance": abs(net),
+                        "balance_side": "Debit" if net >= 0 else "Kredit",
+                    }
+                )
+                summary_totals["debit"] += debit
+                summary_totals["credit"] += credit
+
+    summary_cards = []
+    if selected_account:
+        summary_cards = [
+            {
+                "label": "Saldo Awal",
+                "value": opening_balance,
+                "icon": "fa-wallet",
+                "accent": "text-secondary",
+            },
+            {
+                "label": "Uang Masuk",
+                "value": total_debit,
+                "icon": "fa-arrow-down",
+                "accent": "text-success",
+            },
+            {
+                "label": "Uang Keluar",
+                "value": total_credit,
+                "icon": "fa-arrow-up",
+                "accent": "text-danger",
+            },
+            {
+                "label": "Saldo Akhir",
+                "value": closing_balance,
+                "icon": "fa-university",
+                "accent": "text-primary",
+            },
+        ]
+
+    range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
+    filter_values = {
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "account": selected_account.id if selected_account else None,
+    }
+
+    offset_accounts = [
+        account
+        for account in active_accounts
+        if not selected_account or account.id != selected_account.id
+    ]
+
+    return render_template(
+        "kas_bank.html",
+        accounts=cash_accounts,
+        offset_accounts=offset_accounts,
+        selected_account=selected_account,
+        ledger_rows=ledger_rows,
+        summary_rows=summary_rows,
+        summary_totals=summary_totals,
+        summary_cards=summary_cards,
+        opening_balance=opening_balance,
+        total_debit=total_debit,
+        total_credit=total_credit,
+        closing_balance=closing_balance,
+        range_label=range_label,
+        filter_values=filter_values,
+    )
+
+
+@bp.route("/aset-tetap", methods=["GET", "POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def aset_tetap():
+    _ensure_table(FixedAsset)
+
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        category = (request.form.get("category") or "").strip() or None
+        acquisition_date = _parse_date_param(request.form.get("acquisition_date"))
+        cost = _parse_float_param(request.form.get("cost"))
+        salvage_value = _parse_float_param(request.form.get("salvage_value"))
+        useful_life_months = _parse_int_param(request.form.get("useful_life_months"))
+        method = (request.form.get("method") or "straight_line").strip()
+        note = (request.form.get("note") or "").strip() or None
+        is_active = request.form.get("is_active") != "0"
+        next_target = _resolve_next_target(url_for("main.aset_tetap"))
+
+        salvage_value = max(salvage_value or 0.0, 0.0)
+        useful_life_months = useful_life_months or 0
+
+        if not name:
+            flash("Nama aset wajib diisi.", "warning")
+            return redirect(next_target)
+        if not acquisition_date:
+            flash("Tanggal perolehan wajib diisi.", "warning")
+            return redirect(next_target)
+        if cost is None or cost <= 0:
+            flash("Biaya perolehan harus lebih dari 0.", "warning")
+            return redirect(next_target)
+        if useful_life_months <= 0:
+            flash("Umur manfaat wajib lebih dari 0 bulan.", "warning")
+            return redirect(next_target)
+        if salvage_value > cost:
+            flash("Nilai sisa tidak boleh lebih besar dari biaya perolehan.", "warning")
+            return redirect(next_target)
+        if method not in {"straight_line"}:
+            method = "straight_line"
+
+        asset = FixedAsset(
+            name=name,
+            category=category,
+            acquisition_date=acquisition_date,
+            cost=cost,
+            salvage_value=salvage_value,
+            useful_life_months=useful_life_months,
+            method=method,
+            note=note,
+            is_active=is_active,
+            created_by=session.get("user_id"),
+        )
+        db.session.add(asset)
+        db.session.commit()
+        flash("Aset tetap berhasil disimpan.", "success")
+        return redirect(next_target)
+
+    search_query = (request.args.get("search") or "").strip()
+    status_filter = (request.args.get("status") or "active").strip()
+    as_of_date = _parse_date_param(request.args.get("as_of")) or local_today()
+
+    asset_query = FixedAsset.query
+    if status_filter == "active":
+        asset_query = asset_query.filter(FixedAsset.is_active.is_(True))
+    elif status_filter == "inactive":
+        asset_query = asset_query.filter(FixedAsset.is_active.is_(False))
+
+    if search_query:
+        like = f"%{search_query}%"
+        asset_query = asset_query.filter(
+            or_(
+                FixedAsset.name.ilike(like),
+                FixedAsset.category.ilike(like),
+            )
+        )
+
+    assets = (
+        asset_query.order_by(
+            FixedAsset.acquisition_date.desc(), FixedAsset.id.desc()
+        )
+        .all()
+    )
+
+    asset_rows = []
+    total_cost = 0.0
+    total_accumulated = 0.0
+    total_book = 0.0
+
+    for asset in assets:
+        cost = float(asset.cost or 0.0)
+        salvage = float(asset.salvage_value or 0.0)
+        life_months = int(asset.useful_life_months or 0) or 1
+        months_elapsed = _months_between(asset.acquisition_date, as_of_date)
+        months_used = min(months_elapsed, life_months)
+        depreciable_base = max(cost - salvage, 0.0)
+        monthly_depreciation = (
+            depreciable_base / life_months if life_months > 0 else 0.0
+        )
+        accumulated = round(monthly_depreciation * months_used, 2)
+        book_value = max(cost - accumulated, 0.0)
+
+        total_cost += cost
+        total_accumulated += accumulated
+        total_book += book_value
+
+        asset_rows.append(
+            {
+                "id": asset.id,
+                "name": asset.name,
+                "category": asset.category or "-",
+                "acquisition_date": asset.acquisition_date,
+                "cost": cost,
+                "salvage_value": salvage,
+                "life_months": life_months,
+                "method": asset.method,
+                "note": asset.note or "",
+                "months_used": months_used,
+                "monthly_depreciation": monthly_depreciation,
+                "accumulated": accumulated,
+                "book_value": book_value,
+                "status_label": "Aktif" if asset.is_active else "Nonaktif",
+                "status_badge": "badge-soft-success"
+                if asset.is_active
+                else "badge-soft-secondary",
+            }
+        )
+
+    summary_cards = [
+        {
+            "label": "Total biaya aset",
+            "value": total_cost,
+            "type": "currency",
+            "icon": "fa-cubes",
+            "accent": "text-primary",
+            "description": "Akumulasi biaya perolehan aset.",
+        },
+        {
+            "label": "Akumulasi penyusutan",
+            "value": total_accumulated,
+            "type": "currency",
+            "icon": "fa-chart-line",
+            "accent": "text-warning",
+            "description": "Total penyusutan sampai tanggal pilihan.",
+        },
+        {
+            "label": "Nilai buku",
+            "value": total_book,
+            "type": "currency",
+            "icon": "fa-balance-scale",
+            "accent": "text-success",
+            "description": "Nilai aset setelah penyusutan.",
+        },
+        {
+            "label": "Jumlah aset",
+            "value": len(asset_rows),
+            "type": "count",
+            "icon": "fa-layer-group",
+            "accent": "text-secondary",
+            "description": "Jumlah aset di daftar.",
+        },
+    ]
+
+    filter_values = {
+        "search": search_query,
+        "status": status_filter,
+        "as_of": as_of_date.strftime("%Y-%m-%d"),
+    }
+
+    return render_template(
+        "aset_tetap.html",
+        asset_rows=asset_rows,
+        summary_cards=summary_cards,
+        filter_values=filter_values,
+        as_of_label=_format_date_id(as_of_date),
+        format_date=_format_date_id,
     )
 
 
@@ -9105,6 +9619,7 @@ def _build_draft_invoice(prefix, model):
 
 def _get_accounting_setting():
     _ensure_table(AccountingSetting)
+    _ensure_accounting_setting_columns()
     return AccountingSetting.query.first()
 
 
@@ -9122,6 +9637,56 @@ def _calculate_line_items_hpp(line_items):
         )
         total += cost_basis * (item.get("qty") or 0)
     return round(total, 2)
+
+
+def _calculate_purchase_total(items):
+    total = 0.0
+    for item in items:
+        qty = float(item.jumlah or 0)
+        price = float(item.harga_beli or 0.0)
+        discount_pct = float(item.diskon or 0.0)
+        tax_pct = float(item.pajak or 0.0)
+        base_total = price * qty
+        discount_value = base_total * (discount_pct / 100.0)
+        taxable_total = base_total - discount_value
+        tax_value = taxable_total * (tax_pct / 100.0)
+        total += taxable_total + tax_value
+    return round(total, 2)
+
+
+def _purchase_total_subquery():
+    base_total = BarangPembelian.harga_beli * BarangPembelian.jumlah
+    discount_pct = func.coalesce(BarangPembelian.diskon, 0) / 100.0
+    tax_pct = func.coalesce(BarangPembelian.pajak, 0) / 100.0
+    line_total = base_total * (1 - discount_pct) * (1 + tax_pct)
+    return (
+        db.session.query(
+            BarangPembelian.pembelian_id.label("pembelian_id"),
+            func.coalesce(func.sum(line_total), 0.0).label("total_amount"),
+        )
+        .group_by(BarangPembelian.pembelian_id)
+        .subquery()
+    )
+
+
+def _payable_payment_sum_subquery():
+    return (
+        db.session.query(
+            PayablePayment.pembelian_id.label("pembelian_id"),
+            func.coalesce(func.sum(PayablePayment.amount), 0.0).label("amount_paid"),
+        )
+        .group_by(PayablePayment.pembelian_id)
+        .subquery()
+    )
+
+
+def _months_between(start_date, end_date):
+    if not start_date or not end_date or end_date < start_date:
+        return 0
+    months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+    if end_date.day < start_date.day:
+        months -= 1
+    return max(0, months)
 
 
 def _record_auto_cogs_journal(penjualan, amount, settings, user_id=None):
@@ -9629,6 +10194,8 @@ def stok_opname():
         )
         db.session.add(opname_session)
         adjustments = []
+        increase_value = 0.0
+        decrease_value = 0.0
         errors = []
         for index, item in enumerate(items, start=1):
             product_id = item.get("product_id")
@@ -9663,6 +10230,18 @@ def stok_opname():
                 note=item_note or None,
             )
             db.session.add(opname_item)
+            if difference != 0:
+                cost_basis = float(
+                    product.harga_lama
+                    or product.harga_beli
+                    or product.harga
+                    or 0.0
+                )
+                adjustment_value = abs(difference) * cost_basis
+                if difference > 0:
+                    increase_value += adjustment_value
+                else:
+                    decrease_value += adjustment_value
             adjustments.append(
                 {
                     "product_id": product.id,
@@ -9686,6 +10265,68 @@ def stok_opname():
                 ),
                 400,
             )
+        journal_entry = None
+        journal_warning = None
+        if increase_value > 0 or decrease_value > 0:
+            _ensure_table(JournalEntry)
+            _ensure_table(JournalLine)
+            settings = _get_accounting_setting()
+            inventory_account = settings.inventory_account if settings else None
+            adjustment_account = (
+                settings.inventory_adjustment_account if settings else None
+            )
+            if inventory_account and adjustment_account:
+                journal_entry = JournalEntry(
+                    reference=_generate_journal_reference_with_prefix("SOJ"),
+                    date=local_today(),
+                    memo=f"Penyesuaian Persediaan - {reference}",
+                    created_by=session.get("user_id"),
+                )
+                db.session.add(journal_entry)
+                db.session.flush()
+                if increase_value > 0:
+                    db.session.add(
+                        JournalLine(
+                            entry_id=journal_entry.id,
+                            account_id=inventory_account.id,
+                            debit=round(increase_value, 2),
+                            credit=0.0,
+                            description="Penyesuaian persediaan (selisih lebih)",
+                        )
+                    )
+                    db.session.add(
+                        JournalLine(
+                            entry_id=journal_entry.id,
+                            account_id=adjustment_account.id,
+                            debit=0.0,
+                            credit=round(increase_value, 2),
+                            description="Penyesuaian persediaan (selisih lebih)",
+                        )
+                    )
+                if decrease_value > 0:
+                    db.session.add(
+                        JournalLine(
+                            entry_id=journal_entry.id,
+                            account_id=adjustment_account.id,
+                            debit=round(decrease_value, 2),
+                            credit=0.0,
+                            description="Penyesuaian persediaan (selisih kurang)",
+                        )
+                    )
+                    db.session.add(
+                        JournalLine(
+                            entry_id=journal_entry.id,
+                            account_id=inventory_account.id,
+                            debit=0.0,
+                            credit=round(decrease_value, 2),
+                            description="Penyesuaian persediaan (selisih kurang)",
+                        )
+                    )
+            else:
+                journal_warning = (
+                    "Jurnal penyesuaian tidak dibuat karena akun Persediaan/"
+                    "Penyesuaian Persediaan belum dikonfigurasi."
+                )
         db.session.commit()
         plus = sum(item["difference"] for item in adjustments if item["difference"] > 0)
         minus = sum(
@@ -9700,6 +10341,11 @@ def stok_opname():
                     "rows": len(adjustments),
                     "plus": plus,
                     "minus": minus,
+                },
+                "journal": {
+                    "created": bool(journal_entry),
+                    "reference": journal_entry.reference if journal_entry else None,
+                    "warning": journal_warning,
                 },
             }
         )
@@ -12215,6 +12861,38 @@ def laporan_piutang():
         or 0
     )
 
+    aging_summary = {
+        "current": 0.0,
+        "1_30": 0.0,
+        "31_60": 0.0,
+        "61_90": 0.0,
+        "90_plus": 0.0,
+        "no_due": 0.0,
+    }
+    aging_rows = apply_filters(
+        db.session.query(Penjualan.due_date, outstanding_expr),
+        summary_base + [outstanding_expr > 0],
+    ).all()
+    for due_date, outstanding in aging_rows:
+        outstanding = float(outstanding or 0.0)
+        if outstanding <= 0:
+            continue
+        if not due_date:
+            aging_summary["no_due"] += outstanding
+            continue
+        if due_date >= today:
+            aging_summary["current"] += outstanding
+            continue
+        days_overdue = (today - due_date).days
+        if days_overdue <= 30:
+            aging_summary["1_30"] += outstanding
+        elif days_overdue <= 60:
+            aging_summary["31_60"] += outstanding
+        elif days_overdue <= 90:
+            aging_summary["61_90"] += outstanding
+        else:
+            aging_summary["90_plus"] += outstanding
+
     receivable_rows = []
     for sale in records:
         total = float(sale.total_harga or 0.0)
@@ -12316,6 +12994,38 @@ def laporan_piutang():
             "description": "Jatuh tempo dalam 7 hari ke depan.",
         },
     ]
+    aging_cards = [
+        {
+            "label": "Belum jatuh tempo",
+            "value": aging_summary["current"],
+            "accent": "text-info",
+        },
+        {
+            "label": "1-30 hari",
+            "value": aging_summary["1_30"],
+            "accent": "text-warning",
+        },
+        {
+            "label": "31-60 hari",
+            "value": aging_summary["31_60"],
+            "accent": "text-warning",
+        },
+        {
+            "label": "61-90 hari",
+            "value": aging_summary["61_90"],
+            "accent": "text-danger",
+        },
+        {
+            "label": ">90 hari",
+            "value": aging_summary["90_plus"],
+            "accent": "text-danger",
+        },
+        {
+            "label": "Tanpa tanggal",
+            "value": aging_summary["no_due"],
+            "accent": "text-secondary",
+        },
+    ]
 
     sales_options = (
         User.query.filter(User.role.in_(SALES_ROLES)).order_by(User.username.asc()).all()
@@ -12361,6 +13071,7 @@ def laporan_piutang():
         "laporan_piutang.html",
         receivable_rows=receivable_rows,
         summary_cards=summary_cards,
+        aging_cards=aging_cards,
         filter_values=filter_values,
         sort_option=sort_option,
         per_page=per_page,
@@ -12368,6 +13079,358 @@ def laporan_piutang():
         filter_active=filter_active,
         sales_options=sales_options,
         customer_options=customer_options,
+        no_due_count=no_due_count,
+        total_outstanding=total_outstanding,
+        overdue_count=overdue_count,
+        format_date=_format_date_id,
+    )
+
+
+@bp.route("/laporan/utang")
+@login_required
+@roles_required(*ADMIN_ONLY)
+def laporan_utang():
+    _ensure_table(PayablePayment)
+    today = local_today()
+    search_query = (request.args.get("search") or "").strip()
+    supplier_id = _parse_int_param(request.args.get("supplier"))
+    status_filter = (request.args.get("status") or "").strip()
+    start_due = _parse_date_param(request.args.get("start_due"))
+    end_due = _parse_date_param(request.args.get("end_due"))
+    sort_option = request.args.get("sort", "due_asc")
+    per_page = request.args.get("per_page", type=int) or 10
+    per_page = max(5, min(per_page, 50))
+    page = request.args.get("page", type=int) or 1
+    if page < 1:
+        page = 1
+
+    total_sub = _purchase_total_subquery()
+    paid_sub = _payable_payment_sum_subquery()
+    total_expr = func.coalesce(total_sub.c.total_amount, 0)
+    paid_expr = func.coalesce(paid_sub.c.amount_paid, 0)
+    outstanding_expr = total_expr - paid_expr
+
+    base_filters = [Pembelian.jenis_pembayaran == "Tempo"]
+    if search_query:
+        like = f"%{search_query}%"
+        base_filters.append(
+            or_(
+                Pembelian.no_faktur.ilike(like),
+                Pembelian.supplier.has(Supplier.name.ilike(like)),
+            )
+        )
+    if supplier_id:
+        base_filters.append(Pembelian.supplier_id == supplier_id)
+    if start_due:
+        base_filters.append(Pembelian.due_date >= start_due)
+    if end_due:
+        base_filters.append(Pembelian.due_date <= end_due)
+
+    status_filters = []
+    if status_filter == "open":
+        status_filters.append(outstanding_expr > 0)
+    elif status_filter == "overdue":
+        status_filters.append(
+            and_(outstanding_expr > 0, Pembelian.due_date < today)
+        )
+    elif status_filter == "upcoming":
+        status_filters.append(
+            and_(outstanding_expr > 0, Pembelian.due_date >= today)
+        )
+    elif status_filter == "paid":
+        status_filters.append(outstanding_expr <= 0)
+    elif status_filter == "nodue":
+        status_filters.append(
+            and_(outstanding_expr > 0, Pembelian.due_date.is_(None))
+        )
+
+    list_filters = base_filters + status_filters
+
+    def apply_filters(query, filters):
+        return query.filter(*filters) if filters else query
+
+    base_query = (
+        Pembelian.query.options(joinedload(Pembelian.supplier))
+        .outerjoin(total_sub, total_sub.c.pembelian_id == Pembelian.id)
+        .outerjoin(paid_sub, paid_sub.c.pembelian_id == Pembelian.id)
+    )
+    list_query = apply_filters(base_query, list_filters)
+
+    total_records = (
+        list_query.with_entities(func.count(Pembelian.id)).scalar() or 0
+    )
+    total_pages = max(1, (total_records + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * per_page
+
+    sort_map = {
+        "due_asc": Pembelian.due_date.asc(),
+        "due_desc": Pembelian.due_date.desc(),
+        "total_desc": total_expr.desc(),
+        "total_asc": total_expr.asc(),
+        "outstanding_desc": outstanding_expr.desc(),
+        "outstanding_asc": outstanding_expr.asc(),
+    }
+    order_clause = sort_map.get(sort_option, Pembelian.due_date.asc())
+
+    records = (
+        list_query.add_columns(
+            total_expr.label("total_amount"),
+            paid_expr.label("amount_paid"),
+        )
+        .order_by(order_clause, Pembelian.id.desc())
+        .offset(offset)
+        .limit(per_page)
+        .all()
+    )
+
+    summary_query = apply_filters(base_query, base_filters)
+    total_outstanding = (
+        summary_query.with_entities(func.coalesce(func.sum(outstanding_expr), 0))
+        .filter(outstanding_expr > 0)
+        .scalar()
+        or 0.0
+    )
+    open_count = (
+        summary_query.with_entities(func.count(Pembelian.id))
+        .filter(outstanding_expr > 0)
+        .scalar()
+        or 0
+    )
+    overdue_count = (
+        summary_query.with_entities(func.count(Pembelian.id))
+        .filter(outstanding_expr > 0, Pembelian.due_date < today)
+        .scalar()
+        or 0
+    )
+    due_soon_end = today + timedelta(days=7)
+    due_soon_count = (
+        summary_query.with_entities(func.count(Pembelian.id))
+        .filter(
+            outstanding_expr > 0,
+            Pembelian.due_date >= today,
+            Pembelian.due_date <= due_soon_end,
+        )
+        .scalar()
+        or 0
+    )
+    no_due_count = (
+        summary_query.with_entities(func.count(Pembelian.id))
+        .filter(outstanding_expr > 0, Pembelian.due_date.is_(None))
+        .scalar()
+        or 0
+    )
+
+    aging_summary = {
+        "current": 0.0,
+        "1_30": 0.0,
+        "31_60": 0.0,
+        "61_90": 0.0,
+        "90_plus": 0.0,
+        "no_due": 0.0,
+    }
+    aging_rows = (
+        summary_query.with_entities(Pembelian.due_date, outstanding_expr)
+        .filter(outstanding_expr > 0)
+        .all()
+    )
+    for due_date, outstanding in aging_rows:
+        outstanding = float(outstanding or 0.0)
+        if outstanding <= 0:
+            continue
+        if not due_date:
+            aging_summary["no_due"] += outstanding
+            continue
+        if due_date >= today:
+            aging_summary["current"] += outstanding
+            continue
+        days_overdue = (today - due_date).days
+        if days_overdue <= 30:
+            aging_summary["1_30"] += outstanding
+        elif days_overdue <= 60:
+            aging_summary["31_60"] += outstanding
+        elif days_overdue <= 90:
+            aging_summary["61_90"] += outstanding
+        else:
+            aging_summary["90_plus"] += outstanding
+
+    payable_rows = []
+    for purchase, total_amount, amount_paid in records:
+        total_amount = float(total_amount or 0.0)
+        amount_paid = float(amount_paid or 0.0)
+        outstanding = max(total_amount - amount_paid, 0.0)
+        due_date = purchase.due_date
+        status_label = "Lunas"
+        status_badge = "badge-soft-success"
+        status_hint = ""
+        if outstanding > 0:
+            if due_date:
+                delta_days = (due_date - today).days
+                if delta_days < 0:
+                    status_label = "Jatuh tempo"
+                    status_badge = "badge-soft-danger"
+                    status_hint = f"Terlambat {abs(delta_days)} hari"
+                elif delta_days == 0:
+                    status_label = "Jatuh tempo"
+                    status_badge = "badge-soft-warning"
+                    status_hint = "Jatuh tempo hari ini"
+                else:
+                    status_label = "Belum jatuh tempo"
+                    status_badge = "badge-soft-warning"
+                    status_hint = f"H-{delta_days} hari"
+            else:
+                status_label = "Tanpa tanggal"
+                status_badge = "badge-soft-secondary"
+                status_hint = "Isi tanggal tempo"
+
+        supplier_name = purchase.supplier.name if purchase.supplier else "Tanpa supplier"
+        payable_rows.append(
+            {
+                "id": purchase.id,
+                "invoice": purchase.no_faktur,
+                "purchase_date": purchase.tanggal_faktur,
+                "due_date": due_date,
+                "supplier_name": supplier_name,
+                "total": total_amount,
+                "amount_paid": amount_paid,
+                "outstanding": outstanding,
+                "status_label": status_label,
+                "status_badge": status_badge,
+                "status_hint": status_hint,
+            }
+        )
+
+    filter_active = any(
+        [search_query, supplier_id, start_due, end_due, status_filter]
+    )
+
+    def _date_value_to_str(value):
+        return value.strftime("%Y-%m-%d") if value else ""
+
+    filter_values = {
+        "search": search_query,
+        "supplier": supplier_id or "",
+        "start_due": _date_value_to_str(start_due),
+        "end_due": _date_value_to_str(end_due),
+        "status": status_filter,
+    }
+
+    summary_cards = [
+        {
+            "label": "Total utang",
+            "value": total_outstanding,
+            "type": "currency",
+            "icon": "fa-wallet",
+            "accent": "text-danger",
+            "description": "Nilai tempo yang masih terbuka.",
+        },
+        {
+            "label": "Tempo terbuka",
+            "value": open_count,
+            "type": "count",
+            "icon": "fa-file-invoice-dollar",
+            "accent": "text-primary",
+            "description": "Jumlah faktur yang belum lunas.",
+        },
+        {
+            "label": "Jatuh tempo",
+            "value": overdue_count,
+            "type": "count",
+            "icon": "fa-exclamation-triangle",
+            "accent": "text-danger",
+            "description": "Faktur melewati tanggal jatuh tempo.",
+        },
+        {
+            "label": "Tempo 7 hari",
+            "value": due_soon_count,
+            "type": "count",
+            "icon": "fa-hourglass-half",
+            "accent": "text-warning",
+            "description": "Jatuh tempo dalam 7 hari ke depan.",
+        },
+    ]
+    aging_cards = [
+        {
+            "label": "Belum jatuh tempo",
+            "value": aging_summary["current"],
+            "accent": "text-info",
+        },
+        {
+            "label": "1-30 hari",
+            "value": aging_summary["1_30"],
+            "accent": "text-warning",
+        },
+        {
+            "label": "31-60 hari",
+            "value": aging_summary["31_60"],
+            "accent": "text-warning",
+        },
+        {
+            "label": "61-90 hari",
+            "value": aging_summary["61_90"],
+            "accent": "text-danger",
+        },
+        {
+            "label": ">90 hari",
+            "value": aging_summary["90_plus"],
+            "accent": "text-danger",
+        },
+        {
+            "label": "Tanpa tanggal",
+            "value": aging_summary["no_due"],
+            "accent": "text-secondary",
+        },
+    ]
+
+    supplier_options = Supplier.query.order_by(Supplier.name.asc()).all()
+
+    query_args = request.args.to_dict(flat=True)
+    query_args.pop("page", None)
+    base_args = query_args.copy()
+    prev_url = (
+        url_for("main.laporan_utang", page=page - 1, **base_args)
+        if page > 1
+        else None
+    )
+    next_url = (
+        url_for("main.laporan_utang", page=page + 1, **base_args)
+        if page < total_pages
+        else None
+    )
+    page_window_start = max(1, page - 2)
+    page_window_end = min(total_pages, page + 2)
+    page_links = [
+        {
+            "number": number,
+            "url": url_for("main.laporan_utang", page=number, **base_args),
+            "current": number == page,
+        }
+        for number in range(page_window_start, page_window_end + 1)
+    ]
+    pagination = {
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "total_records": total_records,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "prev_url": prev_url,
+        "next_url": next_url,
+        "page_links": page_links,
+    }
+
+    return render_template(
+        "laporan_utang.html",
+        payable_rows=payable_rows,
+        summary_cards=summary_cards,
+        aging_cards=aging_cards,
+        filter_values=filter_values,
+        sort_option=sort_option,
+        per_page=per_page,
+        pagination=pagination,
+        filter_active=filter_active,
+        supplier_options=supplier_options,
         no_due_count=no_due_count,
         total_outstanding=total_outstanding,
         overdue_count=overdue_count,
@@ -12644,6 +13707,285 @@ def pembayaran_piutang_history(sale_id):
         ReceivablePayment.query.options(joinedload(ReceivablePayment.created_by_user))
         .filter(ReceivablePayment.penjualan_id == sale_id)
         .order_by(ReceivablePayment.paid_at.desc(), ReceivablePayment.id.desc())
+        .all()
+    )
+    payload = []
+    for payment in payments:
+        paid_at = payment.paid_at or local_now()
+        date_label = f"{_format_date_id(paid_at.date())} {paid_at.strftime('%H:%M')}"
+        payload.append(
+            {
+                "id": payment.id,
+                "amount": float(payment.amount or 0.0),
+                "method": payment.payment_method or "-",
+                "reference": payment.reference or "-",
+                "note": payment.note or "-",
+                "paid_at": date_label,
+                "created_by": (
+                    payment.created_by_user.username
+                    if payment.created_by_user
+                    else "-"
+                ),
+            }
+        )
+
+    return jsonify({"payments": payload})
+
+
+@bp.route("/utilitas/pembayaran-utang", methods=["GET"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pembayaran_utang():
+    _ensure_table(PayablePayment)
+    today = local_today()
+    default_start = today.replace(day=1)
+    start_date = _parse_date_param(request.args.get("start_date")) or default_start
+    end_date = _parse_date_param(request.args.get("end_date")) or today
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    search_query = (request.args.get("search") or "").strip()
+    open_id = _parse_int_param(request.args.get("open_id"))
+    supplier_id = _parse_int_param(request.args.get("supplier"))
+    per_page = request.args.get("per_page", type=int) or 10
+    per_page = max(5, min(per_page, 50))
+    page = request.args.get("page", type=int) or 1
+    if page < 1:
+        page = 1
+
+    total_sub = _purchase_total_subquery()
+    paid_sub = _payable_payment_sum_subquery()
+    total_expr = func.coalesce(total_sub.c.total_amount, 0)
+    paid_expr = func.coalesce(paid_sub.c.amount_paid, 0)
+    outstanding_expr = total_expr - paid_expr
+
+    base_filters = [
+        Pembelian.jenis_pembayaran == "Tempo",
+        outstanding_expr > 0,
+    ]
+    if open_id:
+        base_filters.append(Pembelian.id == open_id)
+    else:
+        base_filters.extend(
+            [
+                Pembelian.tanggal_faktur >= start_date,
+                Pembelian.tanggal_faktur <= end_date,
+            ]
+        )
+        if supplier_id:
+            base_filters.append(Pembelian.supplier_id == supplier_id)
+        if search_query:
+            like = f"%{search_query}%"
+            base_filters.append(
+                or_(
+                    Pembelian.no_faktur.ilike(like),
+                    Pembelian.supplier.has(Supplier.name.ilike(like)),
+                )
+            )
+
+    def apply_filters(query, filters):
+        return query.filter(*filters) if filters else query
+
+    base_query = (
+        Pembelian.query.options(joinedload(Pembelian.supplier))
+        .outerjoin(total_sub, total_sub.c.pembelian_id == Pembelian.id)
+        .outerjoin(paid_sub, paid_sub.c.pembelian_id == Pembelian.id)
+    )
+    list_query = apply_filters(base_query, base_filters)
+
+    total_records = (
+        list_query.with_entities(func.count(Pembelian.id)).scalar() or 0
+    )
+    total_pages = max(1, (total_records + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * per_page
+
+    records = (
+        list_query.add_columns(
+            total_expr.label("total_amount"),
+            paid_expr.label("amount_paid"),
+        )
+        .order_by(Pembelian.tanggal_faktur.desc(), Pembelian.id.desc())
+        .offset(offset)
+        .limit(per_page)
+        .all()
+    )
+
+    total_outstanding = (
+        list_query.with_entities(func.coalesce(func.sum(outstanding_expr), 0))
+        .scalar()
+        or 0.0
+    )
+
+    payable_rows = []
+    for purchase, total_amount, amount_paid in records:
+        total_amount = float(total_amount or 0.0)
+        amount_paid = float(amount_paid or 0.0)
+        outstanding = max(total_amount - amount_paid, 0.0)
+        supplier_name = purchase.supplier.name if purchase.supplier else "Tanpa supplier"
+        payable_rows.append(
+            {
+                "id": purchase.id,
+                "invoice": purchase.no_faktur,
+                "purchase_date": purchase.tanggal_faktur,
+                "supplier_name": supplier_name,
+                "total": total_amount,
+                "amount_paid": amount_paid,
+                "outstanding": outstanding,
+                "due_date": purchase.due_date,
+            }
+        )
+
+    filter_active = any([search_query, supplier_id]) and not open_id
+
+    def _date_value_to_str(value):
+        return value.strftime("%Y-%m-%d") if value else ""
+
+    filter_values = {
+        "search": search_query,
+        "supplier": supplier_id or "",
+        "start_date": _date_value_to_str(start_date),
+        "end_date": _date_value_to_str(end_date),
+    }
+
+    supplier_options = Supplier.query.order_by(Supplier.name.asc()).all()
+
+    query_args = request.args.to_dict(flat=True)
+    query_args.pop("page", None)
+    base_args = query_args.copy()
+    prev_url = (
+        url_for("main.pembayaran_utang", page=page - 1, **base_args)
+        if page > 1
+        else None
+    )
+    next_url = (
+        url_for("main.pembayaran_utang", page=page + 1, **base_args)
+        if page < total_pages
+        else None
+    )
+    page_window_start = max(1, page - 2)
+    page_window_end = min(total_pages, page + 2)
+    page_links = [
+        {
+            "number": number,
+            "url": url_for("main.pembayaran_utang", page=number, **base_args),
+            "current": number == page,
+        }
+        for number in range(page_window_start, page_window_end + 1)
+    ]
+    pagination = {
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "total_records": total_records,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "prev_url": prev_url,
+        "next_url": next_url,
+        "page_links": page_links,
+    }
+
+    return render_template(
+        "pembayaran_utang.html",
+        payable_rows=payable_rows,
+        total_outstanding=total_outstanding,
+        filter_values=filter_values,
+        filter_active=filter_active,
+        per_page=per_page,
+        pagination=pagination,
+        supplier_options=supplier_options,
+        open_id=open_id,
+        format_date=_format_date_id,
+    )
+
+
+@bp.route("/utilitas/pembayaran-utang/bayar", methods=["POST"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pembayaran_utang_bayar():
+    _ensure_table(PayablePayment)
+    purchase_id = _parse_int_param(request.form.get("purchase_id"))
+    amount = _parse_float_param(request.form.get("payment_amount"))
+    payment_method = (request.form.get("payment_method") or "Tunai").strip()
+    reference = (request.form.get("reference") or "").strip()
+    note = (request.form.get("note") or "").strip()
+    update_due = request.form.get("update_due") == "1"
+    new_due_date = _parse_date_param(request.form.get("new_due_date"))
+    next_target = request.form.get("next") or url_for("main.pembayaran_utang")
+
+    if not purchase_id:
+        flash("Data pembelian tidak valid.", "warning")
+        return redirect(url_for("main.pembayaran_utang"))
+
+    purchase = (
+        Pembelian.query.options(
+            joinedload(Pembelian.barang),
+            joinedload(Pembelian.supplier),
+        )
+        .filter(Pembelian.id == purchase_id)
+        .first()
+    )
+    if not purchase:
+        flash("Pembelian tidak ditemukan.", "warning")
+        return redirect(url_for("main.pembayaran_utang"))
+    if purchase.jenis_pembayaran != "Tempo":
+        flash("Pembelian ini bukan tempo.", "warning")
+        return redirect(next_target)
+
+    total_amount = _calculate_purchase_total(purchase.barang)
+    current_paid = sum(payment.amount for payment in purchase.payments)
+    outstanding = max(total_amount - current_paid, 0.0)
+    if outstanding <= 0:
+        flash("Utang sudah lunas.", "info")
+        return redirect(next_target)
+    if not amount or amount <= 0:
+        flash("Nominal pembayaran harus lebih dari 0.", "warning")
+        return redirect(next_target)
+    if update_due and not new_due_date:
+        flash("Tanggal jatuh tempo baru wajib diisi.", "warning")
+        return redirect(next_target)
+
+    allowed_methods = {"Tunai", "Transfer", "Kartu", "QRIS"}
+    if payment_method not in allowed_methods:
+        payment_method = "Tunai"
+    if amount > outstanding:
+        flash("Nominal pembayaran melebihi sisa utang.", "warning")
+        return redirect(next_target)
+
+    payment = PayablePayment(
+        pembelian_id=purchase.id,
+        amount=amount,
+        payment_method=payment_method,
+        reference=reference or None,
+        note=note or None,
+        created_by=session.get("user_id"),
+    )
+    db.session.add(payment)
+
+    if update_due and new_due_date:
+        purchase.due_date = new_due_date
+
+    db.session.commit()
+    flash("Pembayaran utang berhasil disimpan.", "success")
+    return redirect(
+        next_target if _is_safe_redirect_target(next_target) else url_for("main.pembayaran_utang")
+    )
+
+
+@bp.route("/api/utang/history/<int:purchase_id>", methods=["GET"])
+@login_required
+@roles_required(*ADMIN_ONLY)
+def pembayaran_utang_history(purchase_id):
+    _ensure_table(PayablePayment)
+    purchase = Pembelian.query.get_or_404(purchase_id)
+    if purchase.jenis_pembayaran != "Tempo":
+        return jsonify({"payments": []})
+
+    payments = (
+        PayablePayment.query.options(joinedload(PayablePayment.created_by_user))
+        .filter(PayablePayment.pembelian_id == purchase_id)
+        .order_by(PayablePayment.paid_at.desc(), PayablePayment.id.desc())
         .all()
     )
     payload = []
