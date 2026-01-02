@@ -107,7 +107,7 @@
                             <label class="font-weight-semibold">
                                 {{ "Password baru (opsional)" if is_edit else "Password awal" }}
                             </label>
-                            <input type="password" name="password" class="form-control form-control-lg {% if form_errors.password %}is-invalid{% endif %}" placeholder="{{ 'kosongkan jika tidak diganti' if is_edit else 'minimal 6 karakter' }}">
+                            <input type="password" name="password" class="form-control form-control-lg {% if form_errors.password %}is-invalid{% endif %}" placeholder="{{ 'kosongkan jika tidak diganti' if is_edit else 'minimal 8 karakter' }}">
                             {% if form_errors.password %}
                                 <div class="invalid-feedback">{{ form_errors.password }}</div>
                             {% else %}
