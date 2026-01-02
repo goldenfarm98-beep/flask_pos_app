@@ -6,10 +6,14 @@ except ModuleNotFoundError:  # fallback kalau dependency belum terpasang
 
 load_dotenv()  # akan membaca file .env di root project, no-op jika modul tidak tersedia
 import re
+import sqlite3
+
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_wtf import CSRFProtect
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 
 from .config_db import load_env_once, resolve_database_uri, resolve_secret_key
@@ -18,6 +22,20 @@ from .time_utils import local_now
 db = SQLAlchemy()
 migrate = Migrate()
 csrf = CSRFProtect()
+
+
+@event.listens_for(Engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, _connection_record):
+    if not isinstance(dbapi_connection, sqlite3.Connection):
+        return
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA synchronous=NORMAL;")
+        cursor.execute("PRAGMA foreign_keys=ON;")
+        cursor.execute("PRAGMA busy_timeout=5000;")
+    finally:
+        cursor.close()
 
 
 def normalize_phone(value):

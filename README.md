@@ -64,6 +64,20 @@ Salin `.env.example` menjadi `.env` lalu sesuaikan. Prioritas koneksi database:
 Catatan: Jika semua variabel DB kosong, aplikasi akan memakai SQLite di
 `instance/app.db`.
 
+## SQLite tuning (recommended)
+Aplikasi otomatis mengatur PRAGMA berikut saat koneksi SQLite dibuat:
+- `journal_mode=WAL`
+- `synchronous=NORMAL`
+- `foreign_keys=ON`
+- `busy_timeout=5000`
+
+Verifikasi cepat:
+```bash
+sqlite3 instance/app.db "PRAGMA journal_mode;"
+sqlite3 instance/app.db "PRAGMA foreign_keys;"
+sqlite3 instance/app.db "PRAGMA busy_timeout;"
+```
+
 ## Migrasi database
 ```bash
 flask --app app.py db upgrade
