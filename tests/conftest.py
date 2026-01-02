@@ -1,12 +1,14 @@
 # tests/conftest.py
 import os
 import pytest
+from sqlalchemy.pool import StaticPool
 
 # --- Paksa environment test yang aman ---
 os.environ.setdefault("FLASK_ENV", "test")
 os.environ.setdefault("SECRET_KEY", "test")
 # Gunakan SQLite in-memory agar tidak butuh MySQL saat CI
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 # Kosongkan env MYSQL_* supaya kode tidak memaksa DSN MySQL
 for k in ("MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"):
@@ -61,6 +63,14 @@ _build_app()
 def app():
     # Buat semua tabel untuk test (jika SQLAlchemy ada)
     if _db is not None and hasattr(_db, "create_all"):
+        _app.config.update(
+            TESTING=True,
+            WTF_CSRF_ENABLED=False,
+            SQLALCHEMY_ENGINE_OPTIONS={
+                "connect_args": {"check_same_thread": False},
+                "poolclass": StaticPool,
+            },
+        )
         with _app.app_context():
             _db.create_all()
     return _app

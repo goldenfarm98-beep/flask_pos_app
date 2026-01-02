@@ -108,6 +108,7 @@ ALL_ROLE_CHOICES = (ROLE_ADMIN, ROLE_KASIR, ROLE_SALES, ROLE_GUDANG)
 INVENTORY_ROLES = (ROLE_ADMIN, ROLE_GUDANG)
 SALES_ROLES = (ROLE_ADMIN, ROLE_KASIR, ROLE_SALES)
 ADMIN_ONLY = (ROLE_ADMIN,)
+MIN_PASSWORD_LENGTH = 8
 
 
 def _is_safe_redirect_target(target: str) -> bool:
@@ -180,7 +181,7 @@ def get_current_user():
     user = None
     user_id = session.get("user_id")
     if user_id:
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if user:
             session["username"] = user.username
             session["role"] = user.role
@@ -497,7 +498,7 @@ def _parse_journal_lines(payload):
             account_id = int(account_id)
         except (TypeError, ValueError):
             return None, f"Akun tidak valid (baris {idx})."
-        account = Account.query.get(account_id)
+        account = db.session.get(Account, account_id)
         if not account:
             return None, f"Akun ID {account_id} tidak ditemukan (baris {idx})."
         try:
@@ -1301,6 +1302,12 @@ def register():
             return render_template("register.html")
 
         # Validasi password
+        if len(password) < MIN_PASSWORD_LENGTH:
+            flash(
+                f"Password minimal {MIN_PASSWORD_LENGTH} karakter.",
+                "danger",
+            )
+            return render_template("register.html")
         if password != confirm_password:
             flash("Passwords do not match!", "danger")
             return render_template("register.html")
@@ -1635,8 +1642,11 @@ def reset_password(token):
         if not password or not confirm_password:
             flash("Password dan konfirmasi wajib diisi.", "warning")
             return redirect(url_for("main.reset_password", token=token))
-        if len(password) < 8:
-            flash("Password minimal 8 karakter.", "warning")
+        if len(password) < MIN_PASSWORD_LENGTH:
+            flash(
+                f"Password minimal {MIN_PASSWORD_LENGTH} karakter.",
+                "warning",
+            )
             return redirect(url_for("main.reset_password", token=token))
         if password != confirm_password:
             flash("Konfirmasi password tidak cocok.", "warning")
@@ -1656,23 +1666,73 @@ def reset_password(token):
 @bp.route("/profile", methods=["GET", "POST"])
 @login_required
 def profile():
-    user = User.query.get(session["user_id"])
+    user = db.session.get(User, session["user_id"])
 
     if request.method == "POST":
-        username = request.form["username"]
-        email = request.form["email"]
-        password = request.form["password"]
+        username = (request.form.get("username") or "").strip()
+        email = (request.form.get("email") or "").strip()
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        password_change_requested = any(
+            [current_password, new_password, confirm_password]
+        )
+
+        if not username:
+            flash("Username wajib diisi.", "warning")
+            return redirect("/profile")
+        if not email:
+            flash("Email wajib diisi.", "warning")
+            return redirect("/profile")
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            flash("Format email tidak valid.", "warning")
+            return redirect("/profile")
+
+        existing_username = (
+            User.query.filter(func.lower(User.username) == username.lower())
+            .filter(User.id != user.id)
+            .first()
+        )
+        if existing_username:
+            flash("Username sudah digunakan.", "warning")
+            return redirect("/profile")
+
+        existing_email = (
+            User.query.filter(func.lower(User.email) == email.lower())
+            .filter(User.id != user.id)
+            .first()
+        )
+        if existing_email:
+            flash("Email sudah terdaftar.", "warning")
+            return redirect("/profile")
+
+        if password_change_requested:
+            if not current_password:
+                flash("Password lama wajib diisi.", "warning")
+                return redirect("/profile")
+            if not check_password_hash(user.password, current_password):
+                flash("Password lama tidak sesuai.", "danger")
+                return redirect("/profile")
+            if not new_password or not confirm_password:
+                flash("Password baru dan konfirmasi wajib diisi.", "warning")
+                return redirect("/profile")
+            if len(new_password) < MIN_PASSWORD_LENGTH:
+                flash(
+                    f"Password minimal {MIN_PASSWORD_LENGTH} karakter.",
+                    "warning",
+                )
+                return redirect("/profile")
+            if new_password != confirm_password:
+                flash("Konfirmasi password baru tidak cocok.", "warning")
+                return redirect("/profile")
+            hashed_password = generate_password_hash(
+                new_password, method="pbkdf2:sha256", salt_length=8
+            )
+            user.password = hashed_password
 
         # Update username and email
         user.username = username
         user.email = email
-
-        # Update password if provided
-        if password:
-            hashed_password = generate_password_hash(
-                password, method="pbkdf2:sha256", salt_length=8
-            )
-            user.password = hashed_password
 
         # Commit changes to the database
         db.session.commit()
@@ -2079,7 +2139,7 @@ def kelola_harga():
                 return redirect(url_for("main.kelola_harga"))
 
             if record_id:
-                record = MarketplacePricingSetting.query.get(record_id)
+                record = db.session.get(MarketplacePricingSetting, record_id)
             else:
                 record = None
 
@@ -2111,7 +2171,7 @@ def kelola_harga():
             if not record_id:
                 flash("Data tidak ditemukan.", "warning")
                 return redirect(url_for("main.kelola_harga"))
-            record = MarketplacePricingSetting.query.get(record_id)
+            record = db.session.get(MarketplacePricingSetting, record_id)
             if record:
                 db.session.delete(record)
                 db.session.commit()
@@ -2140,7 +2200,7 @@ def kelola_harga():
                 flash("Nilai biaya tidak boleh negatif.", "warning")
                 return redirect(url_for("main.kelola_harga"))
 
-            product = Produk.query.get(product_id)
+            product = db.session.get(Produk, product_id)
             if not product:
                 flash("Produk tidak ditemukan.", "warning")
                 return redirect(url_for("main.kelola_harga"))
@@ -2194,7 +2254,7 @@ def kelola_harga():
     loaded_product = None
     load_id = _parse_int_param(request.args.get("load"))
     if load_id:
-        record = MarketplacePricingSetting.query.get(load_id)
+        record = db.session.get(MarketplacePricingSetting, load_id)
         if record:
             form_data.update(
                 {
@@ -2691,8 +2751,8 @@ def expedisi_volumetrik():
                 flash("Dimensi harus lebih dari 0.", "warning")
                 return redirect(url_for("main.expedisi_volumetrik"))
 
-            expedisi_obj = Expedisi.query.get(expedisi_id)
-            product_obj = Produk.query.get(product_id)
+            expedisi_obj = db.session.get(Expedisi, expedisi_id)
+            product_obj = db.session.get(Produk, product_id)
             if not expedisi_obj or not product_obj:
                 flash("Expedisi atau produk tidak ditemukan.", "warning")
                 return redirect(url_for("main.expedisi_volumetrik"))
@@ -2704,7 +2764,7 @@ def expedisi_volumetrik():
             ).first()
 
             if item_id:
-                item = ExpedisiVolumetricItem.query.get(item_id)
+                item = db.session.get(ExpedisiVolumetricItem, item_id)
                 if not item:
                     flash("Data volumetrik tidak ditemukan.", "warning")
                     return redirect(url_for("main.expedisi_volumetrik"))
@@ -2744,7 +2804,7 @@ def expedisi_volumetrik():
             if not item_id:
                 flash("Data tidak ditemukan.", "warning")
                 return redirect(url_for("main.expedisi_volumetrik"))
-            item = ExpedisiVolumetricItem.query.get(item_id)
+            item = db.session.get(ExpedisiVolumetricItem, item_id)
             if item:
                 db.session.delete(item)
                 db.session.commit()
@@ -3449,7 +3509,7 @@ def produk():
 
     # Jika pengguna mengklik tombol edit
     produk_id = request.args.get("edit")
-    produk_to_edit = Produk.query.get(produk_id) if produk_id else None
+    produk_to_edit = db.session.get(Produk, produk_id) if produk_id else None
 
     def _parse_float(value, default=None):
         if value is None:
@@ -3523,7 +3583,7 @@ def produk():
         if not produk_to_edit:
             produk_id_form = request.form.get("produk_id")
             if produk_id_form:
-                produk_to_edit = Produk.query.get(produk_id_form)
+                produk_to_edit = db.session.get(Produk, produk_id_form)
 
         redirect_target = (
             url_for("main.produk", edit=produk_to_edit.id)
@@ -4142,7 +4202,7 @@ def akun():
         parent = None
         if parent_id:
             try:
-                parent = Account.query.get(int(parent_id))
+                parent = db.session.get(Account, int(parent_id))
             except (TypeError, ValueError):
                 parent = None
 
@@ -4159,7 +4219,7 @@ def akun():
         return redirect(url_for("main.akun"))
 
     edit_id = _parse_int_param(request.args.get("edit"))
-    edit_account = Account.query.get(edit_id) if edit_id else None
+    edit_account = db.session.get(Account, edit_id) if edit_id else None
 
     accounts = Account.query.order_by(Account.code.asc()).all()
     type_labels = {
@@ -4223,7 +4283,7 @@ def akun_edit(account_id):
     parent = None
     if parent_id:
         try:
-            parent = Account.query.get(int(parent_id))
+            parent = db.session.get(Account, int(parent_id))
         except (TypeError, ValueError):
             parent = None
     if parent and parent.id == account.id:
@@ -4444,23 +4504,23 @@ def accounting_settings():
         errors = []
 
         if inventory_account_id:
-            if not Account.query.get(inventory_account_id):
+            if not db.session.get(Account, inventory_account_id):
                 errors.append("Akun persediaan tidak ditemukan.")
 
         if cogs_account_id:
-            if not Account.query.get(cogs_account_id):
+            if not db.session.get(Account, cogs_account_id):
                 errors.append("Akun COGS tidak ditemukan.")
 
         if inventory_adjustment_account_id:
-            if not Account.query.get(inventory_adjustment_account_id):
+            if not db.session.get(Account, inventory_adjustment_account_id):
                 errors.append("Akun penyesuaian persediaan tidak ditemukan.")
 
         if marketplace_expense_account_id:
-            if not Account.query.get(marketplace_expense_account_id):
+            if not db.session.get(Account, marketplace_expense_account_id):
                 errors.append("Akun beban marketplace tidak ditemukan.")
 
         if marketplace_payable_account_id:
-            if not Account.query.get(marketplace_payable_account_id):
+            if not db.session.get(Account, marketplace_payable_account_id):
                 errors.append("Akun utang marketplace tidak ditemukan.")
 
         if (
@@ -4846,7 +4906,7 @@ def buku_besar():
 
     account_id = _parse_int_param(request.args.get("account"))
     accounts = Account.query.order_by(Account.code.asc()).all()
-    selected_account = Account.query.get(account_id) if account_id else None
+    selected_account = db.session.get(Account, account_id) if account_id else None
 
     ledger_rows = []
     summary_rows = []
@@ -5175,10 +5235,10 @@ def kas_bank():
         next_target = _resolve_next_target(url_for("main.kas_bank"))
 
         cash_account = (
-            Account.query.get(cash_account_id) if cash_account_id else None
+            db.session.get(Account, cash_account_id) if cash_account_id else None
         )
         offset_account = (
-            Account.query.get(offset_account_id) if offset_account_id else None
+            db.session.get(Account, offset_account_id) if offset_account_id else None
         )
 
         if not cash_account or cash_account.type != "asset":
@@ -5636,10 +5696,10 @@ def biaya_operasional():
             return redirect(url_for("main.biaya_operasional"))
 
         expense_account = (
-            Account.query.get(expense_account_id) if expense_account_id else None
+            db.session.get(Account, expense_account_id) if expense_account_id else None
         )
         payment_account = (
-            Account.query.get(payment_account_id) if payment_account_id else None
+            db.session.get(Account, payment_account_id) if payment_account_id else None
         )
 
         if (
@@ -6111,7 +6171,7 @@ def pelanggan():
         price_level_obj = None
         if price_level_raw not in (None, "", "0"):
             try:
-                price_level_obj = PriceLevel.query.get(int(price_level_raw))
+                price_level_obj = db.session.get(PriceLevel, int(price_level_raw))
             except (TypeError, ValueError):
                 price_level_obj = None
 
@@ -6178,7 +6238,7 @@ def edit_pelanggan(pelanggan_id):
         price_level_obj = None
         if price_level_raw not in (None, "", "0"):
             try:
-                price_level_obj = PriceLevel.query.get(int(price_level_raw))
+                price_level_obj = db.session.get(PriceLevel, int(price_level_raw))
             except (TypeError, ValueError):
                 price_level_obj = None
 
@@ -6707,7 +6767,7 @@ def pembelian():
                     400,
                 )
 
-            supplier = Supplier.query.get(supplier_id)
+            supplier = db.session.get(Supplier, supplier_id)
             if not supplier:
                 return (
                     jsonify({"success": False, "message": "Supplier tidak ditemukan."}),
@@ -7515,7 +7575,7 @@ def penjualan():
             if not form.pelanggan_id.data or form.pelanggan_id.data == 0:
                 raise ValueError("Pilih pelanggan sebelum menyimpan transaksi.")
 
-            customer_exists = Pelanggan.query.get(form.pelanggan_id.data)
+            customer_exists = db.session.get(Pelanggan, form.pelanggan_id.data)
             if not customer_exists:
                 raise ValueError("Pelanggan tidak ditemukan. Pilih pelanggan yang valid.")
 
@@ -7561,7 +7621,7 @@ def penjualan():
                     errors.append(f"Produk tidak valid pada baris {idx + 1}.")
                     continue
 
-                product = Produk.query.get(product_id)
+                product = db.session.get(Produk, product_id)
                 if not product:
                     errors.append(
                         f"Produk dengan ID {product_id} tidak ditemukan (baris {idx + 1})."
@@ -7654,7 +7714,7 @@ def penjualan():
             if payment_method in channel_methods:
                 if not payment_channel_id:
                     raise ValueError("Pilih detail pembayaran untuk metode tersebut.")
-                payment_channel = PaymentChannel.query.get(payment_channel_id)
+                payment_channel = db.session.get(PaymentChannel, payment_channel_id)
                 if not payment_channel or payment_channel.channel_type != payment_method:
                     raise ValueError("Detail metode pembayaran tidak valid.")
             else:
@@ -7771,7 +7831,7 @@ def penjualan():
                 )
 
             if quotation_id:
-                quotation = Quotation.query.get(quotation_id)
+                quotation = db.session.get(Quotation, quotation_id)
                 if quotation and quotation.status != "cancelled":
                     quotation.status = "converted"
                     quotation.converted_sale_id = penjualan.id
@@ -7872,7 +7932,7 @@ def penjualan_invoice_draft():
 
     customer_id = _parse_int_param(draft_payload.get("customer_id"))
     customer_label = (draft_payload.get("customer_label") or "").strip()
-    customer = Pelanggan.query.get(customer_id) if customer_id else None
+    customer = db.session.get(Pelanggan, customer_id) if customer_id else None
     customer_name = customer.nama if customer else (customer_label or "Customer")
     customer_phone = customer.kontak if customer else "-"
     customer_address = customer.alamat if customer else "-"
@@ -7884,14 +7944,14 @@ def penjualan_invoice_draft():
     payment_method = (draft_payload.get("payment_method") or "-").strip()
     payment_channel_id = _parse_int_param(draft_payload.get("payment_channel_id"))
     payment_channel = (
-        PaymentChannel.query.get(payment_channel_id) if payment_channel_id else None
+        db.session.get(PaymentChannel, payment_channel_id) if payment_channel_id else None
     )
     payment_label = payment_method or "-"
     if payment_method in {"Kartu", "Transfer", "QRIS"} and payment_channel:
         payment_label = f"{payment_method} - {payment_channel.name}"
 
     expedition_id = _parse_int_param(draft_payload.get("expedition_id"))
-    expedition = Expedisi.query.get(expedition_id) if expedition_id else None
+    expedition = db.session.get(Expedisi, expedition_id) if expedition_id else None
 
     return render_template(
         "penjualan_invoice_draft.html",
@@ -8009,7 +8069,7 @@ def quotation_create():
 
     customer_id = _parse_int_param(draft_payload.get("customer_id"))
     customer_label = (draft_payload.get("customer_label") or "").strip()
-    customer = Pelanggan.query.get(customer_id) if customer_id else None
+    customer = db.session.get(Pelanggan, customer_id) if customer_id else None
     if customer and not customer_label:
         customer_label = customer.nama
 
@@ -9300,7 +9360,7 @@ def laporan_pembelian_print():
     range_label = f"{_format_date_id(start_date)} - {_format_date_id(end_date)}"
     supplier_name = "-"
     if supplier_id:
-        supplier = Supplier.query.get(supplier_id)
+        supplier = db.session.get(Supplier, supplier_id)
         if supplier:
             supplier_name = supplier.name
 
@@ -10130,7 +10190,7 @@ def update_harga():
                 errors.append(f"Harga harus lebih besar dari 0 (baris {index}).")
                 continue
 
-            product = Produk.query.get(product_id)
+            product = db.session.get(Produk, product_id)
             if not product:
                 errors.append(f"Produk dengan ID {product_id} tidak ditemukan.")
                 continue
@@ -10320,7 +10380,7 @@ def stok_opname():
             if counted_qty < 0:
                 errors.append(f"Jumlah fisik tidak boleh negatif (baris {index}).")
                 continue
-            product = Produk.query.get(product_id)
+            product = db.session.get(Produk, product_id)
             if not product:
                 errors.append(f"Produk dengan ID {product_id} tidak ditemukan.")
                 continue
@@ -11891,7 +11951,7 @@ def pembelian_po_new():
                 price = _parse_float_param(price_list[idx]) if idx < len(price_list) else 0.0
                 if not qty or qty <= 0:
                     continue
-                product = Produk.query.get(product_id)
+                product = db.session.get(Produk, product_id)
                 if not product:
                     continue
                 total_price = max(qty, 0.0) * max(price, 0.0)
@@ -12043,7 +12103,7 @@ def pembelian_po_edit(po_id):
                 price = _parse_float_param(price_list[idx]) if idx < len(price_list) else 0.0
                 if not qty or qty <= 0:
                     continue
-                product = Produk.query.get(product_id)
+                product = db.session.get(Produk, product_id)
                 if not product:
                     continue
                 total_price = max(qty, 0.0) * max(price, 0.0)
@@ -12804,12 +12864,12 @@ def laporan_penjualan_print():
 
     sales_name = "-"
     if selected_sales_id:
-        sales_user = User.query.get(selected_sales_id)
+        sales_user = db.session.get(User, selected_sales_id)
         if sales_user:
             sales_name = sales_user.username
     customer_name = "-"
     if selected_customer_id:
-        customer = Pelanggan.query.get(selected_customer_id)
+        customer = db.session.get(Pelanggan, selected_customer_id)
         if customer:
             customer_name = customer.nama
 
@@ -14212,7 +14272,7 @@ def laporan_penjualan_suggest():
 @roles_required(*ALL_ROLE_CHOICES)
 def get_product1():
     product_id = request.args.get("product_id")
-    product = Produk.query.get(product_id)
+    product = db.session.get(Produk, product_id)
 
     if product:
         return jsonify(
@@ -14244,7 +14304,7 @@ def sales_staff():
     if request.method == "GET":
         edit_id = request.args.get("edit", type=int)
         if edit_id:
-            edit_user = User.query.get(edit_id)
+            edit_user = db.session.get(User, edit_id)
 
     def _default_form_values():
         return {"username": "", "email": "", "role": ROLE_SALES}
@@ -14277,7 +14337,7 @@ def sales_staff():
 
         if is_edit:
             try:
-                target_user = User.query.get(int(edit_id))
+                target_user = db.session.get(User, int(edit_id))
             except (TypeError, ValueError):
                 target_user = None
             if not target_user:
@@ -14309,11 +14369,15 @@ def sales_staff():
 
         if is_edit:
             # Password opsional saat edit
-            if password and len(password) < 6:
-                form_errors["password"] = "Password minimal 6 karakter."
+            if password and len(password) < MIN_PASSWORD_LENGTH:
+                form_errors["password"] = (
+                    f"Password minimal {MIN_PASSWORD_LENGTH} karakter."
+                )
         else:
-            if not password or len(password) < 6:
-                form_errors["password"] = "Password minimal 6 karakter."
+            if not password or len(password) < MIN_PASSWORD_LENGTH:
+                form_errors["password"] = (
+                    f"Password minimal {MIN_PASSWORD_LENGTH} karakter."
+                )
 
         if not form_errors:
             if is_edit and target_user:
@@ -14647,8 +14711,8 @@ def harga_level():
             flash("Harga tidak boleh negatif.", "warning")
             return redirect(url_for("main.harga_level"))
 
-        level = PriceLevel.query.get(level_id_int)
-        product = Produk.query.get(product_id_int)
+        level = db.session.get(PriceLevel, level_id_int)
+        product = db.session.get(Produk, product_id_int)
         if not level or not product:
             flash("Level atau produk tidak ditemukan.", "warning")
             return redirect(url_for("main.harga_level"))
@@ -14677,7 +14741,7 @@ def harga_level():
         except (TypeError, ValueError):
             entry_int = None
         if entry_int:
-            entry = ProductPriceLevel.query.get(entry_int)
+            entry = db.session.get(ProductPriceLevel, entry_int)
             if entry:
                 db.session.delete(entry)
                 db.session.commit()
@@ -14702,7 +14766,7 @@ def harga_level():
             flash("Nilai biaya tidak boleh negatif.", "warning")
             return redirect(url_for("main.harga_level"))
 
-        level = PriceLevel.query.get(level_id_int)
+        level = db.session.get(PriceLevel, level_id_int)
         if not level:
             flash("Level harga tidak ditemukan.", "warning")
             return redirect(url_for("main.harga_level"))
@@ -14726,7 +14790,7 @@ def harga_level():
         except (TypeError, ValueError):
             entry_int = None
         if entry_int:
-            cost_entry = PriceLevelCost.query.get(entry_int)
+            cost_entry = db.session.get(PriceLevelCost, entry_int)
             if cost_entry:
                 cost_entry.is_active = not cost_entry.is_active
                 db.session.commit()
@@ -14741,7 +14805,7 @@ def harga_level():
         except (TypeError, ValueError):
             entry_int = None
         if entry_int:
-            cost_entry = PriceLevelCost.query.get(entry_int)
+            cost_entry = db.session.get(PriceLevelCost, entry_int)
             if cost_entry:
                 db.session.delete(cost_entry)
                 db.session.commit()
